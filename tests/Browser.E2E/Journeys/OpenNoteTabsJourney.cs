@@ -96,9 +96,22 @@ public sealed class OpenNoteTabsJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.AssertActiveTabAsync(first);
         await _app.AssertNoteScreenLoadedAsync();
 
-        // Closing the last tab returns to the notes list, with no bar left behind.
+        // Closing the last tab returns to the notes list. 51-B: the bar STAYS, holding only
+        // the pinned "My notes" tab — it no longer vanishes and then reappears on the next open.
         await _app.CloseOpenNoteTabAsync(first);
         await _app.AssertHomeLoadedAsync();
-        await _app.AssertNoOpenTabBarAsync();
+        await _app.AssertOnlyPinnedTabAsync();
+
+        // 51-B's actual fix: open a note, go back via the PINNED tab, and the note's tab is
+        // still on screen. Before this slice the bar vanished on the list and the whole row
+        // reappeared on the next open.
+        await _app.ClickNoteInListAsync(first);
+        await _app.AssertNoteScreenLoadedAsync();
+        await _app.AssertOpenTabCountAsync(1);
+
+        await _app.ClickPinnedTabAsync();
+        await _app.AssertHomeLoadedAsync();
+        await _app.AssertOpenTabVisibleAsync(first);
+        await _app.AssertOpenTabCountAsync(1);
     }
 }

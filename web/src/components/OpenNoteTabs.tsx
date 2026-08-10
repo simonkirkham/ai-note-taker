@@ -8,11 +8,20 @@ import styles from "./OpenNoteTabs.module.css";
 // the note screen's own <main> landmark — relabelling that would be worse for a screen
 // reader than plain navigation. A labelled <nav> of buttons with `aria-current="page"` on
 // the active one says the same thing, and native buttons give keyboard order for free.
+//
+// 51-B: the bar is PERMANENT. It renders on every screen and never returns null. The notes
+// list is a pinned leftmost tab, current whenever no note is open, so nothing in the bar
+// ever appears or disappears — the flicker of going Home and coming back was the whole
+// reason for the redesign. The pinned tab is deliberately NOT `data-testid="open-note-tab"`:
+// counting it would shift every count assertion by one, and the E2E helper that closes
+// stray tabs loops on that testid clicking a close button the pinned tab does not have,
+// which would hang the suite rather than fail it.
 export default function OpenNoteTabs({
   tabs,
   activeNoteId,
   reconciled,
   onSelect,
+  onSelectHome,
   onClose,
 }: {
   tabs: OpenNoteTab[];
@@ -22,11 +31,14 @@ export default function OpenNoteTabs({
   // list lands. Surfaced as an attribute because that transition is otherwise unobservable:
   // an E2E count assertion is a coin toss without something to wait on, and "the response
   // arrived" is not the same as "the reconciled set rendered".
+  //
+  // 51-B: this now matters on every route, not just the note route — the set is provisional
+  // on the notes list for exactly the same reason.
   reconciled: boolean;
   onSelect: (noteId: string) => void;
+  onSelectHome: () => void;
   onClose: (noteId: string) => void;
 }) {
-  if (tabs.length === 0) return null;
   return (
     <nav
       data-testid="open-note-tabs"
@@ -35,6 +47,18 @@ export default function OpenNoteTabs({
       className={styles.bar}
     >
       <ul className={styles.list}>
+        <li className={clsx(styles.tab, styles.tabHome, !activeNoteId && styles.tabActive)}>
+          <button
+            type="button"
+            data-testid="open-note-tab-home"
+            className={styles.label}
+            aria-current={!activeNoteId ? "page" : undefined}
+            onClick={onSelectHome}
+          >
+            <HomeIcon />
+            My notes
+          </button>
+        </li>
         {tabs.map((tab) => {
           const isActive = tab.noteId === activeNoteId;
           return (
@@ -68,5 +92,24 @@ export default function OpenNoteTabs({
         })}
       </ul>
     </nav>
+  );
+}
+
+function HomeIcon() {
+  return (
+    <svg
+      className={styles.homeIcon}
+      viewBox="0 0 16 16"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M2 6.5 8 2l6 4.5V13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6.5Z" />
+    </svg>
   );
 }

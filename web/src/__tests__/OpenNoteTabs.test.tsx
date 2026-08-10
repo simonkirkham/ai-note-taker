@@ -261,7 +261,7 @@ describe('Open-note tabs (49-A)', () => {
     expect(tabNamed('Standup')).toHaveAttribute('aria-current', 'page')
   })
 
-  it('closing the last tab returns to the notes list and hides the bar', async () => {
+  it('closing the last tab returns to the notes list', async () => {
     renderApp()
     await openFromList('Standup')
     await waitFor(() => expect(tabs()).toHaveLength(1))
@@ -269,15 +269,12 @@ describe('Open-note tabs (49-A)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Close Standup' }))
 
     await waitFor(() => expect(window.location.pathname).toBe('/w/__default__'))
-    expect(screen.queryByTestId('open-note-tabs')).toBeNull()
     expect(await screen.findByRole('heading', { name: 'Home' })).toBeInTheDocument()
   })
 
-  it('no tab bar is shown on the home list', async () => {
-    renderApp()
-    await screen.findAllByTestId('note-card')
-    expect(screen.queryByTestId('open-note-tabs')).toBeNull()
-  })
+  // 49-A's "no tab bar is shown on the home list" and this test's bar-absent assertion
+  // were both DELIBERATELY INVERTED by 51-B: the bar is now permanent. What replaces
+  // them — the bar remaining with only the pinned tab — is asserted in the 51-B block.
 
   it('content typed in a tab is saved when switching away and is there on return', async () => {
     renderApp()
@@ -395,4 +392,82 @@ describe('Open-note tabs (49-A)', () => {
     expect(tabNamed('Standup').tagName).toBe('BUTTON')
     expect(screen.getByRole('button', { name: 'Close Standup' }).tagName).toBe('BUTTON')
   })
+
+  // ── 51-B ── the bar is permanent ────────────────────────────────────────────
+  //
+  // The bug: the bar existed only on a note route, so going Home hid every open note
+  // and opening one made the whole row reappear at once. The bar now renders on every
+  // screen, with the notes list as a pinned leftmost tab that is highlighted whenever
+  // the user is not reading a note.
+  //
+  // The pinned tab deliberately does NOT carry `data-testid="open-note-tab"`: it would
+  // shift every count assertion by one, and AppPage.CloseAllTabsExceptAsync loops
+  // `while count > 1` clicking a close button the pinned tab does not have — a suite hang.
+  describe('51-B — the bar is permanent', () => {
+    const homeTab = () => screen.getByTestId('open-note-tab-home')
+
+    it('shows the bar on the notes list holding only My notes when nothing is open', async () => {
+      renderApp()
+      await screen.findAllByTestId('note-card')
+
+      expect(await screen.findByTestId('open-note-tabs')).toBeInTheDocument()
+      expect(tabs()).toHaveLength(0)
+      expect(homeTab()).toHaveAttribute('aria-current', 'page')
+    })
+
+    it('going back via the My notes tab keeps the open notes visible', async () => {
+      renderApp()
+      await openFromList('Standup')
+      await goHome()
+      await openFromList('Client call')
+      await waitFor(() => expect(tabs()).toHaveLength(2))
+
+      await userEvent.click(homeTab())
+
+      await waitFor(() => expect(window.location.pathname).toBe('/w/__default__'))
+      expect(tabs()).toHaveLength(2)
+      expect(homeTab()).toHaveAttribute('aria-current', 'page')
+    })
+
+    it('opening a note moves the highlight off My notes', async () => {
+      renderApp()
+      await openFromList('Standup')
+
+      expect(homeTab()).not.toHaveAttribute('aria-current')
+      expect(tabNamed('Standup')).toHaveAttribute('aria-current', 'page')
+    })
+
+    it('the My notes tab offers no way to close it', async () => {
+      renderApp()
+      await openFromList('Standup')
+
+      expect(within(homeTab().closest('li') as HTMLElement).queryByTestId('open-note-tab-close')).toBeNull()
+    })
+
+    it('closing the last note leaves the bar holding only My notes', async () => {
+      renderApp()
+      await openFromList('Standup')
+      await waitFor(() => expect(tabs()).toHaveLength(1))
+
+      await userEvent.click(screen.getByRole('button', { name: 'Close Standup' }))
+
+      await waitFor(() => expect(window.location.pathname).toBe('/w/__default__'))
+      expect(screen.getByTestId('open-note-tabs')).toBeInTheDocument()
+      expect(tabs()).toHaveLength(0)
+      expect(homeTab()).toHaveAttribute('aria-current', 'page')
+    })
+
+    it('browsing a folder keeps My notes highlighted and the open notes in view', async () => {
+      renderApp()
+      await openFromList('Standup')
+      await waitFor(() => expect(tabs()).toHaveLength(1))
+
+      await userEvent.click(screen.getByTestId('unfiled-notes-button'))
+
+      await waitFor(() => expect(window.location.pathname).toBe('/w/__default__/folders/unfiled'))
+      expect(tabs()).toHaveLength(1)
+      expect(homeTab()).toHaveAttribute('aria-current', 'page')
+    })
+  })
+
 })

@@ -1,14 +1,17 @@
 /* 49-A: the OPEN-NOTE bar — the notes you have open. Deliberately styled as raised chips,
    not underlined text, so it never reads as one control with the in-note Transcript /
    Quick notes / Final Notes row (NoteTabs.module.css) that sits directly beneath it.
-   Every colour is a token, so all 12 themes (light and dark) reskin through the cascade. */
+   Every colour is a token, so all 17 themes (light and dark) reskin through the cascade.
+
+   51-B: the rule under the bar is gone. The active tab and the page below it are both
+   --color-surface (see .appContent), so the tab reads as the sheet in front and a divider
+   would only cut it off from its own page. Inactive tabs sit on --color-bg. */
 
 .bar {
   display: flex;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
-  border-bottom: 1px solid var(--color-border);
   padding: var(--space-2) var(--space-3) 0;
   gap: var(--space-1);
 }
@@ -42,12 +45,48 @@
 }
 
 /* Active = the page surface with a primary top edge: the classic "this sheet is in
-   front" cue, and legible in dark themes where surface sits above bg. */
+   front" cue, and legible in dark themes where surface sits above bg.
+   51-B: the -1px bottom margin laps the tab over the page edge so the two are one
+   continuous surface with no seam. */
 .tabActive,
 .tabActive:hover {
   background: var(--color-surface);
-  border-color: var(--color-primary);
+  border-color: var(--color-border);
   box-shadow: inset 0 2px 0 0 var(--color-primary);
+  margin-bottom: -1px;
+  padding-bottom: 1px;
+}
+
+/* 51-B: the notes list, pinned. Sticky so a strip scrolled to its far end still offers
+   the way back — with many notes open it would otherwise scroll out of reach. Separated
+   from the document tabs by a divider because it is a destination, not a document. */
+.tabHome {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  flex: none;
+  margin-right: var(--space-2);
+  padding-right: var(--space-2);
+  border-right: 1px solid var(--color-border);
+  background: var(--color-bg);
+}
+
+.tabHome .label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-right: var(--space-3);
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.tabHome.tabActive .label {
+  color: var(--color-primary);
+  font-weight: 700;
+}
+
+.homeIcon {
+  flex: none;
 }
 
 .label {

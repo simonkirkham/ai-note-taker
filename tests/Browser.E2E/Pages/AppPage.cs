@@ -338,8 +338,23 @@ public sealed class AppPage
     public Task AssertOpenTabAbsentAsync(string title) =>
         Assertions.Expect(OpenNoteTabs.Filter(new LocatorFilterOptions { HasText = title })).ToHaveCountAsync(0);
 
-    public Task AssertNoOpenTabBarAsync() =>
-        Assertions.Expect(page.GetByTestId("open-note-tabs")).ToHaveCountAsync(0);
+    // 51-B inverted 49-A's "the bar disappears" contract: the bar is now PERMANENT, so
+    // what "nothing open" looks like is the bar still there holding only the pinned
+    // "My notes" tab. The pinned tab is not `open-note-tab`, so the document-tab count
+    // is still 0 — asserting both is what distinguishes "empty bar" from "bar gone".
+    // 51-B: the pinned "My notes" tab is how you get back to the list without losing the bar.
+    public async Task ClickPinnedTabAsync()
+    {
+        await page.GetByTestId("open-note-tab-home").ClickAsync();
+        await AssertHomeLoadedAsync();
+    }
+
+    public async Task AssertOnlyPinnedTabAsync()
+    {
+        await Assertions.Expect(page.GetByTestId("open-note-tabs")).ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByTestId("open-note-tab-home")).ToBeVisibleAsync();
+        await Assertions.Expect(OpenNoteTabs).ToHaveCountAsync(0);
+    }
 
     // `aria-current` sits on the tab's label button (the nav's "you are here"), not the wrapper.
     public Task AssertActiveTabAsync(string title) =>
@@ -364,6 +379,9 @@ public sealed class AppPage
     // in-memory tab set is wiped by the reload inside AssertNoteVisibleInListAfterReloadAsync;
     // once 49-B persists tabs that stops being true, and any exact-count assertion silently
     // becomes wrong. Normalise to a known state instead of depending on either behaviour.
+    // 51-B: `OpenNoteTabs` deliberately excludes the pinned "My notes" tab. If the pinned
+    // tab ever gained `data-testid="open-note-tab"` this loop would never terminate — it
+    // has no close button — and the suite would HANG rather than fail.
     public async Task CloseAllTabsExceptAsync(string keepTitle)
     {
         while (await OpenNoteTabs.CountAsync() > 1)

@@ -526,35 +526,41 @@ function AppContent({ signOut }: { signOut: () => void }) {
               the user home, so a banner rendered inside NoteView would be unmounted along with the
               only copy of the text it exists to hand back. */}
           <DeletedNoteRescue />
-          {activeNoteId && (
-            <OpenNoteTabs
-              tabs={openNoteTabs}
-              activeNoteId={activeNoteId}
-              reconciled={cardsLoaded}
-              onSelect={handleSelectTab}
-              onClose={handleCloseTab}
-            />
-          )}
-          <Routes>
-            <Route index element={listView} />
-            <Route path="folders/:folderId" element={listView} />
-            <Route
-              path="notes/:noteId"
-              element={
-                <NoteRoute
-                  notes={cards}
-                  onBack={handleBackFromNote}
-                  onDelete={handleDelete}
-                  onDateSet={handleDateSet}
-                  onOpenNote={openNote}
-                  onRegisterLeaveGuard={registerLeaveGuard}
-                  otherWorkspaces={otherWorkspaces}
-                  onMoveNoteToWorkspace={handleMoveNoteToWorkspace}
-                />
-              }
-            />
-            <Route path="*" element={<Navigate to={w("")} replace />} />
-          </Routes>
+          {/* 51-B: no longer gated on `activeNoteId`. The bar is permanent — hiding it on the
+              notes list, then bringing the whole row back on opening a note, is exactly the
+              flicker this slice removes. */}
+          <OpenNoteTabs
+            tabs={openNoteTabs}
+            activeNoteId={activeNoteId}
+            reconciled={cardsLoaded}
+            onSelect={handleSelectTab}
+            onSelectHome={handleHome}
+            onClose={handleCloseTab}
+          />
+          {/* 51-B: the page surface runs up to meet the active tab, so the tab reads as the
+              sheet in front and needs no rule beneath the bar. */}
+          <div className={styles.appContent}>
+            <Routes>
+              <Route index element={listView} />
+              <Route path="folders/:folderId" element={listView} />
+              <Route
+                path="notes/:noteId"
+                element={
+                  <NoteRoute
+                    notes={cards}
+                    onBack={handleBackFromNote}
+                    onDelete={handleDelete}
+                    onDateSet={handleDateSet}
+                    onOpenNote={openNote}
+                    onRegisterLeaveGuard={registerLeaveGuard}
+                    otherWorkspaces={otherWorkspaces}
+                    onMoveNoteToWorkspace={handleMoveNoteToWorkspace}
+                  />
+                }
+              />
+              <Route path="*" element={<Navigate to={w("")} replace />} />
+            </Routes>
+          </div>
         </div>
       </div>
     </LeaveGuardContext>
