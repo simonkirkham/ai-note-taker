@@ -33,7 +33,9 @@ Pure in-process tests. Given prior events → When command → Then emitted even
 **Layer 2 — Event store integration**
 Spin up DynamoDB Local via Testcontainers, from AWS's ECR Public copy (`public.ecr.aws/aws-dynamodb-local/aws-dynamodb-local`) rather than the identical Docker Hub image. Create the events table; run `DynamoDbEventStore` against it.
 
-> Every registry rate-limits anonymous pulls from a CI runner's shared egress IP — ECR Public per second, Docker Hub per six hours — so the registry choice alone does not make the pull reliable. What does is pulling **once, sequentially, before the suite starts** (`pr.yml`, `Pre-pull DynamoDB Local image`): each test class owns its own container and xUnit runs classes in parallel, so without it every class misses the local cache at the same moment and bursts the limit. See TI-71. Covers: append + read round-trip, OCC conflict (two writers, same `expectedVersion`), empty stream reads, multi-event batches, and table schema correctness. Teardown is automatic. Requires Docker in CI.
+Covers: append + read round-trip, OCC conflict (two writers, same `expectedVersion`), empty stream reads, multi-event batches, and table schema correctness. Teardown is automatic. Requires Docker in CI.
+
+> Every registry rate-limits anonymous pulls from a CI runner's shared egress IP — ECR Public per second, Docker Hub per six hours — so the registry choice alone does not make the pull reliable. What does is pulling **once, sequentially, before the suite starts** (`pr.yml`, `Pre-pull DynamoDB Local image`): each test class owns its own container and xUnit runs classes in parallel, so without it every class misses the local cache at the same moment and bursts the limit. See TI-71.
 
 **Layer 3 — API HTTP integration**
 Use `WebApplicationFactory<Program>` to host the ASP.NET app in-process. Override DI registrations to substitute `InMemoryEventStore` (and an in-memory projection store). Covers: route matching, HTTP verbs, path parameter binding, status codes (201/409/200/404), response body shape, and error-to-status-code mapping. No Docker, no AWS credentials.
