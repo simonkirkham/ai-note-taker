@@ -152,8 +152,8 @@ Scenario: Promoting the only Later item empties the group
 Scenario: A failed move is not silent
   Given an item sits under "Later"
   When  the user moves it to Today and the save fails
-  Then  the list returns to its previous order
-  And   the user is told the move did not save
+  Then  the list shows what actually saved
+  And   the user is told the move did not finish
 
 Scenario: Delete is still one click on the row
   Given an open to-do row
@@ -212,7 +212,7 @@ Scenario: Delete is still one click on the row
   - [ ] The whole move is operable by keyboard alone, and focus returns to the trigger.
   - [ ] Escape and click-outside close the menu; only one menu is open at a time.
   - [ ] Promoting the anchor item leaves the remaining Later items under "Later".
-  - [ ] A failed move reverts the list and tells the user.
+  - [ ] A failed move refetches and shows what actually saved, and tells the user it did not finish. **Not "reverts the list":** the move is one user action but up to two appends, so a half-failure can leave one of them persisted — a client-side revert would both misreport the outcome and clobber anything else written during the round trip (a completion, a quick-add; neither is gated on this row's busy flag).
   - [ ] Delete remains a one-click action on the row.
 - **Decisions:** bottom-of-Today (not top) so promoting never jumps the user's existing priority order.
 
