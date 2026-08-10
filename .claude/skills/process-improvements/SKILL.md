@@ -119,6 +119,7 @@ This table is the audit trail that answers "were the learnings from this slice a
 - Do not suggest anything that contradicts a guardrail in `CLAUDE.md` without flagging the conflict explicitly
 - Do not change feature code, tests, the event model, or CDK stacks
 - Keep entries brief — one tight sentence per observation is enough
+- **Open every observation with the cost, not the mechanism.** The first clause says what it cost — the human's time, a wrong decision, a silent failure, a wasted deploy — before naming any file, function, log group or event. A learnings doc exists to change a future decision; one that opens on machinery buries the only part that does that. Same rule and same checkable test as `## Writing style` in `CLAUDE.md`.
 
 ## Done when
 
