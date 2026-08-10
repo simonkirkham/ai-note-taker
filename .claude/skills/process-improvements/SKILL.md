@@ -73,6 +73,7 @@ Create `docs/learnings/phase-<n><id>-<short-description>.md`. Check existing fil
 ```
 
 - **Done** = you can apply it in this turn. Do it, then mark Done.
+- Before filing anything as **TODO**, check it is not a peer question — ownership, whether another session already fixed it, whether a guardrail is already in flight elsewhere. Ask via `SendMessage` first; the human is the last resort (CLAUDE.md `### When NOT to hand back`, rule 5).
 - **TODO** = requires a human decision (architectural change, new tool, process redesign).
 
 Example bullet: Pip ran `cd web && npm run build`, which needed manual approval and broke the run. **Action:** added `Bash(npm --prefix web run build)` to the allow-list + a CLAUDE.md guardrail — Done.
