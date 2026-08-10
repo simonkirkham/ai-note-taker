@@ -1,4 +1,4 @@
-# Phase 51 — Open-note bar redesign _(In Progress — 51-A done 2026-08-10)_
+# Phase 51 — Open-note bar redesign _(In Progress — 51-A, 51-B done 2026-08-10)_
 
 **Goal:** the notes you have open stay in front of you wherever you are in the app, instead of vanishing the moment you go back to your notes list and reappearing all at once when you open something.
 
@@ -7,7 +7,7 @@
 | Slice | What the user gets | Status | Depends on |
 |-------|--------------------|--------|------------|
 | 51-A | A design, validated in a clickable prototype, for how the open-note bar should behave | Done | — |
-| 51-B | My open notes stay visible on every screen, with my notes list as the first tab | Not Started | 51-A |
+| 51-B | My open notes stay visible on every screen, with my notes list as the first tab | Done | 51-A |
 | 51-C | A recording keeps running while I read another note | Not Started | 51-B |
 
 51-A was a **prototype spike**; it closed on 2026-08-10 with direction A locked. 51-B's scenarios below are the confirmed ones it produced.
@@ -26,7 +26,7 @@
 - **Outcome:** four directions built and compared against the current behaviour — a pinned "My notes" tab, an always-present bar with no pinned tab, moving open notes into the sidebar, and today's behaviour as the baseline. **Direction A (pinned "My notes" tab) was chosen**, with the line under the bar removed and the bar merged into the page. Full record, including what was rejected and why: [`web/src/prototype/REFERENCE.md`](https://github.com/simonkirkham/ai-note-taker/blob/prototype/tabs-redesign/web/src/prototype/REFERENCE.md) on the `prototype/tabs-redesign` branch.
 - **Scenarios (GWT):** none — a spike has no acceptance scenarios.
 
-### Slice 51-B — My open notes stay visible everywhere
+### Slice 51-B — My open notes stay visible everywhere _(Done 2026-08-10)_
 
 - **User value:** going back to my notes list no longer hides everything I had open, and opening a note no longer makes a row of tabs appear from nowhere. What I have open is always in the same place.
 - **How it works:**
