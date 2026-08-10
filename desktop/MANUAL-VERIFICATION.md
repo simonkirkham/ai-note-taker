@@ -161,6 +161,8 @@ The whole point of this slice is the log: an installed build is otherwise unobse
 
 **`rtf` is the column that matters:** inference time ÷ audio duration. Below 1.0 the engine is faster than real time and the live view can keep pace; above 1.0 it is falling behind by definition.
 
+**Do not read the log by hand — `scripts/check-local-transcription-log.sh` scores rows 2-5 below *and* all of §BUG-67 in one command.** It finds the log under the Windows profile from WSL, analyses the most recent session, and prints a PASS/FAIL/INCONCLUSIVE verdict per bug (exit 0 = both pass). Rows 1 and 6 are the only ones that still need a human — they are about what is on screen, which the log cannot see.
+
 | # | Given / When / Then | Pass? |
 |---|---------------------|-------|
 | 1 | **Live text keeps pace:** Given a local recording, When I speak continuously for ~30 s, Then words appear within a few seconds and do not fall further behind as the recording goes on. | ☐ |
@@ -172,7 +174,7 @@ The whole point of this slice is the log: an installed build is otherwise unobse
 
 ## BUG-67 — the live engine stops when the audio does
 
-Closable only from the log, like [BUG-65]: the symptom is CPU burn, not anything on screen.
+Closable only from the log, like [BUG-65]: the symptom is CPU burn, not anything on screen. Rows 1 and 2 are scored by `scripts/check-local-transcription-log.sh`; rows 3 and 4 are on-screen checks.
 
 | # | Given / When / Then | Pass? |
 |---|---------------------|-------|
