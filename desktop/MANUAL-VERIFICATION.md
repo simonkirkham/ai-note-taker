@@ -165,12 +165,14 @@ The whole point of this slice is the log: an installed build is otherwise unobse
 
 | # | Given / When / Then | Pass? |
 |---|---------------------|-------|
-| 1 | **Live text keeps pace:** Given a local recording, When I speak continuously for ~30 s, Then words appear within a few seconds and do not fall further behind as the recording goes on. | ☐ |
-| 2 | **The log exists and is readable:** Given a finished local recording, Then `local-transcription.log` holds a `session start` line followed by `step` lines. | ☐ |
-| 3 | **rtf is below 1.0:** Given the step lines, Then `rtf` is consistently < 1.0. If it is not, the tuning is insufficient and threads are the next lever — send the log. | ☐ |
-| 4 | **Not falling behind:** Given the step lines, Then `dropped` stays low and `clamped` is absent or rare. A rising `dropped` means inference is slower than the 1.5 s tick; any `clamped` means the window hit the encoder send cap. | ☐ |
+| 1 | **Live text keeps pace:** Given a local recording, When I speak continuously for ~30 s, Then words appear within a few seconds and do not fall further behind as the recording goes on. | ✅ |
+| 2 | **The log exists and is readable:** Given a finished local recording, Then `local-transcription.log` holds a `session start` line followed by `step` lines. | ✅ |
+| 3 | **rtf is below 1.0:** Given the step lines, Then `rtf` is consistently < 1.0. If it is not, the tuning is insufficient and threads are the next lever — send the log. | ✅ |
+| 4 | **Not falling behind:** Given the step lines, Then `dropped` stays low and `clamped` is absent or rare. A rising `dropped` means inference is slower than the 1.5 s tick; any `clamped` means the window hit the encoder send cap. | ✅ |
 | 5 | **Failures are visible:** Given the engine fails (rename `whisper-server.exe`), Then the log records `step FAILED … err=…` rather than going silent. | ☐ |
-| 6 | **The saved transcript is unaffected:** Given I stop, Then the note's transcript is the higher-quality `small.en` pass, not the live text — the live view's reduced accuracy must not reach the note. | ☐ |
+| 6 | **The saved transcript is unaffected:** Given I stop, Then the note's transcript is the higher-quality `small.en` pass, not the live text — the live view's reduced accuracy must not reach the note. | ☐ regression guard — the log cannot see the note |
+
+**Verified 2026-08-10** — `rtf` median **0.13** over 48 steps, 1 step at/above 1.0 (the first, model warm-up), 0 clamped, 0 failed. Rows 5 and 6 not exercised: 5 needs the binary renamed, 6 needs a look at the saved note. Neither is the speed defect — rows 1-4 are what close it. Row 1's pace half is the log's (`rtf` and a transcript that grew 0→670 chars during the recording), not an on-screen observation.
 
 ## BUG-67 — the live engine stops when the audio does
 
@@ -178,10 +180,10 @@ Closable only from the log, like [BUG-65]: the symptom is CPU burn, not anything
 
 | # | Given / When / Then | Pass? |
 |---|---------------------|-------|
-| 1 | **No spin after Stop:** Given a local recording, When I press Stop, Then `local-transcription.log` shows **no further `step` lines** with `window` and `committed` both unchanged. Before the fix there were ~12 such lines over 30 s. | ☐ |
-| 2 | **The wait after Stop is shorter:** Given a recording of the same length as before, Then the "Finalising transcript…" wait is shorter than it was on build `182` — the spin was competing with that pass for cores. | ☐ |
-| 3 | **Live text still works:** Given I speak, pause for ~10 s, then speak again, Then the transcript keeps updating after the pause — the guard detects idleness, it must not latch off. | ☐ |
-| 4 | **The saved transcript is unaffected:** Given I stop, Then the note holds the full `small.en` transcript including the final words spoken. | ☐ |
+| 1 | **No spin after Stop:** Given a local recording, When I press Stop, Then `local-transcription.log` shows **no further `step` lines** with `window` and `committed` both unchanged. Before the fix there were ~12 such lines over 30 s. | ✅ |
+| 2 | **The wait after Stop is shorter:** Given a recording of the same length as before, Then the "Finalising transcript…" wait is shorter than it was on build `182` — the spin was competing with that pass for cores. | ☐ subjective; the 27%→8% drop-rate fall is the log's proxy |
+| 3 | **Live text still works:** Given I speak, pause for ~10 s, then speak again, Then the transcript keeps updating after the pause — the guard detects idleness, it must not latch off. | ✅ |
+| 4 | **The saved transcript is unaffected:** Given I stop, Then the note holds the full `small.en` transcript including the final words spoken. | ☐ regression guard — the log cannot see the note |
 
 ## CHANGE-36 — window title follows the open note
 

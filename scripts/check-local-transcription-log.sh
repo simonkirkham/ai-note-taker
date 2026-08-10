@@ -47,24 +47,31 @@ fi
 awk -v mode="$MODE" -v logfile="$LOG" '
 function pct(n, d) { return d > 0 ? sprintf("%.0f%%", 100 * n / d) : "n/a" }
 
-# Seconds-of-day from an ISO stamp. Only ever used for gaps within one session, so a midnight
-# rollover is handled by adding a day rather than by parsing the date.
-function secs(stamp,   tp) {
-  tp = substr(stamp, index(stamp, "T") + 1)
-  return substr(tp, 1, 2) * 3600 + substr(tp, 4, 2) * 60 + substr(tp, 7, 2)
+# Close off a stretch where the transcript stopped growing. Called when committed moves, and once
+# more at end of session so a stretch that NEVER resumed is still counted (that is the latch).
+# A stretch only counts if the window kept moving through it — if the window froze too, that is
+# the BUG-67 spin, not a person being quiet.
+function close_quiet_stretch(resumed) {
+  if (committed_run >= 5 && window_varied) {
+    gap_seen++
+    if (resumed) rearm_seen++
+  }
+  committed_run = 1; window_varied = 0
 }
 
 function reset_session() {
   steps = 0; ok_steps = 0; slow = 0; failed = 0; dropped_total = 0; drop_events = 0; clamped_steps = 0
   worst_rtf = 0; worst_line = ""
   frozen_run = 0; frozen_max = 0; prev_key = ""
-  prev_t = -1; prev_committed = -1; rearm_pending = 0; rearm_base = 0; rearm_seen = 0; gap_seen = 0
+  prev_committed = -1; committed_run = 0; window_varied = 0; last_window = ""
+  rearm_seen = 0; gap_seen = 0
   rtf_n = 0; rtf_max = 0
   delete rtf
 }
 
 function report(   i, j, tmp, median, v65, v67, bad) {
   if (started == 0) return
+  close_quiet_stretch(0)   # a stretch still open at the end never resumed — that is the latch
   printf "\n────────────────────────────────────────────────────────\n"
   printf "SESSION %d — started %s\n", session_no, start_ts
   if (start_cfg != "") printf "  %s\n", start_cfg
@@ -113,7 +120,7 @@ function report(   i, j, tmp, median, v65, v67, bad) {
   printf "\nBUG-67 — does the engine stop when the audio does?\n"
   printf "  longest run of consecutive steps with window AND committed both frozen: %d\n", frozen_max
   printf "  (before the fix: ~12 such steps over ~30 s after pressing Stop)\n"
-  printf "  quiet stretches that then resumed and committed new text: %d of %d\n", rearm_seen, gap_seen
+  printf "  silences the transcript resumed after: %d of %d\n", rearm_seen, gap_seen
   # A "no spin seen" verdict drawn from too few steps cannot fail, and a check that cannot fail is
   # not evidence — the exact shape that made BUG-57 and BUG-65 pass on nothing.
   if (frozen_max >= 3) {
@@ -121,11 +128,11 @@ function report(   i, j, tmp, median, v65, v67, bad) {
   } else if (ok_steps < 5) {
     v67 = sprintf("INCONCLUSIVE — only %d successful step(s); too few for a frozen run to show at all", ok_steps)
   } else if (gap_seen > 0 && rearm_seen == 0) {
-    v67 = "FAIL — it went quiet and never resumed: the guard latched off instead of re-arming"
+    v67 = "FAIL — the transcript stopped growing and never restarted: the guard latched off"
   } else if (gap_seen == 0) {
-    v67 = "PARTIAL — no spin on stale audio, but this recording had no pause, so it does not show the guard re-arming. Record again: speak, stay silent ~10 s, speak again."
+    v67 = "PARTIAL — no spin on stale audio, but nobody stayed silent long enough in this recording to show the guard re-arming. Record again: speak, stay silent ~10 s, speak again."
   } else {
-    v67 = "PASS — no spin on stale audio, and it resumed after a pause"
+    v67 = "PASS — no spin on stale audio, and the transcript restarted after a silence"
   }
   printf "  VERDICT: %s\n", v67
 
@@ -182,20 +189,23 @@ BEGIN { started = 0; session_no = 0; fail_any = 0; reset_session(); printf "LOG:
   if (c) clamped_steps++
 
   # The other half of BUG-67: the guard must be idle DETECTION, not a latch. "No spin" alone cannot
-  # tell the two apart — a guard stuck off looks identical. A quiet stretch with no step lines,
-  # followed by steps that commit new text, is the only proof in the log that it re-armed.
-  # A long gap whose next step is itself slow is a stall (inference was running), not idleness.
-  t = secs($1)
-  if (prev_t >= 0) {
-    gap = t - prev_t
-    if (gap < 0) gap += 86400
-    if (gap >= 8 && infer > 0 && infer < 3000) { gap_seen++; rearm_pending = 3; rearm_base = prev_committed }
+  # tell the two apart — a guard stuck off looks identical.
+  #
+  # A person falling silent does NOT stop the step lines: the microphone keeps delivering audio, so
+  # the engine keeps running and just transcribes nothing. The signal is therefore the transcript
+  # standing still while the window keeps moving — then growing again when they speak. Looking for a
+  # gap BETWEEN log lines finds nothing here and reports a false negative (it did, on the first
+  # real recording); a gap in the lines only happens once audio genuinely stops, which is Stop, and
+  # the frozen-run metric above already covers that.
+  cval = committed + 0
+  if (prev_committed >= 0 && cval == prev_committed) {
+    committed_run++
+    if (window != last_window) window_varied = 1
+  } else if (prev_committed >= 0) {
+    close_quiet_stretch(cval > prev_committed)
   }
-  prev_t = t
-  if (rearm_pending > 0) {
-    if (committed + 0 > rearm_base) { rearm_seen++; rearm_pending = 0 } else { rearm_pending-- }
-  }
-  prev_committed = committed + 0
+  last_window = window
+  prev_committed = cval
 
   # The BUG-67 symptom: window and committed BOTH unchanged means the same audio, re-transcribed.
   key = window "/" committed
