@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { connectGoogleCalendar, connectMicrosoftCalendar } from '../api/calendarAuth'
+import { clearDeletedNote } from '../lib/deletedNoteRescue'
 import { hardRedirect } from '../lib/hardRedirect'
 import { safeSession } from '../lib/safeStorage'
 import { recordRumEvent } from '../rum'
@@ -274,6 +275,10 @@ export function AuthProvider({
   }, [clientId])
 
   const signOut = useCallback(() => {
+    // BUG-59: the rescued-note text is module state, so it survives sign-out (which does not
+    // reload). Without this, a second user signing in on the same tab sees the first user's
+    // meeting notes sitting in a banner.
+    clearDeletedNote()
     clearToken()
     cancelRefresh()
     setForbidden(false)

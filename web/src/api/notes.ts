@@ -1,4 +1,4 @@
-import { request, requestVoid, requestVoidWithResponse, requestWithResponse } from './client';
+import { ApiError, request, requestVoid, requestVoidWithResponse, requestWithResponse } from './client';
 import {
   clearLatestToken,
   clearStreamToken,
@@ -174,12 +174,29 @@ export class StaleContentError extends Error {
   }
 }
 
+// BUG-59: the note was deleted (elsewhere, or in another tab) while this editor was open, so the
+// write hit a stream that no longer exists. Terminal like StaleContentError, not the retriable
+// failure the generic path assumes — a retry can never succeed.
+export class NoteDeletedError extends Error {
+  constructor() {
+    super('note_not_found');
+    this.name = 'NoteDeletedError';
+  }
+}
+
 export async function editContent(
   noteId: string,
   content: string,
   expectedBaseContentHash?: string,
 ): Promise<void> {
   // 409 is expected (a stale-base conflict), so it must not throw as a generic failure — handle it.
+  // 404 is allowed through for the same reason, but ONLY the discriminated `note_not_found` body is
+  // treated as deletion. The sole remaining producer of a BARE 404 on this path is an API Gateway
+  // route miss falling through to `/{proxy+}` (34-B shipped one), which never reaches the handler —
+  // so a deploy skew cannot trip the deleted-note state. The server's ownership pre-check
+  // deliberately shares the `note_not_found` body rather than staying bare (see NoteGone() in
+  // NoteHandlers.cs): distinguishing them would hand back an existence oracle. Anything else
+  // re-throws as the ApiError the caller already handles.
   const response = await requestVoidWithResponse(
     `/notes/${noteId}/content`,
     {
@@ -187,9 +204,18 @@ export async function editContent(
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ content, expectedBaseContentHash }),
     },
-    [409],
+    [409, 404],
   );
   if (response.status === 409) throw new StaleContentError();
+  if (response.status === 404) {
+    // A body-less or non-JSON 404 is not evidence of deletion; fall through to the generic error.
+    const code = await response
+      .json()
+      .then((body: unknown) => (body as { error?: string } | null)?.error)
+      .catch(() => undefined);
+    if (code === 'note_not_found') throw new NoteDeletedError();
+    throw new ApiError(404, `PUT /notes/${noteId}/content failed: 404`);
+  }
   captureNoteToken(noteId, response);
 }
 
