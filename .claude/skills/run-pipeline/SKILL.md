@@ -11,6 +11,8 @@ Orchestrates the slice/phase delivery workflow. It **sequences** the roles and s
 
 **Every hand-back to the human — at any point in the run, not just the end — is the block in CLAUDE.md `## Handing back to the human`, and nothing follows it.** A pause for a blocker, a merge gate you cannot clear, a manual `cdk deploy`, or the finish all end the same way. Anything you would ask for must survive being written as a `DECISIONS FOR YOU` or `ACTIONS FOR YOU` entry with a convincing `Why it needs you:` line; if it does not, decide it, note the assumption under `YOU SHOULD KNOW`, and keep driving.
 
+**Read `### When NOT to hand back` in the same CLAUDE.md section before every run — it binds this skill hardest.** A pipeline run is exactly where the three failures live: asking whether to continue work the human already approved; ending a turn on "I'll check the gates and merge" instead of checking the gates and merging; and claiming to be waiting on CI or Hawk with nothing actually polling. Before ending any turn mid-run, confirm the background job you are waiting on is genuinely started.
+
 ## Autonomy: a specced slice runs end to end
 
 A slice is **specced** when its phase doc already holds that slice's **scenarios and acceptance criteria** — whether a numbered `phase-N.md` or a standing doc (`phase-minor-changes.md`, `phase-bugs.md`, `phase-model-prompt-improvements.md`). The human's approval of that phase doc **is** the authorization for the slice's spec and implementation. So a specced slice runs **end to end without pausing** — Breaker → Pip → Refactor → Stylist → PR → Hawk → merge → Scribe, all autonomous.

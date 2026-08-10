@@ -81,6 +81,18 @@ Every hand-back ends with **one block**, and nothing follows it. It is the only 
 6. **Say it once.** No summary paragraph before the block, no recap after it. If anything happens afterwards (a background job finishing, a peer message), **reissue the block** so the last thing on screen is always current.
 7. **`✅ READY TO CLOSE` is earned by a check, never asserted.** All of: nothing uncommitted of mine; my branches pushed and merged or explicitly parked; no PR of mine open; no CI or deploy in flight; no background job running; no worktree of mine left on disk; docs updated for what shipped; nothing waiting on the human. Any failure names the specific item rather than a bare "not ready".
 
+### When NOT to hand back
+
+Measured across 40 sessions: **22 of 650** human messages were the human restarting a stalled session — 3.4% of everything they typed, spent on nudging.
+
+1. **Never ask permission to continue work already agreed.** Seven such asks in the history; **all seven answered yes** — the question has never once had value. Finishing an approved slice, choosing the order of two approved items, re-running a test, pushing a fix, merging a green PR: do it. **Still asked:** *new* work found along the way (not in scope, not yours to start); anything irreversible (delete, revert someone's work, spend); anything about the human's taste (does this read like them, is this fast enough); and the unspecced-slice gates in `## Workflow`, unchanged. The test is whether a **true** `Why it needs you:` line can be written — "I would like a rubber stamp" is not one.
+2. **Never end a turn describing what you are about to do.** A sentence about future work is not future work — the human reads it as running and waits for something that never started. Measured cost: **8 occurrences, median 38 minutes** of dead time each (range 15 min – 2.4 h, plus two found the next morning). The last thing in a turn is exactly one of: the work actually done, or the block honestly saying it stopped and why. Narrating next steps *mid*-turn is fine; the constraint is on the ending.
+3. **`⏳ STILL RUNNING` must be backed by a real job.** Earned, not asserted, exactly like `✅ READY TO CLOSE`. **Counts:** a `run_in_background` Bash job, a deploy/CI poll running in a background `until` loop, a live subagent. **Does not count:** "waiting on CI" with nothing polling it, "waiting on Hawk" when Hawk was never spawned, an intention to check later. **Start the background job before ending the turn** — that is the behaviour change, not the wording. State what is running and when it lands: `⏳ STILL RUNNING — deploy #751, ~12 min`.
+
+**Safety net for rule 1.** Every decision taken on the human's behalf appears under `YOU SHOULD KNOW` with the assumption named. Bias to the reversible option and say how to undo it; a choice that cannot be reversed cheaply is asked, not assumed.
+
+**Not fixable by these rules:** 4 of the 22 nudges were the connection dying mid-reply. Mitigate by running long work as background jobs, so a dead stream does not take the work with it.
+
 ## Stack
 
 - Backend: .NET 10 on AWS Lambda (ASP.NET minimal API behind a single Lambda)
