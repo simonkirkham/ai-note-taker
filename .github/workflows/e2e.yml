@@ -92,6 +92,15 @@ jobs:
     timeout-minutes: ${{ fromJSON(needs.plan.outputs.timeout) }}
     environment:
       name: Test
+    # Job-level, exactly as deploy-test sets it, so BOTH callers of clear-test-data.py inherit
+    # it: the `python3 scripts/clear-test-data.py` inside the run loop and the composite action
+    # in teardown. It was previously scoped to the "Get E2E auth token" step, which never runs
+    # the script — so the wipe of every event-store row went unverified while the repo variable
+    # had been set since 2026-08-07. Run #164, the workflow's first ever, printed the proof:
+    # "E2E_TEST_ACCOUNT_ID is not set so the target cannot be verified".
+    # Warn-only while the repo variable is unset; a mismatch always refuses.
+    env:
+      E2E_TEST_ACCOUNT_ID: ${{ vars.TEST_AWS_ACCOUNT_ID }}
     steps:
       - uses: actions/checkout@v6
 
@@ -164,8 +173,6 @@ jobs:
           REFRESH_TOKEN: ${{ secrets.SMOKE_TEST_GOOGLE_REFRESH_TOKEN }}
           CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-          # Turns clear-test-data.py's account check into a hard allowlist when configured.
-          E2E_TEST_ACCOUNT_ID: ${{ vars.TEST_AWS_ACCOUNT_ID }}
         run: |
           if [ -z "$REFRESH_TOKEN" ]; then
             echo "::error::SMOKE_TEST_GOOGLE_REFRESH_TOKEN not configured — the E2E suite cannot sign in."
