@@ -18,6 +18,94 @@ Applies to every generated doc **and** to conversational output.
 - Lead with the conclusion. Cut windup phrases ("In order to", "It's worth noting", "This document describes").
 - No preamble, no restating the request, no summary of what you just did.
 
+## Handing back to the human
+
+Every hand-back ends with **one block**, and nothing follows it. It is the only thing the human has to read. Applies at session end **and** every time work is handed back mid-flight.
+
+**The block is for handing back WORK — not for every message.** Print it when any of these is true:
+
+- A unit of work finished or paused — a slice, a bug, an investigation, a set of doc changes.
+- There is a decision or an action for the human.
+- Going idle, or the session could now be closed.
+- Something is running in the background they need to know about.
+
+**Do not print it** when the human is driving a back-and-forth and no work state changed: answering a question, iterating on wording, reporting the result of one command they asked for, or working through an error they just reported. Answer the thing, plainly, and stop. **If every section but `DONE` would say "Nothing", the block is not earned** — a status report on a conversational turn is exactly the noise this section exists to remove.
+
+**The repair loop is the sharpest case.** When the human is part-way through an `ACTIONS FOR YOU` list and reports a failure (`curl: (43) Failed sending HTTP request`), they are executing, not receiving a hand-off. Reply with the corrected step and nothing else — the diagnosis in one line, the fixed command, and what they should see. Re-printing `DONE`, `IN PROGRESS`, `YOU SHOULD KNOW` and `NOT STARTED` at someone mid-task is the exact noise they are trying to read past.
+
+**Never reprint an unchanged section.** When a block genuinely is warranted a second time, print the verdict line plus only what changed since the last one. Reissuing an identical block trains the human to skip all of them, which costs the mechanism its only job.
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  <verdict>
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  DONE
+  · <what the user can now do, plain terms> (<work item id>)
+
+  IN PROGRESS
+  · <what it is, where it is, when it lands> (<id>)
+
+  DECISIONS FOR YOU
+  · <the question> (<id>)
+    Why it needs you: <why it cannot be decided without them>
+
+  ACTIONS FOR YOU
+  · <what to do, in one line> (<id>)
+    Why it needs you: <why it cannot be done without them>
+        1. <exact command, ready to paste>
+        2. <exact command, ready to paste>
+    Worked if: <what they should see>
+    If it fails: <the one thing to do next>
+
+  YOU SHOULD KNOW
+  · <rule broken, risk taken, surprise worth flagging>
+
+  NOT STARTED, ON PURPOSE
+  · <thing> — <until what> (<id>)
+
+  ────────────────────────────────────────────────────────
+  <verdict>
+  PRs #<n>  ·  deploys #<n>
+```
+
+**Verdict** — one of three, repeated top and bottom (top to scan, bottom because it is the last thing on screen):
+
+| Verdict | Means |
+| --- | --- |
+| `✅ READY TO CLOSE` | Nothing running, nothing half-done, nothing needed. Close the window |
+| `⏳ STILL RUNNING — nothing needed from you` | Work in flight and being driven. Walk away, leave the session open |
+| `⛔ NEEDS YOU — N decisions, N actions` | Stopped until the human acts |
+
+**Sections.** `DONE`, `IN PROGRESS`, `DECISIONS FOR YOU`, `ACTIONS FOR YOU` always appear — say `Nothing` when empty, because an absent heading is ambiguous. `YOU SHOULD KNOW` and `NOT STARTED, ON PURPOSE` appear only when they have content.
+
+**Rules.**
+
+1. **Every line item names its work item id AND explains it in plain terms** — `Agenda points now live in their own field (43-C)`. Never an id alone, never an explanation alone.
+2. **Every decision/action carries `Why it needs you:`.** If that line cannot be written convincingly, do not ask — decide it, state the assumption under `YOU SHOULD KNOW`, and keep going.
+3. **Report the outcome, not the deployment.** "Live in prod" is not news if nothing changed for the user. A change that shipped but is inert — that is the headline.
+4. **Every action is a set of instructions the human can follow without thinking** — numbered steps, in the block, never "the commands are in the handover file". Specifically:
+   - **Give the command, ready to paste.** Fully formed with real paths, real ids, real flags. Never a placeholder they must fill in; if a value is genuinely unknowable (a token they hold), give the command that obtains it as step 1.
+   - **Script it wherever it is scriptable.** More than two steps, or any step with a conditional, means writing a script in `scripts/` first and handing over a single command. The human's job is to run one thing, not to orchestrate.
+   - **Say what success looks like** — a `Worked if:` line naming the output, count, or screen state they should see. An instruction with no success criterion leaves them unable to tell whether they are done.
+   - **Say what to do if it fails** — one line, one next step. Never a list of possibilities.
+   - **When it truly cannot be a command** (a screen-reader check, a phone test), the same shape still applies: numbered manual steps, and what a pass looks like at each.
+5. **No system vocabulary above the footer** — no aggregates, events, projections, handlers, endpoints, status codes, commit hashes. PR and deploy numbers are the footer's job.
+6. **Say it once.** No summary paragraph before the block, no recap after it. If anything happens afterwards (a background job finishing, a peer message), **reissue the block** so the last thing on screen is always current.
+7. **`✅ READY TO CLOSE` is earned by a check, never asserted.** All of: nothing uncommitted of mine; my branches pushed and merged or explicitly parked; no PR of mine open; no CI or deploy in flight; no background job running; no worktree of mine left on disk; docs updated for what shipped; nothing waiting on the human. Any failure names the specific item rather than a bare "not ready".
+
+### When NOT to hand back
+
+Measured across 40 sessions: **22 of 650** human messages were the human restarting a stalled session — 3.4% of everything they typed, spent on nudging.
+
+1. **Never ask permission to continue work already agreed.** Seven such asks in the history; **all seven answered yes** — the question has never once had value. Finishing an approved slice, choosing the order of two approved items, re-running a test, pushing a fix, merging a green PR: do it. **Still asked:** *new* work found along the way (not in scope, not yours to start); anything irreversible (delete, revert someone's work, spend); anything about the human's taste (does this read like them, is this fast enough); and the unspecced-slice gates in `## Workflow`, unchanged. The test is whether a **true** `Why it needs you:` line can be written — "I would like a rubber stamp" is not one.
+2. **Never end a turn describing what you are about to do.** A sentence about future work is not future work — the human reads it as running and waits for something that never started. Measured cost: **8 occurrences, median 38 minutes** of dead time each (range 15 min – 2.4 h, plus two found the next morning). The last thing in a turn is exactly one of: the work actually done, or the block honestly saying it stopped and why. Narrating next steps *mid*-turn is fine; the constraint is on the ending.
+3. **`⏳ STILL RUNNING` must be backed by a real job.** Earned, not asserted, exactly like `✅ READY TO CLOSE`. **Counts:** a `run_in_background` Bash job, a deploy/CI poll running in a background `until` loop, a live subagent. **Does not count:** "waiting on CI" with nothing polling it, "waiting on Hawk" when Hawk was never spawned, an intention to check later. **Start the background job before ending the turn** — that is the behaviour change, not the wording. State what is running and when it lands: `⏳ STILL RUNNING — deploy #751, ~12 min`.
+
+**Safety net for rule 1.** Every decision taken on the human's behalf appears under `YOU SHOULD KNOW` with the assumption named. Bias to the reversible option and say how to undo it; a choice that cannot be reversed cheaply is asked, not assumed.
+
+**Not fixable by these rules:** 4 of the 22 nudges were the connection dying mid-reply. Mitigate by running long work as background jobs, so a dead stream does not take the work with it.
+
 ## Stack
 
 - Backend: .NET 10 on AWS Lambda (ASP.NET minimal API behind a single Lambda)
@@ -92,6 +180,7 @@ Prefer these read-only wrappers over hand-rolling the underlying `gh`/`aws` comm
 | `scripts/flake-watch.sh <since-deploy-#> [journey-regex]` | hand-counting clean deploy runs to prove a flake fix — scans **every attempt** of every deploy since the cutoff | per-deploy `clean`/`HIT` table + `clean=N` vs the 10-run target |
 | `scripts/next-doc-id.sh <bug\|ti\|change>` | hand-picking the next BUG/TI/CHANGE number from your local file — which cannot see ids claimed on another session's unmerged branch | the next free id + where the current highest lives |
 | `scripts/check-doc-ids.sh` | eyeballing the tracking tables for duplicate ids after a merge (the `merge=union` failure mode) | `doc ids OK`, or the offending ids; runs in the pre-commit hook |
+| `scripts/sessions.sh [hours]` | guessing which sessions are live and what they are on — and hunting for a session lost to a WSL crash | live sessions with what each is working on + its `claude --resume` line, and worktrees flagged when nothing is working on them |
 | `gh workflow run e2e.yml -f runs=10 [-f filter=TagsJourney]` | needing gate runs **without a deploy** — runs the E2E suite N times against the already-deployed test env (no build, no CDK, no commit) | per-run PASS/FAIL lines + a job-summary table; the job is red if any run failed |
 
 **Proving a flake fix — use `e2e.yml`, not repeated deploys.** The 10-clean-run bar used to need 10 deploys (~15 min each, push-only, so it tempted no-op commits). `gh workflow run e2e.yml -f runs=10` gives the same signal in ~25 min with no deploy and no commits, and each run reports its own PASS/FAIL so the count is a fact you read off one log rather than infer from run conclusions. It shares the `deploy` **concurrency group** — it CANCELS any pending deploy rather than queueing behind it (GitHub keeps only one pending slot per concurrency group), so a deploy caught mid-hold never reaches deploy-production (the job refuses to start if a deploy is already in flight, but a merge landing MID-hold is still at risk) — run long counts when the merge queue is quiet. Deploy-gate runs still count too; this supplements them, and a fix should still be seen surviving real deploys.
