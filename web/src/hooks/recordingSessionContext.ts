@@ -32,6 +32,16 @@ export interface RecordingSessionValue {
   session: UseTranscriptionResult
   /** Claim the session for `noteId` and start it. */
   startIn: (noteId: string, ...args: StartArgs) => void
+  /**
+   * Ask before a leave that would destroy the live capture. Returns true if it took ownership
+   * of `proceed` (a confirm is now showing); false if there is nothing to protect, in which
+   * case the caller runs `proceed` itself.
+   *
+   * Lives here rather than on the mounted note because the whole point of 51-C is that the
+   * capture outlives the note screen — a note-owned guard is absent in exactly the positions
+   * this slice creates.
+   */
+  guardLeave: (proceed: () => void, destination: string, awaitTranscript: boolean) => boolean
 }
 
 export const RecordingSessionContext = createContext<RecordingSessionValue | null>(null)
@@ -39,6 +49,15 @@ export const RecordingSessionContext = createContext<RecordingSessionValue | nul
 /** Which note is currently recording, for the tab bar. Null when nothing is. */
 export function useRecordingNoteId(): string | null {
   return useContext(RecordingSessionContext)?.recordingNoteId ?? null
+}
+
+/**
+ * The session-owned leave guard, for `App`'s `requestLeave` to consult. Returns a stable-enough
+ * function; callers must treat a `false` return as "nothing to protect, go ahead".
+ */
+export function useGuardLeave(): RecordingSessionValue['guardLeave'] {
+  const ctx = useContext(RecordingSessionContext)
+  return ctx?.guardLeave ?? (() => false)
 }
 
 // What a note that does NOT own the session sees. Every field is the idle value, so a note off

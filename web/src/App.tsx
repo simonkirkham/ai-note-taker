@@ -28,7 +28,7 @@ import { useToast } from "./components/toastContext";
 import { UNFILED_ID } from "./constants";
 import { findNode, findPath } from "./folderTree";
 import { RecordingSessionProvider } from "./hooks/recordingSession";
-import { useRecordingNoteId } from "./hooks/recordingSessionContext";
+import { useGuardLeave, useRecordingNoteId } from "./hooks/recordingSessionContext";
 import {
   useCreateFolder,
   useRenameFolder,
@@ -190,6 +190,9 @@ function AppContent({ signOut }: { signOut: () => void }) {
   const { tabs, openTab, closeTab } = useOpenNoteTabs(wsId);
   // 51-C: which note is capturing, so the bar can mark it. Null unless something is.
   const recordingNoteId = useRecordingNoteId();
+  // 51-C review follow-up: the session's own leave guard, used whenever the recording note is
+  // not the one mounted. See requestLeave below.
+  const guardLeave = useGuardLeave();
   // Titles follow the note-cards list so a rename re-derives; the title captured at open
   // time covers a note too new to be in the list yet.
   //
@@ -294,10 +297,28 @@ function AppContent({ signOut }: { signOut: () => void }) {
   // Stable identity: it reads a ref, so it never needs to change — and it is a context
   // value, so a new one each render would re-render every consumer.
   const requestLeave = useCallback((proceed: () => void, destination: string, opts?: LeaveOptions) => {
+    // Two guards, and never both at once.
+    //
+    // The MOUNTED note's guard wins when it is registered, because it does strictly more: it
+    // also flushes that note's unsaved content draft before handing over (BUG-54). It only
+    // registers when the note on screen is itself recording.
+    //
+    // Otherwise fall back to the SESSION's guard, which is the whole point of the 51-C review
+    // fix: the capture outlives the note screen, so from any other note — or the notes list,
+    // or a folder — the note-owned guard does not exist and this used to run `proceed()`
+    // immediately. Signing out then cleared the token before the transcript committed and the
+    // POST 401'd, which is BUG-55 reproduced on this slice's headline flow.
+    //
+    // `guardLeave` returns false when nothing is capturing, which is the ordinary case for
+    // every one of these callers.
     const guard = leaveGuardRef.current;
-    if (guard) guard(proceed, destination, opts);
-    else proceed();
-  }, []);
+    if (guard) {
+      guard(proceed, destination, opts);
+      return;
+    }
+    if (guardLeave(proceed, destination, opts?.awaitTranscript ?? false)) return;
+    proceed();
+  }, [guardLeave]);
 
   function handleSelectTab(noteId: string) {
     if (noteId === activeNoteId) return;
@@ -314,11 +335,18 @@ function AppContent({ signOut }: { signOut: () => void }) {
       if (noteId !== activeNoteId) return;
       void navigate(next ? w(`/notes/${next}`) : w(""));
     };
-    // Closing the note being recorded into unmounts it — same protection as switching away.
-    // Named "close this tab", not by the note it lands on: closing is what the user asked
-    // for, and where it lands (the neighbour, or home) is a consequence they did not pick.
-    if (noteId === activeNoteId) requestLeave(doClose, "close this tab");
-    else doClose();
+    // Closing the note being recorded into destroys the capture — the one tab-bar action this
+    // slice deliberately keeps guarded. Named "close this tab", not by the note it lands on:
+    // closing is what the user asked for, and where it lands (the neighbour, or home) is a
+    // consequence they did not pick.
+    //
+    // Guarded on EITHER the active note or the recording one. Gating on `activeNoteId` alone
+    // meant closing the recording note's tab from a different tab took the unguarded branch —
+    // no confirm, and the capture left running with no tab left to mark it. That hole opened
+    // the moment 51-C let the user be somewhere else while recording.
+    if (noteId === activeNoteId || noteId === recordingNoteId) {
+      requestLeave(doClose, "close this tab");
+    } else doClose();
   }
 
   async function handleNewNote() {

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import SessionLeaveConfirm from '../components/SessionLeaveConfirm'
 import { recordRumEvent } from '../rum'
 import {
   RecordingSessionContext,
@@ -98,6 +99,100 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
   // stored flag that can be cleared in the same commit that set it, because there is no
   // stored flag. The binding is the only state, and only a NEW note's claim changes it.
 
+
+  // ---- The leave guard -------------------------------------------------------------------
+  //
+  // Owned here, not by the mounted note. BUG-54 wrapped every exit that destroys a capture,
+  // but registered the guard from `NoteView`, gated on THAT note recording. Since the capture
+  // now outlives the note screen, that guard is absent in exactly the positions this slice
+  // creates — so signing out, closing the recording tab, or switching workspace from anywhere
+  // else fell straight through and lost the transcript (BUG-55, reproduced).
+  //
+  // `NoteView` keeps its own in-header confirm for the case where the recording note IS on
+  // screen: it additionally flushes that note's unsaved content draft before leaving, which is
+  // note-scoped work this provider has no business doing. `App`'s `requestLeave` prefers the
+  // note's guard and falls back to this one, so exactly one is ever live.
+  const [leaveDestination, setLeaveDestination] = useState<string | null>(null)
+  const [finishingTranscript, setFinishingTranscript] = useState(false)
+  const pendingLeaveRef = useRef<(() => void) | null>(null)
+  const pendingAwaitTranscriptRef = useRef(false)
+  // Latched once a leave is confirmed, so a second guarded click cannot re-arm a confirm whose
+  // handler would return immediately — the dead-banner case BUG-55's review found.
+  const leavingRef = useRef(false)
+
+  const guardLeave = useCallback(
+    (proceed: () => void, destination: string, awaitTranscript: boolean) => {
+      // Nothing capturing → nothing to protect. Note this asks about the CAPTURE, not the
+      // binding: a note that has stopped and is still committing does not block a sign-out,
+      // because its commit was already dispatched.
+      if (!isCapturing) return false
+      if (leavingRef.current) return true
+      pendingLeaveRef.current = proceed
+      pendingAwaitTranscriptRef.current = awaitTranscript
+      setLeaveDestination(destination)
+      return true
+    },
+    [isCapturing],
+  )
+
+  // A capture that ends on its own while the confirm is up must not strand the user: drop the
+  // banner and run the destination they asked for.
+  //
+  // Adjusted during render — React's documented "reset state when an input changes" — rather
+  // than in an effect, because a `setState` in an effect body trips react-hooks/set-state-in-
+  // effect, which is a hard CI gate here and which tsc and vitest both miss. It also means the
+  // stale banner never paints, not even for a frame. Same shape as NoteView's copy; keep them
+  // in step.
+  const [prevIsCapturing, setPrevIsCapturing] = useState(isCapturing)
+  if (prevIsCapturing !== isCapturing) {
+    setPrevIsCapturing(isCapturing)
+    if (!isCapturing && leaveDestination !== null) setLeaveDestination(null)
+  }
+  // Second half of that same transition: the banner is dropped above, the pending navigation
+  // runs here because it is a side effect and must wait for commit. Keep the two together —
+  // splitting them strands one without the other.
+  useEffect(() => {
+    if (isCapturing) return
+    const proceed = pendingLeaveRef.current
+    pendingLeaveRef.current = null
+    proceed?.()
+  }, [isCapturing])
+
+  const confirmLeave = useCallback(async () => {
+    if (leavingRef.current) return
+    leavingRef.current = true
+    setLeaveDestination(null)
+    session.stopRecording()
+    const proceed = pendingLeaveRef.current
+    pendingLeaveRef.current = null
+    const awaitTranscript = pendingAwaitTranscriptRef.current
+    pendingAwaitTranscriptRef.current = false
+    // BUG-55: only the destination that CLEARS AUTH waits for the commit. stopRecording fires
+    // it asynchronously — in cloud mode it dispatches at once and outlives a route change, but
+    // in local mode it first runs the stop-time pass plus diarization, minutes on a long
+    // meeting, and only then POSTs. Sign-out clears the token long before that, so the POST
+    // 401s and nothing retries. Awaiting on every destination would instead hang ordinary
+    // navigations for those same minutes.
+    if (awaitTranscript) {
+      setFinishingTranscript(true)
+      // `finally`, not a plain reset: this runs as `void confirmLeave()`, so a throw would be
+      // an unhandled rejection leaving the banner stuck with no way out.
+      try {
+        await session.awaitCommit()
+      } finally {
+        setFinishingTranscript(false)
+      }
+    }
+    leavingRef.current = false
+    proceed?.()
+  }, [session])
+
+  const cancelLeave = useCallback(() => {
+    pendingLeaveRef.current = null
+    pendingAwaitTranscriptRef.current = false
+    setLeaveDestination(null)
+  }, [])
+
   // The slice's regression detector. If this provider ever unmounts while a capture is still
   // live, the recording has been destroyed under the user and the transcript is gone — the
   // exact failure 51-C exists to prevent, and one that is otherwise invisible until someone
@@ -128,9 +223,19 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
   // value — it is here for shape, not for identity. Consumers must not assume referential
   // stability from it.
   const value = useMemo<RecordingSessionValue>(
-    () => ({ boundNoteId, recordingNoteId, session, startIn }),
-    [boundNoteId, recordingNoteId, session, startIn],
+    () => ({ boundNoteId, recordingNoteId, session, startIn, guardLeave }),
+    [boundNoteId, recordingNoteId, session, startIn, guardLeave],
   )
 
-  return <RecordingSessionContext value={value}>{children}</RecordingSessionContext>
+  return (
+    <RecordingSessionContext value={value}>
+      {children}
+      <SessionLeaveConfirm
+        destination={leaveDestination}
+        finishing={finishingTranscript}
+        onConfirm={() => void confirmLeave()}
+        onCancel={cancelLeave}
+      />
+    </RecordingSessionContext>
+  )
 }
