@@ -186,22 +186,15 @@ Scenario: Only one note records at a time
 
 **Fixed in-branch:** the claim was released only on `status === 'idle'`, which Stop never reaches — so the app was recordable once per page load, every other note stayed locked out and the tab kept a pulsing dot. Re-recording the same note was also stranded by React's same-value `setState` bailout. Both came from conflating two different things, now separated: `boundNoteId` (which note the session belongs to — outlives the capture so the commit and upload still target it) and `recordingNoteId` (derived from status — what locks other notes out and draws the marker). Specs added for the whole post-Stop phase, which had **no** coverage at all; that absence is what let both defects through a green PR.
 
-**NOT fixed — these block the merge. One root cause, one fix.**
+**Fixed — the leave guard is now session-owned.**
 
-The leave guard is still registered by the *mounted* `NoteView`, gated on that note's own recording state (`NoteView.tsx` `onRegisterLeaveGuard`, consumed by `App.tsx`'s `requestLeave`). This slice's whole purpose is to let the user be somewhere else while recording — and in every one of those positions no guard is registered, so `requestLeave` falls straight through to `proceed()`:
+It was registered by the mounted `NoteView`, gated on *that* note recording. Since this slice's whole purpose is to let the user be elsewhere while recording, the guard was absent in exactly the positions it creates, and `requestLeave` fell straight through to `proceed()`. Signing out then cleared the token before the transcript committed, the POST 401'd and nothing retried — BUG-55, reproduced on the headline flow. Closing the recording tab from another tab, and switching workspace, went the same way.
 
-| Symptom | Consequence |
-|---|---|
-| **Sign out while recording from another note or the notes list** | No confirm. `signOut` clears the token synchronously, the unmount commit POSTs without it, 401, nothing retries — **transcript lost**. This is BUG-55 reproduced on the slice's headline flow |
-| **Close the recording note's tab while standing on a different tab** | `App.tsx` only routes through `requestLeave` when the closed note is the *active* one. Closes with no confirm; the capture keeps running with no tab to mark it |
-| **Switch workspace while recording from elsewhere** | Same missing guard. The session does **not** unmount (see the corrected row above), so the capture survives into the new workspace and its checkpoints and final commit go to `/w/<new>/notes/<old-id>` |
-| **Browser-back from any screen that is not the recording note** | The `popstate` trap is `NoteView`-owned too. Back past the workspace entry ends the recording with no warning and skips the WAV upload (the transcript itself still commits) |
+`RecordingSessionProvider` now owns a `guardLeave` and renders an app-scoped confirm (`SessionLeaveConfirm`), so the guard follows the capture rather than the screen. `App`'s `requestLeave` prefers the mounted note's guard — which does strictly more, flushing that note's unsaved content draft — and falls back to the session's; exactly one is ever live. `handleCloseTab` now guards on the recording note as well as the active one. 9 specs in `RecordingGuardOffNote.test.tsx`, every one of which leaves the recording note before doing the dangerous thing, so none can be satisfied by the note-owned guard.
 
-**The fix is to make the guard session-owned:** register it from `RecordingSessionProvider`, which knows `recordingNoteId` and the live status, and render the confirm app-scoped rather than inside the note. `NoteView` then calls `requestLeave` for its own Save/back like every other caller instead of being the thing that provides it.
+**Deliberately left alone:** `NoteView`'s in-header confirm. Merging the two behind a variant prop would relayout a proven banner for no user-visible gain; they share testids and ARIA semantics, and both carry a comment saying a change to one is almost always a change to both.
 
-**Do not attempt this as a quick patch.** It moves a transcript-loss-critical path, and the two-guards-at-once shape is what the phase doc rejected keep-mounted for in the first place. Slice it: prove one guarded exit (sign-out) end-to-end through the session-owned guard, then move the rest.
-
-**Also outstanding, lower severity:**
+**Still outstanding, lower severity:**
 - Auto-analyse is silently lost if the user leaves the recording note and comes back — `hasRecordedThisSession` is `useState` in `RecordControl`, and `NoteView` is `key={noteId}`, so the round trip remounts it to `false`. Derive it from the session instead.
 - `RecordingTabJourney`'s worst case (two 30s reload-tolerant gates + a 30s start wait + launch + navigation) can exceed the 120s `E2EFact` cap on a cold projector, and would then fail with a bare xUnit timeout carrying none of the helper's diagnosis.
 - The journey's no-confirm assertion is pass-by-default (asserts absence before the destination has rendered); assert the destination loaded first.
