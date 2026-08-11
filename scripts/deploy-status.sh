@@ -17,10 +17,17 @@ WORKFLOW="${1:-deploy.yml}"
 runs=$(gh run list --branch main --workflow "$WORKFLOW" --limit 5 \
   --json number,status,conclusion,createdAt)
 
-# Quiescence: any of the last 5 runs still running means "in progress".
-if echo "$runs" | grep -q '"status":"in_progress"\|"status":"queued"'; then
-  num=$(echo "$runs" | python3 -c 'import json,sys; r=json.load(sys.stdin); print(next((x["number"] for x in r if x["status"] in ("in_progress","queued")), "?"))')
-  echo "IN PROGRESS (#$num running) — wait, do not merge"
+# Quiescence: any of the last 5 runs not yet finished means "in progress". `waiting`,
+# `requested` and `pending` are pre-run states (deployment approval, queueing) — they used
+# to fall through to the NOT SAFE line below and be reported as "fix main first", which
+# blames main for a run that has not started. Same defect class as TI-77: a check must not
+# assert a cause it has not established.
+if echo "$runs" | grep -qE '"status":"(in_progress|queued|waiting|requested|pending)"'; then
+  read -r num st <<<"$(echo "$runs" | python3 -c 'import json,sys
+r=json.load(sys.stdin)
+x=next((x for x in r if x["status"] in ("in_progress","queued","waiting","requested","pending")), None)
+print(x["number"] if x else "?", x["status"] if x else "?")')"
+  echo "IN PROGRESS (#$num status=$st) — wait, do not merge"
   exit 1
 fi
 
@@ -32,5 +39,11 @@ if [[ "$status" == "completed" && "$conclusion" == "success" ]]; then
   exit 0
 fi
 
-echo "NOT SAFE (#$number status=$status conclusion=$conclusion) — fix main first"
+# Reserve "fix main first" for a run that actually finished badly. Anything else reports
+# the raw values and names no cause.
+if [[ "$status" == "completed" ]]; then
+  echo "NOT SAFE (#$number status=$status conclusion=$conclusion) — main's last deploy did not succeed, fix main first"
+else
+  echo "NOT SAFE (#$number status=$status conclusion=$conclusion) — unrecognised run state; raw values above, no cause established"
+fi
 exit 1

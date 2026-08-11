@@ -3,7 +3,8 @@
 # Full Pip merge gate for a PR, as one check. Confirms ALL of:
 #   1. PR is MERGEABLE / CLEAN (not CONFLICTING — which runs head-only checks and
 #      can falsely report green because the backend/frontend merge-result checks
-#      never start)
+#      never start). Re-polled while GitHub still answers UNKNOWN, which it does for
+#      up to a minute after main moves and which is not a conflict — see gate 1.
 #   2. Every PR CI check is `pass` (none pending/fail/cancelled)
 #   3. main's latest deploy is GREEN with no deploy in progress (deploy-status.sh)
 #
@@ -18,12 +19,46 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 fail=0
 
 # 1. Mergeable state.
-read -r mergeable state <<<"$(gh pr view "$PR" --json mergeable,mergeStateStatus \
-  -q '.mergeable + " " + .mergeStateStatus')"
+#
+# GitHub computes mergeability on demand, so for up to a minute after main moves it
+# answers UNKNOWN/UNKNOWN — neither a conflict nor an error, just not-yet-known. Reading
+# it once and calling everything non-CLEAN a conflict sent PR #460 (2026-08-11) to a
+# pointless rebase on a branch that was clean; re-polling returned MERGEABLE/CLEAN three
+# times out of three, ~8s apart (TI-77). So: re-poll before concluding anything, and
+# report what was SEEN rather than a cause — the rebase remedy belongs to CONFLICTING and
+# to nothing else.
+#
+# 5 attempts × 2s = up to 8s of waiting, covering the observed recompute window. The loop
+# exits the moment a definite answer arrives, so a settled PR pays one call as before.
+MERGEABILITY_ATTEMPTS=5
+MERGEABILITY_DELAY=2
+
+mergeable=""
+state=""
+for ((attempt = 1; attempt <= MERGEABILITY_ATTEMPTS; attempt++)); do
+  read -r mergeable state <<<"$(gh pr view "$PR" --json mergeable,mergeStateStatus \
+    -q '.mergeable + " " + .mergeStateStatus')"
+  if [[ "$mergeable" != "UNKNOWN" && "$state" != "UNKNOWN" ]]; then
+    break
+  fi
+  if [[ "$attempt" -lt "$MERGEABILITY_ATTEMPTS" ]]; then
+    sleep "$MERGEABILITY_DELAY"
+  fi
+done
+
 if [[ "$mergeable" == "MERGEABLE" && "$state" == "CLEAN" ]]; then
   echo "MERGEABLE: ok ($state)"
-else
+elif [[ "$mergeable" == "CONFLICTING" ]]; then
   echo "MERGEABLE: FAIL (mergeable=$mergeable state=$state) — rebase/resolve conflicts"
+  fail=1
+elif [[ "$mergeable" == "UNKNOWN" || "$state" == "UNKNOWN" ]]; then
+  echo "MERGEABLE: FAIL (mergeable=$mergeable state=$state) — GitHub has not finished computing mergeability"
+  echo "    after $MERGEABILITY_ATTEMPTS polls over $((MERGEABILITY_DELAY * (MERGEABILITY_ATTEMPTS - 1)))s. This says nothing about conflicts — it is routine for a minute"
+  echo "    or so after main moves. Re-run the gate."
+  fail=1
+else
+  echo "MERGEABLE: FAIL (mergeable=$mergeable state=$state) — unrecognised combination, neither"
+  echo "    MERGEABLE/CLEAN nor CONFLICTING. Raw values above; no cause established."
   fail=1
 fi
 
