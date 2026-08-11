@@ -78,7 +78,7 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 | TI-58 | Desktop specs run in the PR gate (headless + Electron under xvfb) | ✅ **Done** — this slice. Nothing ran `desktop/tests/` before: `pr.yml` had no desktop job and `publish-desktop.yml` packages without testing. BUG-52/53/56 all reached a user's machine as a result. |
 | TI-59 | Windows desktop CI job — packaging + a REAL whisper-server smoke test | 🔲 **Open** — raised 2026-08-07 ([BUG-56]). Un-gate `whisperServer.integration.spec.ts` on `windows-latest` with a cached `base.en` + a fixed WAV, resolving the binary through the production resolver (`whisperServerBinPath()`, added by [BUG-56] / #426) exactly as production does. This is the tier that proves the live engine actually transcribes. |
 | TI-60 | Packaged-installer journey with injected audio | 🔲 **Open** — raised 2026-08-07 ([BUG-56]). Drive the *packaged* app end to end with a known WAV pushed through a test seam (not a virtual-audio driver) and assert live transcript text appears within a latency budget. The only tier that would catch a live-latency regression. |
-| TI-61 | **A routing test fails on a busy machine even though nothing is wrong with it**, costing a thrown-away run and — the expensive part — a fresh investigation to re-establish that it is not a regression | 🟡 **In Progress** — fix in PR #470. The deadline is the defect: the test runs to **5780 ms against a 5000 ms ceiling** under contention where unloaded it is 293 ms. See [TI-61](#ti-61-a-routing-test-fails-on-a-busy-machine) |
+| TI-61 | **A routing test fails on a busy machine even though nothing is wrong with it**, costing a thrown-away run and — the expensive part — a fresh investigation to re-establish that it is not a regression | 🟡 **In Progress** — mitigated, not closed. PR #470 raised the local-only budgets; the test ran to **5780 ms against a 5000 ms ceiling** under contention where unloaded it is 293 ms. **Stays open because two other files are predicted to exceed the new budget** — see [TI-61](#ti-61-a-routing-test-fails-on-a-busy-machine) |
 | TI-62 | `deploy.yml` still carries its own inline copy of the projector warm/drain bash | 🔲 **Open** — raised 2026-08-07 (alongside the on-demand E2E workflow). The warm-and-drain logic now lives in `scripts/warm-projector.sh`, used by `.github/workflows/e2e.yml`; `deploy.yml`'s `Warm the API + projector before E2E` step is a byte-for-byte duplicate of it. Deliberately NOT switched over in the same change: the merge queue was mid-flight through that exact workflow and a broken `deploy.yml` reds the shared gate for every slice and session. Two copies of a guardrail-critical step will drift — the drain is precisely what stops a cold projector red-gating the suite. Fix: replace the inline step with `bash scripts/warm-projector.sh` (same `API_URL`/`TOKEN` env), and verify on the next deploy that the step still logs `projector caught up to head`. Low risk, but do it on a quiet gate. |
 | TI-63 | Move note analysis off the synchronous request path | 🔲 **Open** — raised 2026-08-07 (BUG-58). Analysis runs inside the **29s** Command Lambda: 90d of prod data shows command-hosted Converse calls at median 2.6s but 17.9 / 21.5 / 23.6 / 26.4s in the tail, with a further **3.0-5.9s** of sequential post-Bedrock appends (`TagNote` per tag, `AddActionItem` per action, each re-reading an 89KB stream). Four invocations hit exactly 29.0s in 14 days — killed. BUG-58's 23s client deadline converts those kills into a visible 503, but it cannot create budget that isn't there: **any analysis needing >23s+tail simply cannot complete synchronously**, and a kill part-way through the appends leaves a note with a new summary and tags but no action items, with no event marking it incomplete. Fix: run analysis asynchronously (job + poll, or a dedicated Lambda off a queue with a longer timeout, mirroring the TranscribeCompletion path that already has 60s), so duration stops being bounded by the API request. Medium urgency — the deadline makes the failure visible and retriable, so this is about the ~12-19% of analyses that are near or over budget, not about data loss. |
 | TI-65 | **An action list, folder tree or workspace list can still snap back to an older copy moments after the user changes it** | 🟡 **Partly done** — raised 2026-08-08 (Hawk, PR #436 / [BUG-48]). The home note list shipped 2026-08-11 (PR #459); `getActions`, `getFolders` and `getWorkspaces` remain. Detail in [TI-65](#ti-65-the-other-three-gatedread-callers-can-still-store-a-stale-body-over-good-data) below. |
@@ -516,6 +516,40 @@ The binding test exceeds the ceiling on its own, and sits at 79% of it even when
 Unloaded and alone it is 293 ms — the box's effective speed varies by 10-56x, and a fixed
 wall-clock deadline cannot tell "slow machine" from "hung test" across that range. A per-test
 timeout exists to catch hangs, not to assert machine speed.
+
+### Still open: two files are predicted to exceed the new budget
+
+This is why the row is 🟡 and not ✅. Ranking every test file by its slowest test (full suite,
+unloaded — relative durations rank the same without contention):
+
+| slowest test | file | |
+| --- | --- | --- |
+| 2455 ms | `staleDetailRefetch.test.tsx` | work-bound |
+| 2437 ms | `staleCardsRefetch.test.tsx` | work-bound |
+| 1125 ms | `Routing.test.tsx` | work-bound — the file that has actually been failing |
+| 1039 ms | `HomeSearch.test.tsx` | **discount** — 4 real `setTimeout` sleeps, which do not inflate under CPU starvation |
+
+`Routing` inflated 1125 -> 5780 ms (~5.1x) under deliberate contention. **The same multiple on
+2455 ms is ~12500 ms, which exceeds the 12000 ms budget PR #470 sets.** Both files are genuinely
+work-bound — no fake timers, no sleeps — so they should inflate the same way.
+
+**Remedy, when one of them fails — do this, not something else:**
+
+1. Reproduce it under deliberate contention and record the *measured* worst duration.
+2. Raise `LOCAL_TEST_TIMEOUT_MS` in `web/vite.config.ts` to **that file's worst x2**.
+3. **Do not raise it pre-emptively.** ~12500 ms is an extrapolation; neither file has been measured
+   under contention. Sizing a budget off an unmeasured multiple is the error this investigation
+   refused three times (a role-query theory that measured 15 ms, an underpowered 2/10-vs-0/10 A/B,
+   and a reviewer's suggested 25000 ms). A measured number is checkable six months later; a guess
+   is indistinguishable from a measurement, including in whether it was already too small.
+
+**Post-merge observation owed, and by whom.** Nothing about this fix is verifiable from a green
+deploy — the change only takes effect on a *locally contended* run, which CI never performs. The
+observation that would prove it is a local full-suite run under load that previously failed and now
+passes; that was taken before merge (control red at 5000 ms, candidate 0 failures / 60 under
+identical contention). **No further observation is owed, and no future session should record this
+as Done on the strength of a deploy** — the row closes only when the two files above have been
+measured, or when they have gone long enough without failing that the exposure is judged closed.
 
 **Fix.** `testTimeout` 12000 (= worst observed 5780 x2) and `asyncUtilTimeout` 4000
 (= longest succeeding wait 1735 x2), **local only**, mirroring the existing `LOCAL_MAX_THREADS`
