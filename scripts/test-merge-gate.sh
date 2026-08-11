@@ -261,8 +261,14 @@ jobs_fixture 773 detect-changes:completed:success validate-frontend:completed:su
   validate-backend:completed:success deploy-test:completed:success \
   deploy-production:completed:failure
 pending_fixture 773 '[]'
+# Positive assertion is `did not succeed`, the JOBFAIL arm's own phrase — not the generic
+# `NOT SAFE`, which several arms share. Two other cases assert this phrase's ABSENCE to prove
+# they took the block arm instead, and until this line nothing asserted its presence: rewording
+# the jobfail message therefore went undetected, which would in time hollow out those two
+# negatives exactly as round 2 hollowed out the cancelled case. Every arm-selecting phrase in
+# this suite is now pinned positively somewhere.
 run_deploy "a failed job is never discounted, however stale the record" \
-                                 1 "NOT SAFE" "orphaned" \
+                                 1 "did not succeed" "orphaned" \
   "[{\"number\":773,\"databaseId\":773,\"status\":\"in_progress\",\"conclusion\":null,\"updatedAt\":\"$STALE\"}]"
 # TI-77's rule again, and the half that survived round 1: the run carrying the failed job is
 # whichever unsettled run the window happened to contain, NOT necessarily main's latest —
