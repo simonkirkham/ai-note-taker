@@ -47,13 +47,17 @@ const THEMATIC_BREAK_BODY = /^([-*_])(?: *\1){2,} *$/;
 // An indented code block starts four columns past the enclosing content column, and its
 // contents are literal -- a dash line inside one is text, not a list item.
 //
-// This single threshold governs EVERY block start, not just code. CommonMark measures a fence,
-// a thematic break and an HTML block from the enclosing container's content column too, each
-// allowed up to three columns of indent past it -- which is the same thing as "less than four".
-// Anchoring any of them at `^ {0,3}` is only correct at the top level: inside a list item it
-// makes the scanner miss the construct and then rewrite its literal contents. That was three
-// separate bugs (a code block in an item, a wide marker, a fence nested in an item) with one
-// cause, so the column is derived once, in `containerContentColumn`, and used everywhere.
+// This single threshold governs EVERY block start, not just code. CommonMark measures a fence
+// (opening AND closing), a thematic break and an HTML block from the enclosing container's
+// content column too, each allowed up to three columns of indent past it -- which is the same
+// thing as "less than four". Anchoring any of them at `^ {0,3}`, or at the opening fence's own
+// indent, is only correct at the top level: inside a list item it makes the scanner mis-read the
+// construct and then rewrite its literal contents.
+//
+// Six review findings turned out to be that one cause -- a code block in an item, a padded
+// marker, a fence nested in an item, a fence closed early, an empty item, and a container chosen
+// by nesting depth rather than by where the line sits. So the column is derived in exactly one
+// place, `containerContentColumn`, and every threshold in this file reads it from there.
 const CODE_INDENT = 4;
 
 // CommonMark HTML blocks. Types 1-5 run to a specific closer and are NOT ended by a blank line;
@@ -84,6 +88,10 @@ interface ListItemLine {
   // here, so this -- not an absolute 4 -- is what an indented code block inside the item is
   // measured from.
   contentIndent: number;
+  // Whether the item began with nothing after its marker. CommonMark allows an item to start
+  // with at most ONE blank line, so an empty item is closed by the blank line that follows it
+  // and cannot contain anything after that.
+  isEmpty: boolean;
 }
 
 function isSameList(a: ListItemLine, b: ListItemLine): boolean {
@@ -95,13 +103,21 @@ function indentOf(line: string): number {
 }
 
 /**
- * The column the innermost open container's content starts at. Every block start -- indented
- * code, a fence, a thematic break, an HTML block, a nested list item -- is measured from here,
- * never from column 0.
+ * The content column of the container a line at `indent` actually sits in. Every block start --
+ * indented code, a fence, a thematic break, an HTML block, a nested list item -- is measured
+ * from here, never from column 0.
+ *
+ * Which container that is depends on where the line sits, NOT on how deep the open levels go: a
+ * line indented less than the innermost item's content column is not inside that item at all,
+ * and CommonMark hands it back to the enclosing container. Measuring it from the innermost level
+ * anyway inflates the code threshold by the difference, and the rule then rewrites lines
+ * markdown-it has already put in a code block.
  */
-function containerContentColumn(openLevels: readonly ListItemLine[]): number {
-  const innermost = openLevels[openLevels.length - 1];
-  return innermost ? innermost.contentIndent : 0;
+function containerContentColumn(openLevels: readonly ListItemLine[], indent: number): number {
+  for (let level = openLevels.length - 1; level >= 0; level -= 1) {
+    if (openLevels[level].contentIndent <= indent) return openLevels[level].contentIndent;
+  }
+  return 0;
 }
 
 /**
@@ -135,20 +151,27 @@ function readListItem(
   // CommonMark clamps the content column: when the marker is followed by five or more spaces
   // the item's content already IS an indented code block, so content starts at marker + 1
   // rather than where the text happens to sit. Taking the text's column instead pushes the code
-  // threshold out by the same amount and reopens the hole it exists to close. An empty item
-  // (`-` at end of line) clamps the same way.
+  // threshold out by the same amount and reopens the hole it exists to close. An item that is
+  // EMPTY clamps the same way -- and emptiness is the test, not "no spaces after the marker":
+  // `-` followed by two spaces and nothing else is just as empty as `-` alone.
   const spacesAfterMarker = match[3].length;
   const contentIndent =
-    spacesAfterMarker > CODE_INDENT || spacesAfterMarker === 0
+    spacesAfterMarker > CODE_INDENT || isEmptyItem
       ? indent + marker.length + 1
       : match[0].length;
   if (/^\d/.test(marker)) {
     // Only a list starting at 1 can interrupt a paragraph.
     if (paragraphOpen && marker.slice(0, -1) !== '1') return null;
-    return { indent, kind: 'ordered', marker: marker.slice(-1), contentIndent };
+    return { indent, kind: 'ordered', marker: marker.slice(-1), contentIndent, isEmpty: isEmptyItem };
   }
   const rest = line.slice(match[0].length);
-  return { indent, kind: TASK_MARKER.test(rest) ? 'task' : 'bullet', marker, contentIndent };
+  return {
+    indent,
+    kind: TASK_MARKER.test(rest) ? 'task' : 'bullet',
+    marker,
+    contentIndent,
+    isEmpty: isEmptyItem,
+  };
 }
 
 /**
@@ -162,8 +185,6 @@ export function splitBlankLineSeparatedLists(src: string): string {
   const out: string[] = [];
   let blanks: string[] = [];
   let fence: string | null = null;
-  // The column the open fence itself sits at. Its closer may be indented up to three past it.
-  let fenceIndent = 0;
   // The closer that ends the HTML block currently open, or '' for a blank-line-terminated one.
   let htmlCloser: string | null = null;
   // The list levels currently open, outermost first. A blank run only separates two lists when
@@ -199,7 +220,10 @@ export function splitBlankLineSeparatedLists(src: string): string {
       out.push(line);
       const indent = indentOf(line);
       const closing = FENCE_BODY.exec(line.slice(indent));
-      const closerIndented = indent <= fenceIndent + CODE_INDENT - 1;
+      // CommonMark allows the closing fence up to three columns past the CONTAINER, however far
+      // the opening fence itself is indented. Measuring it from the opener lets a line deeper
+      // than that close the block early -- and the rest of the code then gets rewritten.
+      const closerIndented = indent < containerContentColumn(openLevels, indent) + CODE_INDENT;
       if (closing && closerIndented && closing[1][0] === fence[0] && closing[1].length >= fence.length) {
         fence = null;
       }
@@ -219,12 +243,15 @@ export function splitBlankLineSeparatedLists(src: string): string {
       // A type-6/7 HTML block ends here; a paragraph does too.
       htmlCloser = null;
       paragraphOpen = false;
+      // An item may begin with at most one blank line, so this blank closes an empty item --
+      // anything after it is measured from the enclosing container, not from inside the item.
+      while (openLevels.length > 0 && openLevels[openLevels.length - 1].isEmpty) openLevels.pop();
       blanks.push(line);
       continue;
     }
 
     const indent = indentOf(line);
-    const codeColumn = containerContentColumn(openLevels) + CODE_INDENT;
+    const codeColumn = containerContentColumn(openLevels, indent) + CODE_INDENT;
     const body = line.slice(indent);
     // Four or more columns past the container is an indented code block: literal text, in which
     // nothing is a block start and nothing may be rewritten.
@@ -255,7 +282,6 @@ export function splitBlankLineSeparatedLists(src: string): string {
       if (opening) {
         passThrough(line, indent);
         fence = opening[1];
-        fenceIndent = indent;
         continue;
       }
     }
@@ -286,8 +312,10 @@ export function splitBlankLineSeparatedLists(src: string): string {
       paragraphOpen = false;
     } else {
       previousWasItem = false;
-      // Literal code inside an item is not a paragraph, so it cannot be interrupted.
-      paragraphOpen = !isLiteralCode;
+      // A deeply-indented line after a paragraph is a lazy continuation of it, not code -- code
+      // cannot interrupt a paragraph. So it leaves an open paragraph open rather than closing
+      // it; a genuine code block (nothing open beforehand) still leaves it closed.
+      if (!isLiteralCode) paragraphOpen = true;
       // Unindented content ends the list; indented content is an item's own continuation.
       if (indent === 0) openLevels = [];
     }
@@ -335,8 +363,8 @@ export function registerListSeparatorRule(markdownit: MarkdownItLike): void {
   } catch {
     // `ruler.after` throws if markdown-it ever drops or renames `normalize`. This runs inside
     // the editor's parse, so throwing here would take the whole note down; falling back to no
-    // separator only reinstates BUG-68, which is recoverable.
-    configured.delete(markdownit);
+    // separator only reinstates BUG-68, which is recoverable. The instance stays in the set --
+    // a retry on the next parse would throw again, and this one is done with either way.
   }
 }
 

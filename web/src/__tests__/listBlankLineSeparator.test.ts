@@ -341,6 +341,22 @@ describe('block starts are measured from the container, not column 0', () => {
     ['fence at top level', 'keep', '```\n- a\n\n- b\n```'],
     ['thematic break at top level', 'keep', '- a\n\n- - -\n\n- b'],
     ['html comment at top level', 'keep', '<!--\n- a\n\n- b\n-->'],
+    // A closing fence is allowed up to three columns past the CONTAINER, however far the
+    // opener is indented -- measuring from the opener lets a deeper line close the block early
+    // and the rest of the code then gets rewritten.
+    ['fence opener with a stray leading space', 'keep', ' ```\ncode\n    ```\n- a\n\n- b'],
+    ['fence in an item with a deeper closer', 'keep', '- Steps:\n\n     ```\n     code\n      ```\n     - a\n\n     - b'],
+    // An item that is empty clamps its content column, and is CLOSED by the blank line after it
+    // -- CommonMark allows an item to begin with at most one blank line.
+    ['an item that is a marker and two spaces', 'keep', '-  \n      - a\n\n      - b'],
+    ['an empty item closed by its blank line', 'keep', '-\n\n     - a\n\n     - b'],
+    // The container is whichever open level the line actually sits in, not the innermost one.
+    ['a padded ordered marker over an under-indented sub-list', 'keep', '10.   Deploy\n    - check A\n\n    - check B'],
+    ['a padded 1. marker over an under-indented sub-list', 'keep', '1.    step\n    - a\n\n    - b'],
+    // An indented line after a paragraph is a lazy continuation, so the paragraph is still open
+    // and an item that cannot interrupt one still cannot.
+    ['a setext underline after a lazy continuation', 'keep', 'Some text\n    lazy continuation\n-\n\n- b'],
+    ['an ordered item not starting at 1 after a lazy continuation', 'keep', 'Some text\n    lazy continuation\n2. ship\n\n2. tell'],
     // Everything that must still be fixed.
     ['two bullet lists', 'fire', '- a\n- b\n\n- c'],
     ['a nested sub-list', 'fire', '- Install:\n    - npm install\n\n    - npm test'],
