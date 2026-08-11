@@ -34,6 +34,9 @@ public sealed class AppPage
     // the Response event fires on a Playwright dispatcher thread, read on the test thread.
     private volatile string? latestNoteToken;
 
+    // BUG-79: every write token seen, in order. See the capture site for why.
+    private readonly System.Collections.Concurrent.ConcurrentQueue<string> writeTokenLog = new();
+
     // BUG-79: the gated-vs-ungated discriminator. The response header alone cannot tell a gated
     // read that came back fresh from a read that carried no token at all, because the server sets
     // `X-Consistency` only when STALE — so both look identical. The probe records the request's
@@ -63,6 +66,12 @@ public sealed class AppPage
                 && !string.IsNullOrEmpty(token))
             {
                 latestNoteToken = token;
+                // BUG-79: the ORDER of write tokens, so a failure can be attributed to a stream.
+                // "The token we injected" says nothing about WHOSE note it belongs to, and the
+                // suspected fault is a read gated on one stream while the row it needs is folded
+                // from another. The sequence makes that checkable instead of assumed. Note ids
+                // only — no titles or content (meeting notes are sensitive).
+                CappedEnqueue(writeTokenLog, token);
             }
         };
         page.Console += (_, m) => CappedEnqueue(consoleLog, $"[{m.Type}] {m.Text}");
@@ -304,6 +313,7 @@ public sealed class AppPage
                // `tokenAvailableToInject` above is what the test HELD, not what the request CARRIED
                // — reading it as proof the read was gated is the mistake this line exists to stop.
                $"{Probe.Describe()} | " +
+               $"write tokens seen=[{string.Join(" ", writeTokenLog.TakeLast(12))}] | " +
                $"last cards responses=[{string.Join(" ;; ", recentRequests)}]";
     }
 
