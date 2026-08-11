@@ -14,7 +14,19 @@
     "  topics       what the SERVER reads: text + ticked state, in document order",
     "  header       what the HEADER reads, present ONLY where it differs from `topics`",
     "  divergence   why they differ and why it is not closed here; required whenever `header` is",
-    "               present, so a real gap can never be hidden by quietly adding an override"
+    "               present, so a real gap can never be hidden by quietly adding an override",
+    "",
+    "The register covers bodies the EDITOR can produce. Two further divergences are deliberately",
+    "out of it. Both are PRE-EXISTING — neither is reached by widening the topic walk to nested",
+    "lists — only imported or hand-written markdown gets to them, and the first save normalises",
+    "both away. Verified against a real editor, not reasoned about:",
+    "  `1. [ ] Numbered task` — the server's marker class is [-*+], so it reads no topic. The",
+    "     client reads one, but NOT through the numbered list: the parser leaves the orderedList",
+    "     item empty and hoists a sibling TOP-LEVEL taskList, which the walk has always read.",
+    "     Saving rewrites the line as `- [ ] Numbered task` and the two agree again.",
+    "  a 4-space-indented code block holding a checklist line — the server counts it (its only",
+    "     code rule is a ``` / ~~~ fence), the client sees a codeBlock and reads none. Saving",
+    "     re-emits it fenced, after which the server skips it too."
   ],
   "cases": [
     {
@@ -93,6 +105,16 @@
       ],
       "header": [{ "text": "Hiring plan", "checked": false }],
       "divergence": "The editor's markdown parser cannot put an image inside a checklist line: a note image is a BLOCK node, so the parser hoists it out of the task item and leaves the item genuinely empty (`taskList > taskItem > paragraph(empty)`, then a sibling `image`). Nothing in the item is skipped, because nothing is there — so no change to the topic walk can close this. Closing it means making note images inline in the editor schema, which must also fix the same shape's destructive round-trip: re-serialising this body yields `- [ ] \\n\\n![Burn-up chart](notes/n1/burnup.png)- [ ] Hiring plan`, which glues the next checklist line onto the image and loses it as a topic on the next save."
+    },
+    {
+      "name": "a checklist line holding an image and text (KNOWN DIVERGENCE, open)",
+      "markdown": "- [ ] ![Burn-up chart](notes/n1/burnup.png) Budget\n- [ ] Hiring plan",
+      "topics": [
+        { "text": "![Burn-up chart](notes/n1/burnup.png) Budget", "checked": false },
+        { "text": "Hiring plan", "checked": false }
+      ],
+      "header": [{ "text": "Hiring plan", "checked": false }],
+      "divergence": "Same block-image hoist as the image-only case, and the same reason it cannot be closed in the topic walk — but the text is hoisted out too, into a sibling paragraph, so the topic loses its words as well as its checkbox. Its round-trip is not destructive, so it is the milder half of the pair. This is the shape NoteEditor.test.tsx drives, because it is the one whose reading CHANGES between the mount-time (image-stripped) document and the resolved one."
     }
   ]
 }

@@ -52,3 +52,6 @@ Thumbs.db
 # scripts/extract-prod-fixtures.sh writes here; the dir also self-protects with its own .gitignore.
 eval-fixtures-real/
 __pycache__/
+
+# Local scratch for commit messages passed via `git commit -F` (see .pr-body.md above)
+.commit-msg.txt

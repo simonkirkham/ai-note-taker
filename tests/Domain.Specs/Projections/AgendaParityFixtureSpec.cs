@@ -39,6 +39,15 @@ public sealed class AgendaParityFixtureSpec
         return data;
     }
 
+    [Fact]
+    public void Every_case_in_the_shared_fixture_is_exercised()
+    {
+        // Both sides iterate whatever `cases` holds, so DELETING a case silently deletes coverage
+        // from this spec and from agendaParity.test.ts at once. The count is pinned in both places;
+        // it has to be raised deliberately, in the same commit as the case that raises it.
+        Assert.Equal(12, Cases.Value.Cases.Length);
+    }
+
     [Theory]
     [MemberData(nameof(CaseNames))]
     public void The_server_reads_the_topics_the_shared_fixture_records(string name)

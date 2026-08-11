@@ -79,15 +79,25 @@ describe('the header reads the same agenda the server does (BUG-76)', () => {
     })
   }
 
-  it('every recorded divergence says why it is open', () => {
-    // Without this the escape hatch quietly becomes the rule: a future change could bury a real
-    // regression by adding a `header` override and no explanation.
-    const diverging = fixture.cases.filter((c) => c.header !== undefined)
-    expect(diverging.length).toBeGreaterThan(0)
-    for (const c of diverging) {
+  it('the register of known divergences is exactly the two that were signed off', () => {
+    // Named, not counted: "at least one divergence exists" would let a third in behind a rename
+    // and a one-word excuse, with both suites still green. Adding a row here is a deliberate act
+    // a reviewer sees in the diff.
+    expect(fixture.cases.filter((c) => c.header !== undefined).map((c) => c.name)).toEqual([
+      'a checklist line holding only an image (KNOWN DIVERGENCE, open)',
+      'a checklist line holding an image and text (KNOWN DIVERGENCE, open)',
+    ])
+    for (const c of fixture.cases) {
+      if (c.header === undefined) continue
       expect(c.divergence ?? '').not.toHaveLength(0)
-      expect(c.name).toContain('KNOWN DIVERGENCE')
     }
+  })
+
+  it('covers every case in the shared fixture', () => {
+    // Both sides iterate whatever `cases` holds, so DELETING a case silently deletes coverage from
+    // this suite and from AgendaParityFixtureSpec at once. The count is pinned in both places; it
+    // has to be raised deliberately, in the same commit as the case that raises it.
+    expect(fixture.cases).toHaveLength(12)
   })
 })
 
