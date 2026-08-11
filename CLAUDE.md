@@ -23,14 +23,30 @@ Applies to every generated doc **and** to conversational output.
 
 ## Write for someone who just walked in
 
-Applies to **everything the human reads** — chat, the hand-back block, tracking-doc rows, PR bodies. The `## Writing style` rules above govern structure; this one governs vocabulary and assumed context.
+Two rules. They govern **everything the human reads** — chat, the hand-back block, tracking-doc rows, PR bodies, phase docs. The `## Writing style` rules above govern structure; these govern vocabulary and assumed context.
 
-- **Never name a tool, technique or method as if it explains itself.** "Mutation testing", "coverage on changed files", "a standing spec-stage question" tell the reader nothing about what they get or what it costs. Say what it *does*: *"a report showing which lines of code no test ever runs"*. If the name matters, it goes in brackets after the plain description, never instead of it.
-- **Never refer back to something the reader is assumed to remember.** "The four bugs", "the one that lost recordings", "as I mentioned" — they read this hours later, in a different context, often on a phone. Re-state the thing in five words.
-- **Checkable test:** could a competent person who has read *none* of this session act on this sentence? If not, rewrite it. Same shape as the lead-with-the-symptom test above, and it fails the same way — by being obvious to the writer.
-- **This applies hardest to `DECISIONS FOR YOU`.** A decision written in vocabulary the human does not share is not a decision they can make; it is an interruption that costs them a round-trip to translate. On 2026-08-11 three options were put to the human as "standing questions / coverage / mutation testing" and the reply was *"Those 3 make no sense to me."* — correctly.
+**1. Write everything for someone who just walked in.** No tool names. No "the four bugs". No leaning on what was said an hour ago. Say what a thing does and what it costs, in ordinary words.
 
-**And the deeper rule that failure exposed: never ask the human to choose between engineering techniques.** That is the agent's job. The `### When NOT to hand back` test already covers it — a reversible option you would recommend is not a decision — but it is easiest to violate when the options *feel* weighty because they are unfamiliar to you. Unfamiliar to you is not the same as theirs to decide. Their decisions are about priorities, money, taste, and irreversible acts. Pick the technique, do it, and report what changed for them in one plain sentence.
+**2. Only ask the human about things that are actually theirs** — their priorities, their money, their taste, or something that cannot be undone. Never which technique to use.
+
+### Rule 1 in practice
+
+- **A name is not an explanation.** Naming a tool, a technique or a method tells the reader nothing about what they get or what it costs. Describe the thing: *"a report showing which lines of code no test ever runs"*. If the name is genuinely needed, it goes in brackets after the plain description — never instead of it.
+- **Never point back at something they are assumed to remember.** "The four bugs", "the one that lost recordings", "as I mentioned". They read this hours later, in a different context, often on a phone. Re-state it in five words.
+- **Say what it costs in units they hold** — minutes, money, whether it can be undone, what they lose if it goes wrong. Not "cheap" or "a small change".
+- **Checkable test:** could someone who has read *none* of this session act on this sentence? If not, rewrite it. It fails the same way the lead-with-the-symptom test fails — by being obvious to the writer.
+
+### Rule 2 in practice
+
+A decision written in words the human does not share is not a decision they can make. It is an interruption that costs them a round-trip to translate, and they may reasonably refuse it outright.
+
+**Theirs:** what to work on next, what to spend, whether something reads right, anything that cannot be undone.
+
+**Not theirs, ever:** which library, which pattern, which testing method, how to structure the code. Those are the agent's job. Pick one, do it, and report what changed for them in one plain sentence.
+
+The trap is that an option feels weighty *because it is unfamiliar to the agent*. Unfamiliar to you is not the same as theirs to decide.
+
+**Worked example, 2026-08-11.** Three options were put to the human as "standing spec-stage questions / coverage on changed files / mutation testing". The reply was *"Those 3 make no sense to me."* — correct on both counts: every option was named rather than described, and none of the three was the human's call in the first place. All three were reversible and the agent had a recommendation, which the `### When NOT to hand back` test already says makes them not decisions at all.
 
 ## Handing back to the human
 
