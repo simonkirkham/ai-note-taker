@@ -112,7 +112,8 @@ What killed it: the session was never invalid. `CompleteTranscription` succeeded
 |---|---|
 | 17:30:55.37 → .55 | note `8b7cdd87…` created, assigned a workspace, given a date |
 | 17:30:55.928 | `NoteRenamed` — the title is saved |
-| 17:30:56.068 | the note-detail read returns `outcome=Fresh result=Hit` — but it was issued at ~17:30:55.86, *before* the rename, so its body is the untitled note |
+| 17:30:56.068 | the note-detail read returns `outcome=Fresh result=Hit` — but its own latency (209 ms) puts its start at ~17:30:55.86, 69 ms *before* the rename was written |
+| ~17:30:56.11 | the rename is folded into the read model (`NoteRenamed lag 182.06ms`) — **43 ms after** the read above was served, so that read provably carried the note with no title |
 | 17:30:56.367 | **`NoteDeleted`** — from a browser request (`HeadlessChrome` user agent), 299 ms later |
 | 17:31:35.7 | the journey gave up looking for a card that no longer existed |
 
