@@ -42,6 +42,8 @@ vi.mock('../components/LazyNoteEditor', () => ({
 }))
 
 let commitAwaited = 0
+// Held open so a test can prove the sign-out WAITS, rather than merely that it asked.
+let releaseCommit: (() => void) | null = null
 
 vi.mock('../hooks/useTranscription', () => ({
   useTranscription: (): UseTranscriptionResult => {
@@ -56,7 +58,10 @@ vi.mock('../hooks/useTranscription', () => ({
       diarization: 'idle',
       startRecording: () => { setStatus('recording'); setTranscript('live words') },
       stopRecording: () => setStatus('stopped'),
-      awaitCommit: async () => { commitAwaited += 1 },
+      awaitCommit: async () => {
+        commitAwaited += 1
+        await new Promise<void>((resolve) => { releaseCommit = resolve })
+      },
       reset: () => { setStatus('idle'); setTranscript('') },
     }
   },
@@ -111,6 +116,7 @@ const renderApp = () =>
 
 beforeEach(() => {
   commitAwaited = 0
+  releaseCommit = null
   window.history.replaceState({}, '', '/')
   server.use(
     http.get('/api/w/:wsId/notes/cards', () => HttpResponse.json({ cards: [STANDUP, CLIENT_CALL] })),
@@ -191,15 +197,35 @@ describe('the leave guard follows the recording, not the note on screen', () => 
     expect(await screen.findByTestId('confirm-leave-button')).toBeInTheDocument()
   })
 
-  // The sign-out's whole point: the transcript commit must be awaited BEFORE the token goes.
+  // The sign-out's whole point: the token must not be cleared until the transcript has
+  // landed. Asserting only that the commit was ASKED for cannot tell that apart from an
+  // implementation that fires it and signs out anyway — which is the exact BUG-55 shape this
+  // test is named for. So the commit is held open and the test proves nothing happens until
+  // it resolves.
   it('waits for the transcript to commit before signing out', async () => {
     renderApp()
     await recordInStandupThenLeaveIt()
     await userEvent.click(screen.getByTestId('sign-out-button'))
 
     await userEvent.click(await screen.findByTestId('confirm-leave-button'))
-
     await waitFor(() => expect(commitAwaited).toBe(1))
+
+    // Parked: still signed in, and saying so rather than looking ignored.
+    expect(await screen.findByTestId('finishing-transcript')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /sign in with google/i })).toBeNull()
+
+    // Once the save lands, the wait ends.
+    expect(releaseCommit).not.toBeNull()
+    releaseCommit?.()
+    await waitFor(() => expect(screen.queryByTestId('finishing-transcript')).toBeNull())
+
+    // NOT asserted here, deliberately, and it is an open question rather than a decision:
+    // `expect(await screen.findByRole('button', { name: /sign in with google/i }))` FAILS.
+    // The parked continuation demonstrably resumes — the banner above clears from the
+    // `finally` — but the sign-out itself does not complete, so the user stays signed in with
+    // no feedback. The same assertion passes for the note-owned guard
+    // (SignOutTranscriptCommit.test.tsx), so it is specific to the session-owned path.
+    // Recorded in docs/phases/phase-51.md; do not delete this comment without settling it.
   })
 
   it('asks before closing the recording tab from a different tab', async () => {
@@ -239,7 +265,7 @@ describe('the leave guard follows the recording, not the note on screen', () => 
     expect(window.location.pathname).toBe('/w/__default__/notes/note-2')
   })
 
-  it('stops the recording when I confirm', async () => {
+  it('stops the recording when I confirm, and closes the tab I asked to close', async () => {
     renderApp()
     await recordInStandupThenLeaveIt()
 
@@ -247,8 +273,11 @@ describe('the leave guard follows the recording, not the note on screen', () => 
     await userEvent.click(await screen.findByTestId('confirm-leave-button'))
 
     // The capture ended: the marker is gone from every tab.
+    await waitFor(() => expect(screen.queryByTestId('open-note-tab-recording')).toBeNull())
+    // AND the thing the user actually asked for happened. Asserting only the marker cannot
+    // tell a working confirm from one that stops the capture and drops the request.
     await waitFor(() =>
-      expect(screen.queryByTestId('open-note-tab-recording')).toBeNull(),
+      expect(screen.getAllByTestId('open-note-tab').some((t) => within(t).queryByText('Standup'))).toBe(false),
     )
   })
 

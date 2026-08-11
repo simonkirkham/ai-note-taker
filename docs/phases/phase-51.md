@@ -194,11 +194,14 @@ It was registered by the mounted `NoteView`, gated on *that* note recording. Sin
 
 **Deliberately left alone:** `NoteView`'s in-header confirm. Merging the two behind a variant prop would relayout a proven banner for no user-visible gain; they share testids and ARIA semantics, and both carry a comment saying a change to one is almost always a change to both.
 
+**OPEN — signing out after waiting for the save does not complete.** Found by strengthening a spec that had been asserting too little. `RecordingGuardOffNote.test.tsx` originally asserted only that the save was *asked for*; made to hold the save open and assert what happens after, it shows the wait works and the sign-out does not. The parked continuation demonstrably resumes — the "finishing the transcript" banner clears from the `finally` — but `proceed()` does not produce the signed-out screen. The identical assertion passes for the note-owned guard (`SignOutTranscriptCommit.test.tsx`), so it is specific to the session-owned path in `recordingSession.tsx`'s `confirmLeave`. Not data loss: the transcript is saved first, and the user stays signed in. It is "sign out appeared to do nothing". The spec carries a comment naming this; settle it before the comment is removed.
+
 **Still outstanding, lower severity:**
 - Auto-analyse is silently lost if the user leaves the recording note and comes back — `hasRecordedThisSession` is `useState` in `RecordControl`, and `NoteView` is `key={noteId}`, so the round trip remounts it to `false`. Derive it from the session instead.
 - `RecordingTabJourney`'s worst case (two 30s reload-tolerant gates + a 30s start wait + launch + navigation) can exceed the 120s `E2EFact` cap on a cold projector, and would then fail with a bare xUnit timeout carrying none of the helper's diagnosis.
 - The journey's no-confirm assertion is pass-by-default (asserts absence before the destination has rendered); assert the destination loaded first.
 - The journey's Stop click is the last statement, so an earlier failure skips it, and `DisposeAsync` NREs if `InitializeAsync` throws early.
+- Navigating to another note while a leave confirm is showing silently discards the request — the confirm vanishes, nothing happens, no feedback. `NoteView` is `key={noteId}`, so its pending leave dies with it. Newly reachable because this slice made the tab switch unguarded.
 - `NoteViewFinalising.test.tsx`'s RecordControl mock starts recording from an effect keyed on `[transcription]`, which is a new object every render — it only avoids looping because of the same-value bailout that was just fixed. Re-key on `noteId`.
 
 ### Observability
