@@ -355,8 +355,15 @@ if [[ "$kind" == "EMPTY" ]]; then
   exit 1
 fi
 
+# Reports the run it saw, and stops there. It deliberately does NOT say "main's last deploy did
+# not succeed, fix main first": the run carrying the failed job is whichever unsettled run the
+# window happened to contain, which is not necessarily main's latest — `deploy.yml` scopes
+# concurrency at JOB level, so runs do not queue as units and an older run can still be
+# unsettled while main's newest deploy is green. Pinning a broken-main verdict on it sends the
+# investigation to a main that is fine, which is TI-77's defect exactly. The `case` block below
+# keeps that wording, because there it IS the latest run that finished badly.
 if [[ "$kind" == "JOBFAIL" ]]; then
-  echo "NOT SAFE — $detail; main's last deploy did not succeed, fix main first$suffix"
+  echo "NOT SAFE — $detail. That run has not settled, so it is not discountable; check whether it is main's latest before concluding anything about main$suffix"
   exit 1
 fi
 

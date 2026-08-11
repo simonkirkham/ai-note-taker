@@ -185,10 +185,25 @@ echo "deploy-status.sh — TI-81 orphaned run records"
 
 five_green 762
 pending_fixture 762 '[]'
-ORPHAN_762="{\"number\":762,\"databaseId\":762,\"status\":\"in_progress\",\"conclusion\":null,\"updatedAt\":\"$STALE\"},{\"number\":763,\"databaseId\":763,\"status\":\"completed\",\"conclusion\":\"success\",\"updatedAt\":\"$FRESH\"}"
+# createdAt is carried on every run here because the verdict is read off the NEWEST live run,
+# and "newest" is established by sorting on createdAt rather than by trusting the order gh
+# returned. A fixture without it cannot exercise that sort at all — which is how the sort
+# shipped untested, its failure mode being a GREEN on a failed main (see the pair below).
+ORPHAN_762="{\"number\":762,\"databaseId\":762,\"status\":\"in_progress\",\"conclusion\":null,\"createdAt\":\"2026-08-11T14:17:31Z\",\"updatedAt\":\"$STALE\"},{\"number\":763,\"databaseId\":763,\"status\":\"completed\",\"conclusion\":\"success\",\"createdAt\":\"2026-08-11T14:56:41Z\",\"updatedAt\":\"$FRESH\"}"
 
 run_deploy "an orphaned record is discounted, and said so" \
                                  0 "orphaned" -   "[$ORPHAN_762]"
+
+# The verdict is read off the newest LIVE run, so which run is newest decides GREEN vs NOT SAFE.
+# Nothing tested that until now: every other fixture has one live run, so the sort could not be
+# wrong. Dropping `reverse=True` left the suite 47/47 green while turning a window whose newest
+# run FAILED into `GREEN — safe to merge`. The pair below is ordered newest-last in the list on
+# purpose, so a sort that is absent, reversed, or reading the wrong key cannot pass by accident.
+SORT_WINDOW="{\"number\":805,\"databaseId\":805,\"status\":\"completed\",\"conclusion\":\"success\",\"createdAt\":\"2026-08-11T10:00:00Z\",\"updatedAt\":\"$STALE\"},{\"number\":809,\"databaseId\":809,\"status\":\"completed\",\"conclusion\":\"failure\",\"createdAt\":\"2026-08-11T18:00:00Z\",\"updatedAt\":\"$STALE\"}"
+run_deploy "the newest run decides the verdict, not the list order" \
+                                 1 "#809" "safe to merge" "[$SORT_WINDOW]"
+run_deploy "  ...and an older green cannot mask a newer failure" \
+                                 1 "did not succeed" "#805" "[$SORT_WINDOW]"
 run_deploy "  ...and the verdict names the live run" \
                                  0 "GREEN (#763)" -   "[$ORPHAN_762]"
 run_deploy "  ...and the message names all three clauses, not just the one that tripped" \
@@ -247,6 +262,17 @@ pending_fixture 773 '[]'
 run_deploy "a failed job is never discounted, however stale the record" \
                                  1 "NOT SAFE" "orphaned" \
   "[{\"number\":773,\"databaseId\":773,\"status\":\"in_progress\",\"conclusion\":null,\"updatedAt\":\"$STALE\"}]"
+# TI-77's rule again, and the half that survived round 1: the run carrying the failed job is
+# whichever unsettled run the window happened to contain, NOT necessarily main's latest —
+# deploy.yml scopes concurrency at job level, so runs do not queue as units. Here #801 is
+# main's newest and it succeeded, so "main's last deploy did not succeed, fix main first" would
+# send the investigation to a main that is fine.
+jobs_fixture 799 deploy-production:completed:failure
+pending_fixture 799 '[]'
+run_deploy "a failed job on an older run does not accuse main" \
+                                 1 "check whether it is main's latest" "fix main first" \
+  "[{\"number\":799,\"databaseId\":799,\"status\":\"in_progress\",\"conclusion\":null,\"createdAt\":\"2026-08-11T09:00:00Z\",\"updatedAt\":\"$STALE\"},{\"number\":801,\"databaseId\":801,\"status\":\"completed\",\"conclusion\":\"success\",\"createdAt\":\"2026-08-11T12:00:00Z\",\"updatedAt\":\"$STALE\"}]"
+
 run_deploy "  ...and the failing job is named" \
                                  1 "deploy-production status=completed conclusion=failure" "GREEN" \
   "[{\"number\":773,\"databaseId\":773,\"status\":\"in_progress\",\"conclusion\":null,\"updatedAt\":\"$STALE\"}]"
