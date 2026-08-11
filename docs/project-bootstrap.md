@@ -15,7 +15,6 @@ These artefacts contain no project-specific content and can be dropped straight 
 | `.claude/skills/` (entire directory) | All domain skills (`aggregate-command`, `cdk-stack-update`, `dynamodb-event-append`, `event-modelling`, `projection`) plus generic agent role docs (`.agent/generic/`) |
 | `.claude/skills/.agent/generic/agent-roles.md` | The full pipeline (Scout → Breaker → Pip → Stylist → Hawk → Scribe) with role remits, hand-off rules, RACI table, and blocked-state protocol |
 | `docs/agent-workflow.md` | Thin pointer to `agent-roles.md` — copy verbatim |
-| `.githooks/pre-commit` | `dotnet build` (warnings-as-errors) + `dotnet test` before every commit |
 | `docs/workflow-log.md` | Template only — delete the Phase 0 entry and keep the header and template block |
 
 ## What to copy and adapt
@@ -110,16 +109,14 @@ public async Task HealthEndpointReturnsOk()
 
 Use `xunit.v3.extensions` or similar for `Skip.If`. The spec is **skipped** (not failed) locally when `API_BASE_URL` is absent so the suite stays green without AWS access.
 
-### 6. Pre-commit hook
+### 6. Local checks
 
-```bash
-mkdir .githooks
-# copy .githooks/pre-commit from this repo
-chmod +x .githooks/pre-commit
-git config core.hooksPath .githooks
-```
-
-Document the `git config` step in the README — it is not automatic on clone.
+**Do not add a pre-commit hook.** This repo had one and removed it (2026-08-11): it ran the
+full build and test suite at 10-15 minutes per commit, against ~3 minutes for the same
+checks in CI, so it was four times slower than the thing it protected against. It also only
+ran on a clone that had opted in with `git config core.hooksPath .githooks`, so it was never
+a real gate. Put every check in CI, and run individual suites locally when you want early
+feedback.
 
 ### 7. CI/CD workflows
 
@@ -167,7 +164,6 @@ Do these in order. Each step has a clear pass/fail signal — don't move forward
 5. **CDK synth** — exits 0 with a valid CloudFormation template (publish Lambda first)
 6. **CDK deploy** — `GET <api-gateway-url>/health` returns `200 OK`
 7. **Acceptance spec** — `API_BASE_URL=<url> dotnet test` exits 0
-8. **Pre-commit hook** — `git config core.hooksPath .githooks`, make a test commit, confirm hook runs
 9. **PR workflow** — open a trivial PR, confirm all checks pass in GitHub Actions
 10. **Deploy workflow** — merge to main, confirm deploy and acceptance spec pass in GitHub Actions
 
@@ -180,4 +176,3 @@ Do these in order. Each step has a clear pass/fail signal — don't move forward
 - **`gh` CLI not authenticated.** Run `gh auth status` at the start of any Pip session that will open or merge PRs. On Windows + WSL, `gh` may need to be the Windows binary invoked with `GH_CONFIG_DIR` pointing at the Windows config path.
 - **`cdk bootstrap` not run.** First deploy to a new account/region fails with an asset bucket error. Run `cdk bootstrap` once — it creates the S3 bucket CDK uses for Lambda assets.
 - **GitHub Actions environment not configured.** Workflows reference an environment named `Test`. If it doesn't exist in the repo settings, the job queues indefinitely waiting for approval. Create the environment and add the three AWS secrets before first run.
-- **Pre-commit hook not executable.** `chmod +x .githooks/pre-commit` must be run after copying the file. Git will silently skip a non-executable hook.

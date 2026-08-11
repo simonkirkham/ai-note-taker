@@ -97,8 +97,6 @@ Open `http://localhost:5173`.
 git clone https://github.com/simonkirkham/ai-note-taker.git
 cd ai-note-taker
 
-# Activate the pre-commit hook
-git config core.hooksPath .githooks
 ```
 
 First-time AWS setup (once per account/region):

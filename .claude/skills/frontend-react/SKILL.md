@@ -70,7 +70,7 @@ Load before writing or reviewing any `.tsx` / `.ts` file in `web/src/`. This ski
 **Linting and formatting**
 - ESLint flat config is in `web/eslint.config.js` using `typescript-eslint@^8` — do not add `.eslintrc.*` files.
 - Prettier config is in `web/.prettierrc` (`singleQuote`, `trailingComma: "es5"`, `printWidth: 100`).
-- `lint-staged` runs ESLint + Prettier on staged files via the `.githooks/pre-commit` hook.
+- Run ESLint yourself on changed files (`npm --prefix web run lint`) — there is no pre-commit hook; lint is a hard CI gate.
 
 **Testing**
 - Component unit tests use **Vitest + React Testing Library + jsdom**, kept centrally in `web/src/__tests__/` (one `*.test.tsx` per component). Run with `npm --prefix web test`. Assert on user-visible behaviour, not internals; mock network via the handlers in `web/src/test/`.

@@ -43,7 +43,7 @@ TGZ_SHA_arm64=401942f9c24ed71e4fe71b76c7d638f66d8633575c4016efd2977ce7c28317d0
 BIN_SHA_amd64=9f7dedb4e23f89f2922073d1a6720405b7b520d4f5832ebb96f0d55a2958886c
 BIN_SHA_arm64=446687e63fac45472b0a66bae28975c28678af062670af119c11a7087baf35cc
 
-# Set by .githooks/pre-commit: a local machine that cannot FETCH the binary gets a loud skip
+# For local runs: a machine that cannot FETCH the binary gets a loud skip
 # instead of a blocked commit. NEVER set in CI. It does not rescue a lint finding, and it
 # does not rescue a checksum mismatch — see below.
 OPTIONAL=${LINT_WORKFLOWS_OPTIONAL:-0}
