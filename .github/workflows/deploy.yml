@@ -272,6 +272,9 @@ jobs:
           # escaping pain with the snippet's slashes and braces.
           # NB: the cwr.js loader CDN is GLOBAL (us-east-1 only); only the data-plane
           # endpoint is regional. A client.rum.{region} loader host does not resolve.
+          # SC2016 is suppressed below because the single quotes are deliberate: this is JS,
+          # and the ${...} inside it are JS template placeholders that must NOT reach the shell.
+          # shellcheck disable=SC2016
           node -e '
             const fs = require("fs");
             const id = process.env.RUM_MONITOR_ID;
@@ -627,6 +630,9 @@ jobs:
           # escaping pain with the snippet's slashes and braces.
           # NB: the cwr.js loader CDN is GLOBAL (us-east-1 only); only the data-plane
           # endpoint is regional. A client.rum.{region} loader host does not resolve.
+          # SC2016 is suppressed below because the single quotes are deliberate: this is JS,
+          # and the ${...} inside it are JS template placeholders that must NOT reach the shell.
+          # shellcheck disable=SC2016
           node -e '
             const fs = require("fs");
             const id = process.env.RUM_MONITOR_ID;

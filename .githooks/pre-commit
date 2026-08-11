@@ -23,6 +23,21 @@ if echo "$staged" | grep -Eq '^docs/(phases/phase-(bugs|minor-changes)\.md|techn
   ./scripts/check-doc-ids.sh
 fi
 
+# Workflow lint. Also above the early exit: a workflow-only commit stages nothing under
+# src/, tests/ or web/. CI (.github/workflows/docs-check.yml) is the real gate — this hook
+# only exists per-clone, via `git config core.hooksPath .githooks`. LINT_WORKFLOWS_OPTIONAL
+# lets a machine that cannot fetch the actionlint binary print a loud skip rather than
+# block the commit; CI has no such escape.
+#
+# Invoked via `bash` for the same reason docs-check.yml does it: this repo lives on a
+# Windows/WSL mount with core.fileMode=false, so a chmod +x here is not what gets
+# committed, and `./scripts/...` would be "Permission denied" on a clone with a real
+# filesystem. The mode is set on the blob too; `bash` means losing it cannot break the gate.
+if echo "$staged" | grep -Eq '^\.github/(workflows|actions)/'; then
+  echo "→ workflow lint..."
+  LINT_WORKFLOWS_OPTIONAL=1 bash ./scripts/lint-workflows.sh
+fi
+
 if [ "$backend" = 0 ] && [ "$frontend" = 0 ]; then
   echo "→ no src/tests/web changes staged — skipping build/test gate"
   echo "✓ pre-commit checks passed"
