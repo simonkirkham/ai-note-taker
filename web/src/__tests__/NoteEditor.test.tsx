@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import NoteEditor from '../components/NoteEditor'
 import { ToastProvider } from '../components/ToastProvider'
+import type { LiveTopic } from '../lib/agendaEditorApi'
 import { fireEvent, render, screen, waitFor } from '../test/render'
 
 const resolveImages = vi.fn()
@@ -273,5 +274,72 @@ describe('NoteEditor emoji shortcodes (46-C)', () => {
     const content = await screen.findByTestId('note-content')
     await waitFor(() => expect(content.textContent).toContain(':tada:'))
     expect(content.textContent).not.toContain('🎉')
+  })
+})
+
+// BUG-76 — the header must offer the topics of the note the user is actually looking at. A note
+// containing an image mounts with its image keys stripped (BUG-24), which is a DIFFERENT document
+// from the resolved one: a checklist line whose text follows an image reads as a topic while the
+// image is missing and stops being one when it returns. If the header were not told, clicking a
+// tick would tick a different line, or nothing.
+//
+// BUG-76 filed this as broken — the resolve applies its content with `emitUpdate: false`, so no
+// `update` event fires for the setContent itself. It is NOT broken: `editor.setEditable(true)` on
+// the very next line emits `update` unconditionally (@tiptap/core `setEditable(editable,
+// emitUpdate = true)`), which republishes. This test pins that, because the dependency is
+// incidental — reordering or dropping the setEditable, or a Tiptap change to its default, would
+// silently freeze the header on the stripped reading.
+describe('NoteEditor republishes the agenda after an image resolve (BUG-76)', () => {
+  const KEY = 'notes/note-1/burnup.png'
+  const URL = 'https://bucket.s3.amazonaws.com/notes/note-1/burnup.png?X-Amz-Signature=sig'
+  const BODY = `- [ ] ![Burn-up chart](${KEY}) Budget\n- [ ] Hiring plan`
+
+  beforeEach(() => {
+    resolveImages.mockReset()
+  })
+  afterEach(() => {
+    resolveImages.mockReset()
+  })
+
+  it('publishes the topics of the resolved document, not the stripped one', async () => {
+    let resolve: (urls: Record<string, string>) => void = () => {}
+    resolveImages.mockReturnValue(new Promise((r) => { resolve = r }))
+    const published: (LiveTopic[] | null)[] = []
+
+    function Harness() {
+      const [value, setValue] = useState(BODY)
+      return (
+        <NoteEditor
+          noteId="note-1"
+          value={value}
+          onChange={setValue}
+          onBlur={() => {}}
+          onAgendaTopicsChange={(t) => { published.push(t) }}
+        />
+      )
+    }
+    render(
+      <ToastProvider>
+        <Harness />
+      </ToastProvider>,
+    )
+    await screen.findByTestId('note-content')
+    await waitFor(() => expect(resolveImages).toHaveBeenCalledWith('note-1', [KEY]))
+
+    // With the key stripped the line is plain text, so the header offers two topics.
+    await waitFor(() =>
+      expect(published.at(-1)).toEqual([
+        { text: 'Budget', checked: false },
+        { text: 'Hiring plan', checked: false },
+      ]),
+    )
+
+    resolve({ [KEY]: URL })
+
+    // With the image back the first line is no longer a topic the commands can address. The header
+    // must be told, or it keeps offering "Budget" at index 0 — which now resolves to "Hiring plan".
+    await waitFor(() =>
+      expect(published.at(-1)).toEqual([{ text: 'Hiring plan', checked: false }]),
+    )
   })
 })
