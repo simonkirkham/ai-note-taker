@@ -201,11 +201,15 @@ def classify(r):
     # `per_page=100` because the default page is 30 and this reads the list as if it were the
     # whole set: a 40-job run whose page-2 job is still executing would present 30 finished
     # jobs and be discounted — failing OPEN, the one property this design claims not to have.
-    # `filter=latest` is load-bearing rather than decorative: it is the default, but the
-    # alternative (`all`) returns every ATTEMPT of a re-run, so the stale records of a superseded attempt
-    # job records would be folded in as if current. Both are stated so neither can be dropped
-    # as noise. deploy.yml has 5 jobs and no matrix today; the guard below is what makes that
-    # a fact the script checks rather than an assumption it holds.
+    # `filter=latest` is stated explicitly, and its job is SEPARATE from the completeness check
+    # below rather than part of it. It is the API default, but the alternative (`all`) returns
+    # every ATTEMPT of a re-run — on real re-runs #719/#717 that is total_count 10 against 5 —
+    # so dropping it folds the stale job records of a superseded attempt in as if they were current.
+    # A re-run that passed would then present its earlier failed attempt and be reported as
+    # "did not succeed": the guard becoming the false red it exists to remove.
+    #
+    # deploy.yml has 5 jobs and no matrix today; the completeness check below is what makes
+    # that a fact the script verifies rather than an assumption it holds.
     jobs, err = gh_json(
         "repos/{owner}/{repo}/actions/runs/%s/jobs?per_page=100&filter=latest" % rid)
     if err is not None:
@@ -247,9 +251,16 @@ def classify(r):
     # unreliable — on #762 it froze at 14:24:22Z, 59 seconds BEFORE the last job finished at
     # 14:25:21Z, i.e. it failed EARLY, in the direction that admits a discount sooner than the
     # truth warrants. Keying the staleness test solely on the field that misreports is how a
-    # fix inherits the defect it is fixing. The newest job completion is derived from a
-    # different part of the API and would still have been correct on #762, so requiring both
-    # means a single misreporting clock cannot open the gate on its own.
+    # fix inherits the defect it is fixing.
+    #
+    # But the job clock is BELT-AND-BRACES, not an independent second guard, and the difference
+    # matters to anyone relying on it: GitHub carries the already-successful jobs of a re-run into
+    # the new attempt with their ORIGINAL completed_at (verified on runs #719/#717), so on a
+    # re-run the job clock is old by construction and `updated_at` is doing the work alone.
+    # Where it does bite is a run whose jobs genuinely finished moments ago while the record
+    # has already gone quiet. Clock skew is a one-sided fail-open — a local clock more than
+    # STALE_MINUTES AHEAD discounts live runs — and two GitHub-side timestamps measured against
+    # one local `now` does nothing about that.
     age = age_minutes(r.get("updatedAt"))
     if age is None:
         return "block", "%s: the run record carried no readable updatedAt" % raw
@@ -363,7 +374,7 @@ fi
 # investigation to a main that is fine, which is TI-77's defect exactly. The `case` block below
 # keeps that wording, because there it IS the latest run that finished badly.
 if [[ "$kind" == "JOBFAIL" ]]; then
-  echo "NOT SAFE — $detail. That run has not settled, so it is not discountable; check whether it is main's latest before concluding anything about main$suffix"
+  echo "NOT SAFE — $detail. Not settled, so not discountable; check whether the run named above is main's latest before concluding anything about main$suffix"
   exit 1
 fi
 

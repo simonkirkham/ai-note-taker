@@ -270,7 +270,7 @@ run_deploy "a failed job is never discounted, however stale the record" \
 jobs_fixture 799 deploy-production:completed:failure
 pending_fixture 799 '[]'
 run_deploy "a failed job on an older run does not accuse main" \
-                                 1 "check whether it is main's latest" "fix main first" \
+                                 1 "is main's latest" "fix main first" \
   "[{\"number\":799,\"databaseId\":799,\"status\":\"in_progress\",\"conclusion\":null,\"createdAt\":\"2026-08-11T09:00:00Z\",\"updatedAt\":\"$STALE\"},{\"number\":801,\"databaseId\":801,\"status\":\"completed\",\"conclusion\":\"success\",\"createdAt\":\"2026-08-11T12:00:00Z\",\"updatedAt\":\"$STALE\"}]"
 
 run_deploy "  ...and the failing job is named" \
@@ -344,9 +344,42 @@ run_deploy "a job that finished moments ago blocks even when the record looks st
 # It must block, but it must NOT be reported as a broken main.
 jobs_fixture 782 detect-changes:completed:success deploy-production:completed:cancelled
 pending_fixture 782 '[]'
+# The "must not contain" string is `did not succeed`, NOT `fix main first`. This case asserted
+# the latter until round 3 — and round 2's reword deleted that phrase from the JOBFAIL arm
+# entirely, so the assertion became unfalsifiable and injection H (putting `cancelled` back into
+# FAILED_CONCLUSIONS) flipped nothing, while the PR body claimed it did. A fix in one round
+# silently de-fanging a test written in the previous one is the vacuous-case shape inverted.
+# `did not succeed` is the phrase that actually separates the blocked path from the jobfail
+# path, and it survives rewording of the tail.
 run_deploy "a cancelled job blocks without blaming main" \
-                                 1 "conclusion=cancelled" "fix main first" \
+                                 1 "are not completed+success" "did not succeed" \
   "[{\"number\":782,\"databaseId\":782,\"status\":\"in_progress\",\"conclusion\":null,\"updatedAt\":\"$STALE\"}]"
+
+# action_required was never covered on this path at all. It sits in the same "blocks, but is not
+# a failure verdict" bucket as cancelled, and nothing established that.
+jobs_fixture 784 detect-changes:completed:success deploy-production:completed:action_required
+pending_fixture 784 '[]'
+run_deploy "an action_required job blocks without a failure verdict" \
+                                 1 "conclusion=action_required" "did not succeed" \
+  "[{\"number\":784,\"databaseId\":784,\"status\":\"in_progress\",\"conclusion\":null,\"updatedAt\":\"$STALE\"}]"
+
+# A job reporting `completed` with NO completed_at. Unreachable from real payloads today, but it
+# earns a case where the other unreachable guards do not, because the obvious tidy-up is
+# actively dangerous: `min(a for a in job_ages if a is not None)` reads as harmless defensive
+# cleanup and turns a run whose deploy-production never reported a completion into
+# `GREEN — safe to merge`, exit 0. The guard must refuse to establish the clause, not skip it.
+jobs_fixture 785 detect-changes:completed:success deploy-production:completed:success
+pending_fixture 785 '[]'
+python3 - "$API/785.jobs.json" <<'PY'
+import json, sys
+p = sys.argv[1]
+d = json.load(open(p))
+d["jobs"][1]["completed_at"] = None     # completed, but reported no completion time
+json.dump(d, open(p, "w"))
+PY
+run_deploy "a job with no completed_at cannot establish that the run finished" \
+                                 1 "no readable completed_at" "orphaned" \
+  "[{\"number\":785,\"databaseId\":785,\"status\":\"in_progress\",\"conclusion\":null,\"updatedAt\":\"$STALE\"}]"
 
 # An API that cannot be reached mid-decision must make the gate MORE conservative, never less.
 printf '!FAIL gh: HTTP 503 upstream\n' >"$API/776.jobs.json"
