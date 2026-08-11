@@ -116,10 +116,25 @@ jobs:
         working-directory: web
         run: npm run size
 
+  # TI-71: this is the only job that pulls container images, and every registry it can reach
+  # rate-limits anonymous pulls from a GitHub runner's shared egress IPs. Testcontainers
+  # surfaces a throttled pull as a per-test failure at fixture start, so one registry hiccup
+  # is reported as dozens of independent test failures on a diff containing no C# at all.
+  # Three things below leave no anonymous pull in the test phase: the image comes from AWS's
+  # ECR Public copy rather than Docker Hub, it is pulled once up front instead of once per
+  # test class, and Testcontainers' Ryuk reaper (a second Docker Hub image) is disabled.
   eventstore:
     runs-on: ubuntu-latest
     env:
       DYNAMO_TIMEOUT_SECONDS: "3"
+      # Read by DynamoDbLocalImage.Reference, so the pre-pull step below and the tests cannot
+      # name different images. Its default lives in DynamoDbLocalImage.cs for local runs.
+      DYNAMODB_LOCAL_IMAGE: "public.ecr.aws/aws-dynamodb-local/aws-dynamodb-local:1.21.0"
+      # Ryuk is testcontainers/ryuk on Docker Hub, started automatically to reap containers
+      # a crashed test run leaks. It has no ECR Public mirror, and it earns nothing on an
+      # ephemeral runner that is destroyed after the job — the fixtures dispose their own
+      # containers. Left enabled locally, where leaked containers do outlive the run.
+      TESTCONTAINERS_RYUK_DISABLED: "true"
     steps:
       - uses: actions/checkout@v6
 
@@ -132,6 +147,28 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "10.0.x"
+
+      # Every test class here owns its own container and xUnit runs classes in parallel, so
+      # without this each one issues its own pull of the same image at the same moment. ECR
+      # Public allows one anonymous pull per second per IP, so that burst is throttled even
+      # though the registry is perfectly healthy — observed on this PR's first run as
+      # "toomanyrequests: Rate exceeded", 5 failed / 32 passed. One sequential pull leaves
+      # Testcontainers nothing to fetch (its default pull policy is missing-only), and moves
+      # the remaining failure mode to a single retried step whose error says what went wrong.
+      - name: Pre-pull DynamoDB Local image
+        run: |
+          for attempt in 1 2 3 4 5; do
+            if docker pull "$DYNAMODB_LOCAL_IMAGE"; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 5 ]; then
+              break
+            fi
+            echo "pull attempt $attempt failed; retrying in $((attempt * 5))s"
+            sleep $((attempt * 5))
+          done
+          echo "::error::could not pull $DYNAMODB_LOCAL_IMAGE after 5 attempts"
+          exit 1
 
       - name: Test (EventStore integration)
         run: dotnet test tests/EventStore.Integration/EventStore.Integration.csproj
