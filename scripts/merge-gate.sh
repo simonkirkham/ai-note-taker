@@ -118,11 +118,14 @@ fi
 #
 # stderr is folded in and an empty verdict gets a stand-in, so this line can never be the
 # blank `MAIN DEPLOY:` that blocks a merge while pointing at a FAIL nobody printed.
+# A silent exit 0 is treated as a failure too: an empty verdict establishes nothing, and
+# "no news is good news" is the assumption that would let this gate report GREEN without
+# ever having read main's deploy state.
 deploy=$(bash "$DIR/deploy-status.sh" 2>&1) && deploy_rc=0 || deploy_rc=$?
-if [[ "$deploy_rc" == 0 ]]; then
+if [[ "$deploy_rc" == 0 && -n "$deploy" ]]; then
   echo "MAIN DEPLOY: $deploy"
 else
-  echo "MAIN DEPLOY: ${deploy:-FAIL — deploy-status.sh exited $deploy_rc without printing a verdict; run \`bash scripts/deploy-status.sh\` to see why}"
+  echo "MAIN DEPLOY: ${deploy:-FAIL — deploy-status.sh exited $deploy_rc without printing a verdict; run 'bash scripts/deploy-status.sh' to see why}"
   fail=1
 fi
 

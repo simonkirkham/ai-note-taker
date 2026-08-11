@@ -123,9 +123,10 @@ echo "merge-gate.sh — gate 3"
 printf 'MERGEABLE CLEAN\n' >"$STUB/seq"; echo 0 >"$STUB/calls"
 printf '!FAIL gh: HTTP 401 Bad credentials\n' >"$STUB/runs-fail.json"
 g3=$(GH_SEQ="$STUB/seq" GH_CALLS="$STUB/calls" GH_RUNS="$STUB/runs-fail.json" \
-     PATH="$STUB:$PATH" bash "$DIR/merge-gate.sh" 460 2>&1) || true
+     PATH="$STUB:$PATH" bash "$DIR/merge-gate.sh" 460 2>&1) && g3rc=0 || g3rc=$?
 g3bad=""
-grep -qE '^MAIN DEPLOY: *$' <<<"$g3" && g3bad="blank MAIN DEPLOY line"
+[[ "$g3rc" == 1 ]] || g3bad="exit $g3rc, wanted 1 — the gate must BLOCK, not just print"
+grep -qE '^MAIN DEPLOY: *$' <<<"$g3" && g3bad="$g3bad; blank MAIN DEPLOY line"
 grep -q "could not query GitHub" <<<"$g3" || g3bad="$g3bad; reason not carried to the caller"
 report "gate 3 never blocks on a blank verdict" "$g3bad" "$g3"
 
@@ -137,12 +138,27 @@ cp "$DIR/merge-gate.sh" "$SILENT/"
 printf '#!/usr/bin/env bash\nexit 3\n' >"$SILENT/deploy-status.sh"
 printf 'MERGEABLE CLEAN\n' >"$STUB/seq"; echo 0 >"$STUB/calls"
 g3s=$(GH_SEQ="$STUB/seq" GH_CALLS="$STUB/calls" GH_RUNS="$STUB/runs.json" \
-      PATH="$STUB:$PATH" bash "$SILENT/merge-gate.sh" 460 2>&1) || true
+      PATH="$STUB:$PATH" bash "$SILENT/merge-gate.sh" 460 2>&1) && g3srate=0 || g3srate=$?
 rm -rf "$SILENT"
 g3sbad=""
-grep -qE '^MAIN DEPLOY: *$' <<<"$g3s" && g3sbad="blank MAIN DEPLOY line"
+[[ "$g3srate" == 1 ]] || g3sbad="exit $g3srate, wanted 1 — the gate must BLOCK, not just print"
+grep -qE '^MAIN DEPLOY: *$' <<<"$g3s" && g3sbad="$g3sbad; blank MAIN DEPLOY line"
 grep -q "without printing a verdict" <<<"$g3s" || g3sbad="$g3sbad; no stand-in for the silent failure"
 report "a silent sibling failure still names itself" "$g3sbad" "$g3s"
+
+# And the same sibling exiting 0 silently: an empty verdict establishes nothing, so the gate
+# must not read "no output" as "main is fine".
+SILENT0="$(mktemp -d)"
+cp "$DIR/merge-gate.sh" "$SILENT0/"
+printf '#!/usr/bin/env bash\nexit 0\n' >"$SILENT0/deploy-status.sh"
+printf 'MERGEABLE CLEAN\n' >"$STUB/seq"; echo 0 >"$STUB/calls"
+g3z=$(GH_SEQ="$STUB/seq" GH_CALLS="$STUB/calls" GH_RUNS="$STUB/runs.json" \
+      PATH="$STUB:$PATH" bash "$SILENT0/merge-gate.sh" 460 2>&1) && g3zrc=0 || g3zrc=$?
+rm -rf "$SILENT0"
+g3zbad=""
+[[ "$g3zrc" == 1 ]] || g3zbad="exit $g3zrc, wanted 1 — a blank verdict must never read as GREEN"
+grep -q "MERGE GATE: GREEN" <<<"$g3z" && g3zbad="$g3zbad; reported GREEN having read nothing"
+report "a silent success is not a green main" "$g3zbad" "$g3z"
 
 # scripts/ is committed 100644 (the Windows mount does not carry the exec bit), so a script
 # calling a sibling must go through `bash`. Executing it directly passes on the author's
