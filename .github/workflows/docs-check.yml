@@ -24,7 +24,7 @@ name: Repo Checks
 
 on:
   pull_request:
-    branches: [ main ]
+    branches: [ main, "proof/**" ]
     paths:
       - "docs/phases/phase-bugs.md"
       - "docs/phases/phase-minor-changes.md"
