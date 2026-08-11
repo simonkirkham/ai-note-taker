@@ -29,11 +29,16 @@ public sealed class ConsistencyProbeSelfCheckJourney(BrowserFixture browser) : I
     public async Task InitializeAsync()
     {
         _context = await browser.Browser.NewContextAsync();
+        await _context.Tracing.StartAsync(new() { Screenshots = true, Snapshots = true, Sources = true });
         _page = await _context.NewPageAsync();
         _app = new AppPage(_page, browser.FrontendUrl, browser.E2EAuthToken);
     }
 
-    public async Task DisposeAsync() => await _context.DisposeAsync();
+    public async Task DisposeAsync()
+    {
+        await _context.Tracing.StopAsync(new() { Path = "trace.zip" });
+        await _context.DisposeAsync();
+    }
 
     [E2EFact]
     public async Task Probe_reports_a_gated_read_differently_from_an_ungated_one()
@@ -41,13 +46,19 @@ public sealed class ConsistencyProbeSelfCheckJourney(BrowserFixture browser) : I
         await _app.GotoAsync();
         await _app.ClickNewNoteAsync();
 
-        // A write leaves a consistency token in sessionStorage, so the next read is gated.
+        // A write leaves a consistency token behind; the helper seeds it back before reloading so
+        // the gated arm does not have to win a race with the app's own refetch to exist.
         await _app.AddActionItemAsync($"probe gated {Guid.NewGuid():N}"[..24]);
         var gated = await _app.ObserveActionsReadTokenAsync();
 
         // Re-seed a token, then delete it — the same reload, one manipulation apart.
         await _app.AddActionItemAsync($"probe ungated {Guid.NewGuid():N}"[..24]);
         var ungated = await _app.ObserveActionsReadTokenAsync(dropPersistedTokens: true);
+
+        // Reaching here means both arms observed a real request: ObserveActionsReadTokenAsync
+        // THROWS when it recorded no read, rather than returning a sentinel the comparisons below
+        // would happily accept. That distinction is the difference between a self-check and a
+        // self-check that can go green having proved nothing.
 
         // Evidence rides the THROWN message: xUnit swallows Console output on a passing test and
         // never flushes a hung one.

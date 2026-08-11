@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using Microsoft.Playwright;
 
 namespace Browser.E2E.Pages;
@@ -12,43 +11,59 @@ namespace Browser.E2E.Pages;
 // own comment admitted the ambiguity. Every explanation of the flake forks on exactly that
 // distinction, so the evidence could never settle it.
 //
-// What closes it: the REQUEST's outbound `If-Consistent-With`. That header is only observable from
-// inside a Playwright route — `page.Response`'s `request.Headers` is the browser's pre-route view
-// and does not show a header the test itself injected, so recording has to happen where the
-// injection happens.
+// What closes it: the REQUEST's outbound `If-Consistent-With`, recorded from inside a Playwright
+// route — the point at which the header the test injects and the header the app sends are both
+// visible.
 //
-// The third state matters as much as the first two. A request that is issued and never answered —
-// aborted by the next `ReloadAsync()` before the server's 8 s gate cap elapsed — looks identical to
-// "no request" in a response-only log, and it is the shape a per-attempt timeout SHORTER than the
-// server gate produces. Recording issue and answer separately is what makes it visible.
+// The third and fourth states matter as much as the first two. A request that is issued and never
+// answered, or one ABORTED by the next `ReloadAsync()` before the server's 8 s gate cap elapses,
+// looks identical to "no request" in a response-only log — and abort is the shape a per-attempt
+// timeout shorter than the server gate produces. Recording issue, answer and abort separately is
+// what makes them visible.
 //
 // Safety: records only the route's own header dictionary and the response's synchronous
 // `.Status`/`.Headers`. Never a response body — `TextAsync()` on a response aborted by a reload
 // loop never resolves and hung the suite for 44 min (PR #291).
+//
+// Concurrency: Playwright raises Response/RequestFailed on its dispatcher thread while the test
+// thread reads the log. Every field of an entry is mutable and several are read together, so a
+// per-field `volatile` would not be enough — one lock guards the whole list instead, and no lock is
+// ever held across an await.
 public sealed class ConsistencyProbe
 {
     public const string Ungated = "<none>";
 
+    private const int MaxEntries = 200;
+
     private sealed class Entry
     {
         public int Seq;
+        public string Label = "";
         public string Method = "";
         public string Url = "";
         public string Outbound = Ungated;
+        public IRequest? Request;
         public int? Status;
         public string? ConsistencyHeader;
+        public string? Failure;
+        public bool Answered => Status is not null || Failure is not null;
     }
 
-    private readonly ConcurrentQueue<Entry> entries = new();
+    private readonly List<Entry> entries = new();
+    private readonly object gate = new();
     private int nextSeq;
 
     // Call from a route handler. Returns the header set to continue with — the request's own
     // headers, plus `If-Consistent-With` when `injectToken` is supplied. Playwright's
     // ContinueAsync REPLACES the whole header set, so it must start from the request's own
     // headers or Authorization is dropped.
-    public async Task<Dictionary<string, string>> RecordRequestAsync(IRoute route, string? injectToken)
+    //
+    // `label` names the helper that installed the route, so one journey's cards reads and its
+    // actions reads stay distinguishable in a single dump.
+    public async Task<Dictionary<string, string>> RecordRequestAsync(IRoute route, string? injectToken, string label)
     {
-        var headers = await route.Request.AllHeadersAsync();
+        // The IPC round-trip happens BEFORE the lock — never hold it across an await.
+        var headers = await route.Request.AllHeadersAsync().ConfigureAwait(false);
         var outbound = headers.TryGetValue("if-consistent-with", out var existing) && !string.IsNullOrWhiteSpace(existing)
             ? existing
             : null;
@@ -59,73 +74,127 @@ public sealed class ConsistencyProbe
             outbound = injectToken;
         }
 
-        entries.Enqueue(new Entry
+        var entry = new Entry
         {
-            Seq = Interlocked.Increment(ref nextSeq),
+            Label = label,
             Method = route.Request.Method,
             Url = route.Request.Url,
             Outbound = outbound ?? Ungated,
-        });
+            Request = route.Request,
+        };
+
+        lock (gate)
+        {
+            entry.Seq = ++nextSeq;
+            entries.Add(entry);
+            // Bounded like the sibling logs in AppPage: a page in a fetch loop must not grow this
+            // without limit, and the dump only ever reads the tail.
+            if (entries.Count > MaxEntries) entries.RemoveRange(0, entries.Count - MaxEntries);
+        }
 
         return new Dictionary<string, string>(headers);
     }
 
-    // Call from the page's Response event. Correlated by (method, url) against the oldest
-    // still-unanswered request rather than by object identity, which Playwright does not promise
-    // to preserve across the route/response boundary. Reads only synchronous properties.
+    // Call from the page's Response event. Reads only synchronous properties.
     public void RecordResponse(IResponse response)
     {
-        var match = entries.FirstOrDefault(e =>
-            e.Status is null &&
-            e.Method == response.Request.Method &&
-            string.Equals(e.Url, response.Url, StringComparison.Ordinal));
-        if (match is null) return;
+        var request = response.Request;
+        lock (gate)
+        {
+            var match = Find(request, request.Method, response.Url);
+            if (match is null) return;
+            match.Status = response.Status;
+            match.ConsistencyHeader = response.Headers.TryGetValue("x-consistency", out var c) ? c : null;
+        }
+    }
 
-        match.Status = response.Status;
-        match.ConsistencyHeader = response.Headers.TryGetValue("x-consistency", out var c) ? c : null;
+    // Call from the page's RequestFailed event. A reload ABORTS the in-flight gated read, and
+    // Playwright then raises RequestFailed and never Response. Closing the entry here is what stops
+    // it absorbing the NEXT iteration's response — which would erase the aborted state entirely and
+    // report the later, possibly differently-gated read against this entry.
+    public void RecordFailure(IRequest request, string? failure)
+    {
+        lock (gate)
+        {
+            var match = Find(request, request.Method, request.Url);
+            if (match is null) return;
+            match.Failure = string.IsNullOrEmpty(failure) ? "aborted" : failure;
+        }
+    }
+
+    // Reference identity first — Playwright hands the same IRequest to the route and to the
+    // Response/RequestFailed events, so this is exact. The method+URL fallback exists only for the
+    // case where it is not, and is deliberately narrow: oldest unanswered wins.
+    private Entry? Find(IRequest request, string method, string url)
+    {
+        foreach (var e in entries)
+            if (!e.Answered && ReferenceEquals(e.Request, request)) return e;
+
+        foreach (var e in entries)
+            if (!e.Answered && e.Method == method && string.Equals(e.Url, url, StringComparison.Ordinal))
+                return e;
+
+        return null;
     }
 
     // The verdict per read. This is the whole point of the probe: `ungated` and `gated-fresh` were
     // previously the same observation.
     private static string Verdict(Entry e)
     {
-        if (e.Outbound == Ungated)
-            return e.Status is null ? "UNGATED-unanswered" : "UNGATED";
-        if (e.Status is null)
-            return "GATED-UNANSWERED";
+        var gated = e.Outbound != Ungated ? "GATED" : "UNGATED";
+        if (e.Failure is not null) return $"{gated}-ABORTED({e.Failure})";
+        if (e.Status is null) return $"{gated}-UNANSWERED";
+        if (e.Outbound == Ungated) return "UNGATED";
         return e.ConsistencyHeader == "stale" ? "GATED-stale" : "GATED-fresh";
     }
 
-    public IReadOnlyList<string> Lines(int take = 12) =>
-        entries.OrderByDescending(e => e.Seq).Take(take).OrderBy(e => e.Seq)
-            .Select(e =>
-                $"#{e.Seq} {e.Method} {Verdict(e)} sent={e.Outbound} " +
-                $"-> {(e.Status is null ? "NO RESPONSE" : e.Status.ToString())} {e.Url}")
-            .ToList();
+    private static string Render(Entry e) =>
+        $"#{e.Seq} [{e.Label}] {e.Method} {Verdict(e)} sent={e.Outbound} " +
+        $"-> {(e.Status is null ? "no status" : e.Status.ToString())} {e.Url}";
 
-    public int Count(Func<string, bool> verdictMatches) =>
-        entries.Count(e => verdictMatches(Verdict(e)));
+    public IReadOnlyList<string> Lines(int take = 12)
+    {
+        lock (gate)
+            return entries.TakeLast(take).Select(Render).ToList();
+    }
 
-    // The single-line summary a failure message leads with: how many reads of each kind happened.
-    public string Summary() =>
-        $"reads: gated-fresh={Count(v => v == "GATED-fresh")} " +
-        $"gated-stale={Count(v => v == "GATED-stale")} " +
-        $"gated-unanswered={Count(v => v == "GATED-UNANSWERED")} " +
-        $"ungated={Count(v => v.StartsWith("UNGATED", StringComparison.Ordinal))}";
+    public string Summary()
+    {
+        lock (gate)
+        {
+            var v = entries.Select(Verdict).ToList();
+            return $"reads: gated-fresh={v.Count(x => x == "GATED-fresh")} " +
+                   $"gated-stale={v.Count(x => x == "GATED-stale")} " +
+                   $"gated-unanswered={v.Count(x => x == "GATED-UNANSWERED")} " +
+                   $"gated-aborted={v.Count(x => x.StartsWith("GATED-ABORTED", StringComparison.Ordinal))} " +
+                   $"ungated={v.Count(x => x.StartsWith("UNGATED", StringComparison.Ordinal))}";
+        }
+    }
 
     public string Describe(int take = 12) =>
         $"{Summary()} | " + string.Join(" ;; ", Lines(take));
 
-    // Self-check support: the outbound token recorded for the most recent read matching `urlPart`,
-    // or null when no such read was recorded. Used by the probe's own journey to prove it reports
-    // a gated and an ungated read differently.
-    public string? LastOutboundFor(string urlPart) =>
-        entries.OrderByDescending(e => e.Seq)
-            .FirstOrDefault(e => e.Url.Contains(urlPart, StringComparison.OrdinalIgnoreCase))
-            ?.Outbound;
+    // Self-check support: the outbound token recorded for the most recent GET matching `urlPart`,
+    // or null when no such read was recorded — the caller must treat null as a failure, never as a
+    // reportable value, or a probe that observed nothing is indistinguishable from one that
+    // discriminated. GET only: a POST to the same path (adding an action) matches the URL too, and
+    // would otherwise be reported as the read's gating.
+    public string? LastOutboundFor(string urlPart)
+    {
+        lock (gate)
+        {
+            for (var i = entries.Count - 1; i >= 0; i--)
+            {
+                var e = entries[i];
+                if (e.Method == "GET" && e.Url.Contains(urlPart, StringComparison.OrdinalIgnoreCase))
+                    return e.Outbound;
+            }
+            return null;
+        }
+    }
 
     public void Clear()
     {
-        while (entries.TryDequeue(out _)) { }
+        lock (gate) entries.Clear();
     }
 }

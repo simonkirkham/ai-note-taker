@@ -37,6 +37,9 @@ public sealed class AppPage
     // BUG-79: every write token seen, in order. See the capture site for why.
     private readonly System.Collections.Concurrent.ConcurrentQueue<string> writeTokenLog = new();
 
+    // BUG-79: the latest ACTION-write token, for the probe's self-check to seed deterministically.
+    private volatile string? latestActionToken;
+
     // BUG-79: the gated-vs-ungated discriminator. The response header alone cannot tell a gated
     // read that came back fresh from a read that carried no token at all, because the server sets
     // `X-Consistency` only when STALE — so both look identical. The probe records the request's
@@ -72,8 +75,17 @@ public sealed class AppPage
                 // from another. The sequence makes that checkable instead of assumed. Note ids
                 // only — no titles or content (meeting notes are sensitive).
                 CappedEnqueue(writeTokenLog, token);
+                // The action-write token, kept separately so the probe's self-check can seed it
+                // back deterministically instead of racing the app's own refetch for it.
+                if (r.Url.Contains("/actions", StringComparison.OrdinalIgnoreCase))
+                    latestActionToken = token;
             }
         };
+        // BUG-79: a reload ABORTS the in-flight gated read, and Playwright then raises
+        // RequestFailed and never Response. Without this the aborted entry stays open and absorbs
+        // the NEXT iteration's response — erasing the abort and mis-attributing a later, possibly
+        // differently-gated read to it.
+        page.RequestFailed += (_, r) => Probe.RecordFailure(r, r.Failure);
         page.Console += (_, m) => CappedEnqueue(consoleLog, $"[{m.Type}] {m.Text}");
         page.PageError += (_, e) => CappedEnqueue(pageErrors, e);
     }
@@ -260,31 +272,61 @@ public sealed class AppPage
         }
         finally
         {
-            await page.UnrouteAsync("**/notes/cards*", RegateCardsRead);
+            await SafeUnrouteAsync("**/notes/cards*", RegateCardsRead);
         }
     }
 
     // Re-inject the latest note-write consistency token on a cards read so the server gate waits for the
     // projector (see the token capture in the ctor). Playwright's ContinueAsync(Headers) REPLACES the
     // whole header set, so start from the request's own headers and add ours — never drop Authorization.
-    private async Task RegateCardsRead(IRoute route)
-    {
-        // BUG-79: record before continuing. The injected token was previously invisible to the
-        // failure message except as "the token we would have injected" — which is not evidence the
-        // request carried it. Recording inside the route captures what actually goes on the wire.
-        var headers = await Probe.RecordRequestAsync(route, latestNoteToken);
-        await route.ContinueAsync(new() { Headers = headers });
-    }
+    private Task RegateCardsRead(IRoute route) => RecordAndContinueAsync(route, latestNoteToken, "cards");
 
     // BUG-79: the actions read is gated by the APP (the token is persisted in sessionStorage and
     // replayed by gatedRead), not by the test — so there is nothing to inject, only to observe.
     // A recording route is the only place the outbound header is visible.
-    private async Task RecordActionsRead(IRoute route)
+    private Task RecordActionsRead(IRoute route) => RecordAndContinueAsync(route, injectToken: null, "actions");
+
+    // Record the outbound consistency token, then continue. Two rules hold this together:
+    //
+    // (1) The request is ALWAYS continued, even if recording throws. `AllHeadersAsync` is an IPC
+    //     round-trip that fails when the page is navigating or closed, and an un-continued route
+    //     hangs the request until a navigation timeout — in a suite with a 44-minute-hang
+    //     precedent (PR #291), an observer must never be able to block what it observes. The
+    //     recorder's own failure is logged rather than swallowed.
+    // (2) With nothing to inject, continue UNCHANGED. Replacing the header set on a read that
+    //     needed no change is observer effect on the very measurement being taken.
+    private async Task RecordAndContinueAsync(IRoute route, string? injectToken, string label)
     {
-        await Probe.RecordRequestAsync(route, injectToken: null);
-        // Continue UNCHANGED — this route observes, it must not alter what the app sends, or the
-        // recording would be of the probe's own behaviour rather than the app's.
-        await route.ContinueAsync();
+        Dictionary<string, string>? headers = null;
+        try
+        {
+            headers = await Probe.RecordRequestAsync(route, injectToken, label);
+        }
+        catch (Exception ex)
+        {
+            CappedEnqueue(consoleLog, $"[probe] recording failed for {label}: {ex.GetType().Name} {ex.Message}");
+        }
+
+        if (headers is null || string.IsNullOrEmpty(injectToken))
+        {
+            await route.ContinueAsync();
+            return;
+        }
+        await route.ContinueAsync(new() { Headers = headers });
+    }
+
+    // Removing a route must never replace an in-flight exception. These run in `finally` blocks on
+    // the deadline path, where the page or context may already be gone — and the exception being
+    // unwound is the evidence-carrying one this whole change exists to produce.
+    private async Task SafeUnrouteAsync(string pattern, Func<IRoute, Task> handler)
+    {
+        try
+        {
+            await page.UnrouteAsync(pattern, handler);
+        }
+        catch (PlaywrightException)
+        {
+        }
     }
 
     // Hang-proof failure diagnostics for the cards list: reads only already-resolved page state plus
@@ -755,7 +797,7 @@ public sealed class AppPage
         }
         finally
         {
-            await page.UnrouteAsync("**/actions*", RecordActionsRead);
+            await SafeUnrouteAsync("**/actions*", RecordActionsRead);
         }
     }
 
@@ -776,6 +818,10 @@ public sealed class AppPage
                     "() => { for (const k of Object.keys(sessionStorage)) " +
                     "if (k.startsWith('ryw.')) sessionStorage.removeItem(k); }");
             }
+            else
+            {
+                await SeedActionTokenAsync();
+            }
 
             await page.ReloadAsync();
             await page.GetByTestId("actions-pill").ClickAsync(new() { Timeout = 15000 });
@@ -787,12 +833,54 @@ public sealed class AppPage
             while ((outbound = Probe.LastOutboundFor("/actions")) is null && DateTime.UtcNow < deadline)
                 await page.WaitForTimeoutAsync(100);
 
-            return outbound ?? "<no actions read observed>";
+            // Observing NOTHING must be a failure here, never a value the caller can compare.
+            // A probe that recorded no read would otherwise be indistinguishable from one that
+            // discriminated correctly, and the self-check would go green having proved nothing —
+            // the single failure mode a self-check is not allowed to have.
+            if (outbound is null)
+            {
+                throw new Exception(
+                    $"no actions read was recorded within 15s, so the probe observed nothing and " +
+                    $"this run proves nothing. page.Url={page.Url} | {Probe.Describe()}");
+            }
+
+            return outbound;
         }
         finally
         {
-            await page.UnrouteAsync("**/actions*", RecordActionsRead);
+            await SafeUnrouteAsync("**/actions*", RecordActionsRead);
         }
+    }
+
+    // Put the action write's consistency token back where the app keeps it, so the gated arm of the
+    // self-check is DETERMINISTIC rather than a race the test can lose.
+    //
+    // Left alone, the token is often gone before the reload: adding an action invalidates the
+    // actions query, the popover is open so it refetches at once, and `gatedRead` CLEARS the token
+    // on the first non-stale response. Whether it survives then depends on whether the reload
+    // aborts that refetch first — a coin flip that lands the wrong way exactly when the projector
+    // is warm and fast. Losing it would fail the self-check on a red herring, in the shared deploy
+    // gate, blocking every session.
+    //
+    // The scope key mirrors `actionsScope` in `web/src/api/actions.ts` (`actions:<noteId>`) and the
+    // `ryw.latest.` prefix in `web/src/api/consistencyTokens.ts`.
+    private async Task SeedActionTokenAsync()
+    {
+        var token = latestActionToken;
+        if (string.IsNullOrEmpty(token))
+            throw new Exception("no action-write consistency token was captured, so the gated arm " +
+                                "of the probe self-check cannot be set up. Add an action first.");
+
+        var match = System.Text.RegularExpressions.Regex.Match(
+            page.Url, @"/notes/([0-9a-fA-F-]{36})");
+        if (!match.Success)
+            throw new Exception($"expected to be on a note screen to seed the action token, but " +
+                                $"page.Url={page.Url}");
+
+        var key = $"ryw.latest.actions:{match.Groups[1].Value}";
+        await page.EvaluateAsync(
+            "([k, v]) => sessionStorage.setItem(k, v)",
+            new[] { key, token });
     }
 
     public string DescribeProbe() => Probe.Describe();
@@ -1200,7 +1288,7 @@ public sealed class AppPage
         }
         finally
         {
-            await page.UnrouteAsync("**/notes/cards*", RegateCardsRead);
+            await SafeUnrouteAsync("**/notes/cards*", RegateCardsRead);
         }
     }
 
