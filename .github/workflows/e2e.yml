@@ -89,7 +89,7 @@ jobs:
     # A hang here holds the shared `deploy` group for the job's whole lifetime, and the
     # default is 360 minutes. E2EFact caps each TEST at 120s, but deploy #592's 44-minute
     # hang was in teardown, which that cap does not bound. Sized to the input by `plan`.
-    timeout-minutes: ${{ fromJSON(needs.plan.outputs.timeout) }}
+    timeout-minutes: ${{ fromJSON(inputs.runs) * 4 + 15 }}
     environment:
       name: Test
     # Job-level, exactly as deploy-test sets it, so BOTH callers of clear-test-data.py inherit
