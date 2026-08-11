@@ -1,9 +1,9 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
+import { clearToken, setOnRefresh, setOnUnauthorized, setToken } from '../auth/tokenStore'
 import RecordControl from '../components/RecordControl'
 import type { UseTranscriptionResult } from '../hooks/useTranscription'
-import { clearToken, setOnRefresh, setOnUnauthorized, setToken } from '../auth/tokenStore'
 import { server } from '../test/setup'
 
 // BUG-77. A recording finishes, the analysis never happens, and the only thing the user is told is
