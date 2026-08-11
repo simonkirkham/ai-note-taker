@@ -21,11 +21,19 @@ const LOCAL_MAX_THREADS = Math.max(1, Math.min(2, availableParallelism() - 1))
 // `Routing.test.tsx > Back returns to the home screen` runs to 5780 ms with a median
 // of 3966 ms — i.e. it exceeds the default ceiling on its own, and sits at 79% of it
 // even when it passes. Same test, unloaded and alone: 293 ms.
-// 12000 = worst observed (5780) x2, rounded up. Not chosen for comfort: the runs that
-// produced these figures were taken while the pre-commit hook still ran full suites on
-// every commit across parallel sessions, so ambient load here was higher than it will
-// be from now on. That makes this generous rather than tight, which is the right
-// direction for a budget whose only job is to catch a genuine hang.
+// 12000 = worst observed (5780) x2, rounded up.
+// IT IS SIZED ON THE FAILING FILE, NOT ON THE SUITE — the distinction matters to whoever
+// reads this next. `staleDetailRefetch.test.tsx` and `staleCardsRefetch.test.tsx` have
+// slower slowest-tests than Routing even unloaded (2455 ms / 2437 ms vs 1125 ms) and are
+// equally work-bound (no fake timers, no sleeps). At the inflation Routing showed (~5.1x)
+// they would land near 12500 ms and EXCEED this budget. That is an extrapolation — neither
+// has been measured under contention — and sizing a budget off an unmeasured multiple is
+// the guess-wearing-a-measurement's-clothes this investigation refused twice already. So
+// the number stays at the measured one. If either file starts failing, measure IT under
+// contention and raise this to its worst x2; do not raise it pre-emptively.
+// Pulling the other way: these figures were taken while the pre-commit hook still ran full
+// suites on every commit across parallel sessions, so ambient load here was higher than it
+// will be from now on.
 // CI keeps the 5000 ms default deliberately — it runs the frontend job alone on native
 // Linux, so a real hang still fails there on the tighter budget.
 const LOCAL_TEST_TIMEOUT_MS = 12_000
