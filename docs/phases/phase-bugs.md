@@ -17,7 +17,8 @@ Ordered by severity, then by id.
 | Item | Summary | Status | Depends on |
 |------|---------|--------|------------|
 | BUG-77 | You finish a recording, the note is never analysed, and the only thing you are told is "Analysis failed. Please try again." The message is often wrong about what actually went wrong. | Open | TI-67, BUG-33 |
-| BUG-79 | Something you just created — an action item, or a note — can be missing after you reload, and stay missing. Rare, but this is the one guarantee the app is built to make. | Open | — |
+| BUG-79 | An action item you add in the first second or two after making a note is silently thrown away for good, and while that happens everything else you do for the next half minute stops updating. | Open | — |
+| BUG-81 | Typing a title on a brand-new note and clicking Save can delete the note instead — the button changes from Save to Cancel under your cursor, and Cancel throws a new note away. | Open | — |
 | BUG-70 | Clicking "+ New Note" while recording and then choosing to keep recording still leaves a blank, untitled note behind on your home list. | Open — held behind 51-C | BUG-54, 51-C |
 | BUG-73 | Signing out while an on-device transcript is still finishing can park you for up to an hour with no way to leave — a real problem on a shared machine. | Open | BUG-55 |
 | BUG-75 | Reopening a note while its on-device transcript is still finishing shows no transcript, and nothing appears until you navigate again or reload. | Open | BUG-72 |
@@ -56,41 +57,70 @@ What killed it: the session was never invalid. `CompleteTranscription` succeeded
 
 ---
 
-## BUG-79 — A fresh write can stay unreadable after a reload
+## BUG-79 — An action added just after creating a note is discarded, and stalls everything behind it
 
-**Severity:** High (deploy-gate flake bar). **Status:** Open. Raised 2026-08-10 from E2E run [#164](https://github.com/simonkirkham/ai-note-taker/actions/runs/31406829746).
+**Severity:** High — silent, permanent loss of a user's action item, plus a ~30 s freeze of every other read. **Status:** Open, cause CONFIRMED 2026-08-11 from the deployed test environment's own logs. Raised 2026-08-10 from E2E run [#164](https://github.com/simonkirkham/ai-note-taker/actions/runs/31406829746).
 
-**Why it matters:** the failing journey exists specifically to prove read-your-writes on the deployed async projector — the guarantee that what you just did survives a reload. When it fails, the user's write appears lost.
+**What the user gets:** they make a note and immediately add an action to it. The action never appears again — not after a reload, not ever. For the next ~30 seconds nothing else they do updates either.
 
-**Symptom:** `ActionReadYourWritesJourney.Added_action_appears_after_reload` failed — add an action, reload, re-open the actions popover, and the action never appeared. The helper reloads in a loop for a full **30 s deadline**, re-sending the consistency token and re-gating each time, and still never saw it (33 s, then threw). This is not a lost 200 ms race. 29 of 30 journeys passed in the same run.
+**Confirmed cause.** The component that builds read models refuses to record an action against a note whose own read model has not been written yet, and it does so by throwing. `ProjectionUpdater.ApplyActionItemAddedAsync` (`src/Api/Projections/ProjectionUpdater.cs:379`) raises `NoteNotFoundException` when `noteDetailStore.GetAsync` returns null. The note and the action are separate streams and DynamoDB Streams give no ordering between different keys, so when the action is added within about a second of the note, the action's record can arrive first. The throw fails the whole Lambda batch, so the stream retries it, and every other stream sharing that shard waits behind it.
 
-**Not attributable to any code change** — the only change in flight was `.github/workflows/e2e.yml` ([TI-69]); no `src/`, `web/` or `tests/` file moved.
+**The measured sequence** (E2E test account 739754704263, `eu-west-2`, all timestamps read from CloudWatch on 2026-08-11):
 
-**Frequency:**
-
-| Where | Result |
+| Time (UTC, 2026-08-10) | What happened |
 |---|---|
-| Deploy gate, actions | `scripts/flake-watch.sh 745 ActionReadYourWrites` — **10 clean of 10** across #745-#754, every attempt |
-| Outside the gate, actions | 1 hit in 2 runs. The rerun ([#166](https://github.com/simonkirkham/ai-note-taker/actions/runs/31408911704), same filter) passed in **4 s** |
-| Outside the gate, notes | 1 hit in 10 ([#169](https://github.com/simonkirkham/ai-note-taker/actions/runs/31414289871), peer session) |
+| 16:05:00.233 | note `ea24f4e8…` created |
+| 16:05:00.814 | action `9896cded…` added — 581 ms later |
+| 16:05:01.237 → 16:05:02.988 | **5 consecutive** `Projector batch failed (1 streams)`, every one `NoteNotFoundException: Note ea24f4e8… not found` |
+| 16:05:31.188 | the note stream finally folded, **`lag 30834.918ms`** — the shard had been blocked for 30.8 s |
+| — | `Projector applied action#9896cded…` **never appears**, across a 7-minute search. The action was never folded at all |
+| 16:05:33 | the E2E journey gave up after its 30 s deadline |
 
-It surfaced on the first run outside the deploy gate, which is also the first time the E2E suite has ever run outside it. A 4 s pass against a 33 s failure suggests the bad case is not a slow projector but a read that never gates at all.
+**This is the cross-key-order hazard the row already suspected — but on the WRITE side, not the read gate.** CLAUDE.md's guardrail warns about *gating a read* on one stream while reading a projection built from another. The same absence of ordering bites here while *building* the projection, and the consequence is worse than a slow read: a throw poisons the batch, the retry cannot succeed (the note it needs is itself stuck behind the same failed batch), and the action is dropped.
 
-**Not action-specific.** `OpenNoteTabsJourney.OpenTwoNotes_SwitchBetweenTabs_CloseOne` failed the same way on a just-created **note** that never reached the cards list inside 30 s. The shared symptom is a fresh write that never becomes readable.
+**Fix direction:** the action fold must tolerate a not-yet-folded note instead of throwing. Either seed the action against the note id alone and backfill the denormalised title/workspace when the note folds, or re-drive the note's stream first from within the action fold. Whatever the shape, a missing prerequisite projection must not fail the batch — that converts an ordering race into permanent loss plus a shared stall.
 
-**The good evidence:** the probe captured `injectedToken=note#8b7cdd87-…@5` present client-side, five `/notes/cards` reads all `200`, none flagged stale, and the card absent from a rendered list that did contain its sibling.
+**Ruled out, with the evidence** (each was a live hypothesis before this investigation):
 
-**Do NOT read that as "the read never gated."** `AppPage.cs:50-53` sets the label `none/fresh` when the header is *absent*, and its own comment says absent means **fresh-or-ungated**. The probe cannot currently tell those apart, so the gated-vs-ungated question is open; treating the label as proof would repeat [TI-69]'s mistake of inferring a cause from a signal that cannot carry it.
+| Ruled out | Why |
+|---|---|
+| The card/action list read is eventually consistent or truncated | `DynamoDbNoteCardListStore.QueryAllAsync` paginates on `LastEvaluatedKey` and passes `ConsistentRead = true` |
+| CloudFront strips `If-Consistent-With` before the origin sees it | the `/api/*` behaviour uses `OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER`, so every viewer header is forwarded |
+| CloudFront served a cached list | the same behaviour uses `CachePolicy.CACHING_DISABLED` |
+| The read-your-writes gate is broken | the gate logged `RYW gate fresh` for the streams involved, and the projector's recorded position is only advanced *after* every projection for that stream is written |
+| The reads were never gated | the probe now records the outbound token per request and the self-check proves it discriminates — see below |
 
-**Strongest lead, and it is testable:** the injected token is a **note-stream** token (`note#…@5`) while the failing read is the **card-list** projection, folded from a different key. The CLAUDE.md guardrail names this exact hazard — *DynamoDB Streams don't guarantee cross-key order, so gating a read on stream A's position while reading a projection built from stream B is a race.* A gate reporting caught-up on the note stream while the card fold lags produces precisely this: a fresh-looking 200 with the data missing, indefinitely.
+**The probe was fixed first, and its discrimination is proved, not asserted.** The old diagnostic reported only the response header, which the server sets on a stale read *only* — so a gated-and-fresh read and a read carrying no token at all were byte-identical evidence, and the row correctly refused to draw a conclusion from it. `ConsistencyProbe` now records the request's outbound `If-Consistent-With` (visible only from inside a Playwright route) plus a third state for a read issued and never answered. `ConsistencyProbeSelfCheckJourney` manufactures a gated and an ungated read one manipulation apart and fails if they report the same: **green twice** on the real deployed app (E2E run [#175](https://github.com/simonkirkham/ai-note-taker/actions/runs/31542436234)), and **red** with the exact "cannot tell them apart" message when the probe was deliberately blinded to the outbound header (run [#177](https://github.com/simonkirkham/ai-note-taker/actions/runs/31542658092), branch `proof/bug-79-probe-blind`).
 
-**Next step:** make the probe distinguish gated from ungated — emit the request's outbound consistency token, not just the response header. Until then no cause can be confirmed.
+**Frequency, measured 2026-08-11:** `gh workflow run e2e.yml --ref slice/bug-79-read-your-writes -f runs=10` over `ActionReadYourWrites` + `OpenNoteTabs` — **10 passed, 0 failed** (run [#178](https://github.com/simonkirkham/ai-note-taker/actions/runs/31542845086)). The window is narrow: the note fold has to lose the race by a few hundred milliseconds, so a clean 10 does not clear the defect, it only bounds how often the race is lost.
 
-**Diagnostic gap found alongside:** `AppPage.AssertActionVisibleAfterReloadAsync` swallows every `PlaywrightException` until the deadline, then lets the last one propagate bare — no page URL, no rendered state, no token value. That is the pattern [e2e-gate-hang-and-the-diagnostic-that-caused-it](../learnings/e2e-gate-hang-and-the-diagnostic-that-caused-it.md) says to replace with an evidence-carrying `throw`, and it is why this row cannot yet name the cause.
-
-**Reproduce:** `gh workflow run e2e.yml -f runs=10 -f filter=ActionReadYourWritesJourney` — possible for the first time, per [TI-69].
+**Retracted from the original write-up:** "a read that never gates at all" as the leading explanation, and the reading of the earlier note-case evidence as a read-your-writes failure. That case was a different defect entirely — see [BUG-81].
 
 ---
+
+## BUG-81 — Clicking Save on a new note can delete it
+
+**Severity:** High — silent, unrecoverable loss of a note the user just wrote, on the single most ordinary action there is. **Status:** Open, strongly supported by the deployed environment's logs; the final step is observed by inference, not directly. Split out of [BUG-79] on 2026-08-11.
+
+**What the user gets:** they make a note, type a title, and click Save. The note is deleted. Nothing warns them, and it does not come back.
+
+**How it happens.** The Save button and the Cancel button occupy the same place in the note header, and which one is rendered depends on whether the note looks empty (`NoteView.tsx:710`, keyed off `hasContent`). For a brand-new note, Cancel does not merely go back — it deletes the note (`handleCancel`, `NoteView.tsx:685-693`). The note momentarily looks empty right after a successful rename: the displayed title is `titleDraft ?? detail?.title ?? initialTitle` (`NoteView.tsx:191`), the rename's success handler clears `titleDraft`, and the note-detail read that was already in flight when the rename happened comes back carrying the note as it was *before* the rename — with no title — and overwrites the cache the rename had patched (`useRenameNoteDetail`, `useNoteDetailMutations.ts:31-39`, which never cancels the in-flight query). For that window the header shows Cancel where Save was, and a click already on its way lands on Cancel.
+
+**The measured sequence** (E2E test account, from CloudWatch on 2026-08-11; E2E run [#169](https://github.com/simonkirkham/ai-note-taker/actions/runs/31414289871)):
+
+| Time (UTC, 2026-08-10) | What happened |
+|---|---|
+| 17:30:55.37 → .55 | note `8b7cdd87…` created, assigned a workspace, given a date |
+| 17:30:55.928 | `NoteRenamed` — the title is saved |
+| 17:30:56.068 | the note-detail read returns `outcome=Fresh result=Hit` — but it was issued at ~17:30:55.86, *before* the rename, so its body is the untitled note |
+| 17:30:56.367 | **`NoteDeleted`** — from a browser request (`HeadlessChrome` user agent), 299 ms later |
+| 17:31:35.7 | the journey gave up looking for a card that no longer existed |
+
+**Why the delete can only have come from Cancel.** The test never asks for a delete, and only two notes existed in that window — both this journey's. The app has exactly two paths to a delete: the Delete button, which is rendered **only when the note is non-empty**, and Cancel, which is rendered **only when it is empty** and which deletes a new note. A delete demonstrably happened, so the click landed on Cancel, which requires the note to have been rendering as empty at that instant.
+
+**What is NOT directly observed:** the button swap itself. Confirming it means catching the control's identity at click time — record the `data-testid` actually hit, or assert no `DELETE /notes/{id}` fires during a save. That check does not exist yet and should come with the fix.
+
+**Fix direction:** two independent problems, and both are worth closing. (1) A destructive action must never occupy the same position as a non-destructive one, and must never appear under a cursor already moving toward the other — keep Cancel and Save in fixed, distinct positions, and never let a note flip to "empty" while a rename is settling. (2) The rename must cancel the in-flight note-detail query (`qc.cancelQueries`) before patching the cache, or an older response will keep overwriting a newer local truth. The second is the narrower fix; the first is what stops the class.
 
 ## BUG-70 — "+ New Note" while recording leaves an orphan note behind
 
