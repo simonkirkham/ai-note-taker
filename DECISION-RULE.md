@@ -49,3 +49,45 @@ alone closed it.
 
 Veto triggered, and the reordered arm's durations no better than as-is. Then the honest output
 is a corrected TI-61 row plus a `testTimeout` change, and no claim that the race was removed.
+
+---
+
+# Result of the deciding run (22:01Z) — reordering ABANDONED
+
+Veto **passed**: `safe=true` on both transitions, ~60 synchronous pathname assertions held.
+The premise was sound. The benefit was absent.
+
+| Test | as-is median | reordered median | verdict |
+| --- | --- | --- | --- |
+| `Back returns to the home screen` | 1760.5 ms | 1881.5 ms | **+121 ms worse** |
+| `Forward reopens the note` | 1083.5 ms | 1109.0 ms | **+25 ms worse** |
+
+Bar was >= 500 ms *reduction* on both. Both moved the wrong way, so the rule abandons it.
+The head-to-head probe agreed: poll `backWait=165 ms` vs mutation `backWait=199 ms` — the
+poll-driven wait was the **faster** one, the opposite of the proposed mechanism. The 1735 ms
+`backPath` that motivated it came from a run carrying three other sessions' suites; alone on
+the box the same step is 165 ms. It was contention, not the wake mechanism.
+
+**That run also does not count as a green:** 0 failures in 60 as-is tests. It never reached the
+failure regime (ratio1 1.06 settle / 1.46 end, against 2.28 with three foreign suites when it
+did fail). A green that never had the failing condition proves nothing.
+
+# Pre-registered sizing rule for the timeout fix — written BEFORE that run
+
+There is no race left to remove: every transition is already awaited, and the one available
+restructuring is measurably slower. The failing part is a fixed wall-clock deadline on a box
+whose effective speed varies 10-56x. A per-test timeout exists to catch hangs, not to assert
+machine speed.
+
+- **Inconclusive guard, checked first.** If the worst observed contended navigation duration is
+  **< 2500 ms**, the run failed to reach the failure regime again — report it inconclusive and
+  size nothing from it. A budget derived from a run that was never contended is a guess wearing
+  a measurement's clothes.
+- **`testTimeout`** = worst observed contended per-test duration **x2**, rounded up to a round
+  number.
+- **`asyncUtilTimeout`** = worst observed contended single-assertion wait **x2**, rounded up.
+- **Local only**, mirroring the existing `LOCAL_MAX_THREADS` precedent in `vitest.config.ts`.
+  CI runs the frontend job alone and is fast; it keeps the defaults, so a genuine hang still
+  fails CI on the current budget.
+- Both arms **pin their own budgets** so the candidate's raised values cannot leak into the
+  control and quietly make it pass.

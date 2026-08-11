@@ -1,10 +1,9 @@
 import { configure } from '@testing-library/react'
 
-// Candidate arm: generous budgets so nothing times out and the TRUE contended
-// duration is observable. Sizing the shipped value needs the real number, which a
-// run that times out structurally cannot produce.
-vi.setConfig({ testTimeout: 60000 })
-configure({ asyncUtilTimeout: 15000 })
+// Control arm: pin TODAY's effective defaults explicitly, so the comparison arm's
+// raised values cannot leak into this one and quietly make the control pass.
+vi.setConfig({ testTimeout: 5000 })
+configure({ asyncUtilTimeout: 1000 })
 
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'

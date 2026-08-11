@@ -39,9 +39,9 @@ loadline() {
 
 rm -f "$T"/_ti61load*.test.tsx "$T"/_ti61fix*.test.tsx
 for i in $(seq 1 "$COPIES"); do
-  sed "s/Routing (21-A)/Routing ASIS$i/" "$T/Routing.test.tsx" > "$T/_ti61load$i.test.tsx"
+  sed "s/Routing (21-A)/Routing ASIS$i/" "${ASIS_SRC:-$T/Routing.test.tsx}" > "$T/_ti61load$i.test.tsx"
 done
-echo "ASIS-COPIES-FROM $(cd $ROOT && git hash-object web/src/__tests__/Routing.test.tsx)"
+echo "ASIS-COPIES-FROM $(cd $ROOT && git hash-object ${ASIS_SRC:-web/src/__tests__/Routing.test.tsx})"
 # Second arm, same run, same contention: a within-run control beats comparing windows.
 if [ "${FIX_ARM:-0}" = 1 ]; then
   for i in $(seq 1 "$COPIES"); do
