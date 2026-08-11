@@ -28,7 +28,7 @@ import { useToast } from "./components/toastContext";
 import { UNFILED_ID } from "./constants";
 import { findNode, findPath } from "./folderTree";
 import { RecordingSessionProvider } from "./hooks/recordingSession";
-import { useGuardLeave, useRecordingNoteId } from "./hooks/recordingSessionContext";
+import { useClearSessionLeave, useGuardLeave, useRecordingNoteId } from "./hooks/recordingSessionContext";
 import {
   useCreateFolder,
   useRenameFolder,
@@ -193,6 +193,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
   // 51-C review follow-up: the session's own leave guard, used whenever the recording note is
   // not the one mounted. See requestLeave below.
   const guardLeave = useGuardLeave();
+  const clearSessionLeave = useClearSessionLeave();
   // Titles follow the note-cards list so a rename re-derives; the title captured at open
   // time covers a note too new to be in the list yet.
   //
@@ -313,12 +314,17 @@ function AppContent({ signOut }: { signOut: () => void }) {
     // every one of these callers.
     const guard = leaveGuardRef.current;
     if (guard) {
+      // Stand the session's confirm down first. Without this both can be live at once: the
+      // session raises one while the recording note is off-screen, the user then navigates TO
+      // that note (unguarded, by design), asks again, and the note's guard raises a second on
+      // top — two banners, and the stale one still holding an armed sign-out.
+      clearSessionLeave();
       guard(proceed, destination, opts);
       return;
     }
     if (guardLeave(proceed, destination, opts?.awaitTranscript ?? false)) return;
     proceed();
-  }, [guardLeave]);
+  }, [guardLeave, clearSessionLeave]);
 
   function handleSelectTab(noteId: string) {
     if (noteId === activeNoteId) return;

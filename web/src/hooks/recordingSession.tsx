@@ -55,6 +55,23 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
     session.status === 'finalising'
   const recordingNoteId = isCapturing ? boundNoteId : null
 
+  // Stop is not the end of the work. The audio upload and the speaker-labelling run on
+  // afterwards — minutes, on a long meeting — and both read shared settings back out across
+  // an await. A second note starting mid-chain overwrites those settings, and the FIRST
+  // meeting then silently skips its automatic write-up, shows its progress on the second
+  // note's screen, and polls the wrong note for its refined transcript.
+  //
+  // So a second note waits. Decided with the human 2026-08-11, over the alternative of
+  // keeping each meeting's state apart: that means getting all 29 pieces of state in
+  // `useTranscription` right and keeping them right, and being wrong about any one is silent.
+  // Waiting makes the overlap impossible instead of handled. The cost is visible and small —
+  // you cannot start a new meeting until the last one has finished saving.
+  //
+  // The SAME note is deliberately still allowed: 18-C's Continue / Re-record resumes into the
+  // same note, nothing crosses between meetings, and blocking it would break that path.
+  const isSaving = session.recordingUpload === 'uploading' || session.diarization === 'refining'
+  const busyNoteId = isCapturing || isSaving ? boundNoteId : null
+
   // `useTranscription` closes over noteId in every callback (deps `[noteId]`), so starting in
   // the same tick as the claim would bind the capture to the PREVIOUS id — committing the
   // transcript to the wrong note, or to ''. So the request is parked and fired from an effect,
@@ -70,7 +87,7 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
     // a state production cannot reach, but one the refusal permanently locks up if it ever
     // does, because nothing can then acquire the binding. The question being asked is "is
     // another note holding a live capture?", so ask that.
-    if (recordingNoteId !== null && recordingNoteId !== noteId) return
+    if (busyNoteId !== null && busyNoteId !== noteId) return
 
     // Already bound to this note — start now rather than via the ref. Routing this through
     // the effect strands it: `setBoundNoteId` to the value it already holds takes React's
@@ -85,7 +102,7 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
 
     pendingStartRef.current = { noteId, args }
     setBoundNoteId(noteId)
-  }, [recordingNoteId, boundNoteId, session])
+  }, [busyNoteId, boundNoteId, session])
 
   useEffect(() => {
     const pending = pendingStartRef.current
@@ -122,17 +139,21 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
 
   const guardLeave = useCallback(
     (proceed: () => void, destination: string, awaitTranscript: boolean) => {
-      // Nothing capturing → nothing to protect. Note this asks about the CAPTURE, not the
-      // binding: a note that has stopped and is still committing does not block a sign-out,
-      // because its commit was already dispatched.
-      if (!isCapturing) return false
+      // Nothing in flight → nothing to protect.
+      //
+      // Gated on BUSY, not on capturing. An earlier version asked only "is it recording?",
+      // reasoning that a stopped note's commit was already dispatched. That is true of the
+      // transcript POST but not of the audio upload or the speaker-labelling, which are
+      // dispatched after awaits — so signing out mid-upload lost the audio file and the
+      // speaker labels with no warning at all.
+      if (busyNoteId === null) return false
       if (leavingRef.current) return true
       pendingLeaveRef.current = proceed
       pendingAwaitTranscriptRef.current = awaitTranscript
       setLeaveDestination(destination)
       return true
     },
-    [isCapturing],
+    [busyNoteId],
   )
 
   // A capture that ends on its own while the confirm is up must not strand the user: drop the
@@ -154,9 +175,32 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
   useEffect(() => {
     if (isCapturing) return
     const proceed = pendingLeaveRef.current
+    if (!proceed) return
     pendingLeaveRef.current = null
-    proceed?.()
-  }, [isCapturing])
+    const awaitTranscript = pendingAwaitTranscriptRef.current
+    pendingAwaitTranscriptRef.current = false
+    // Pressing Stop while the confirm is up ends the capture, which lands here. It must still
+    // honour the wait — dropping it signed the user out mid-save and lost the transcript, on
+    // the one destination that exists to prevent exactly that. The earlier version ignored
+    // `awaitTranscript` here entirely; it was copied from NoteView, where the pending leave
+    // dies with the note and so was far harder to reach.
+    if (!awaitTranscript) {
+      proceed()
+      return
+    }
+    void (async () => {
+      // Yield first: this is an effect body, and a synchronous setState here is the
+      // react-hooks/set-state-in-effect gate, which tsc and vitest both miss.
+      await Promise.resolve()
+      setFinishingTranscript(true)
+      try {
+        await session.awaitCommit()
+      } finally {
+        setFinishingTranscript(false)
+      }
+      proceed()
+    })()
+  }, [isCapturing, session])
 
   const confirmLeave = useCallback(async () => {
     if (leavingRef.current) return
@@ -187,6 +231,9 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
     proceed?.()
   }, [session])
 
+  // C2: the session's confirm must stand down the moment the note's own guard takes over,
+  // or both render at once — two red banners stacked, and the stale one still holding an
+  // armed sign-out that the effect above would then fire.
   const cancelLeave = useCallback(() => {
     pendingLeaveRef.current = null
     pendingAwaitTranscriptRef.current = false
@@ -223,8 +270,16 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
   // value — it is here for shape, not for identity. Consumers must not assume referential
   // stability from it.
   const value = useMemo<RecordingSessionValue>(
-    () => ({ boundNoteId, recordingNoteId, session, startIn, guardLeave }),
-    [boundNoteId, recordingNoteId, session, startIn, guardLeave],
+    () => ({
+      boundNoteId,
+      recordingNoteId,
+      busyNoteId,
+      session,
+      startIn,
+      guardLeave,
+      clearSessionLeave: cancelLeave,
+    }),
+    [boundNoteId, recordingNoteId, busyNoteId, session, startIn, guardLeave, cancelLeave],
   )
 
   return (

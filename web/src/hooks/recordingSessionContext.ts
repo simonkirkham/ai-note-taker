@@ -14,7 +14,12 @@ export type StartArgs = Parameters<UseTranscriptionResult['startRecording']>
  * some OTHER note is holding it. Optional on the flag so a caller that predates the app-scoped
  * session (and every test that passes a bare `UseTranscriptionResult`) still satisfies it.
  */
-export type NoteRecording = UseTranscriptionResult & { otherNoteRecording?: boolean }
+export type NoteRecording = UseTranscriptionResult & {
+  /** Another note is capturing, or still finishing its save, so this note cannot start. */
+  otherNoteRecording?: boolean
+  /** Which of those it is, so the control can say so rather than just refusing. */
+  otherNoteBusyReason?: 'recording' | 'saving'
+}
 
 export interface RecordingSessionValue {
   /**
@@ -29,6 +34,13 @@ export interface RecordingSessionValue {
    * marker out of the tab bar.
    */
   recordingNoteId: string | null
+  /**
+   * The note that is capturing OR still finishing its save — uploading the audio, running the
+   * speaker-labelling. Wider than `recordingNoteId`, because Stop is not the end of the work.
+   * This is what stops a second note starting; see the provider for why waiting is safer than
+   * overlapping.
+   */
+  busyNoteId: string | null
   session: UseTranscriptionResult
   /** Claim the session for `noteId` and start it. */
   startIn: (noteId: string, ...args: StartArgs) => void
@@ -42,6 +54,11 @@ export interface RecordingSessionValue {
    * this slice creates.
    */
   guardLeave: (proceed: () => void, destination: string, awaitTranscript: boolean) => boolean
+  /**
+   * Stand the session's confirm down. Called when the mounted note's own guard takes the
+   * leave instead, so the two can never be on screen together.
+   */
+  clearSessionLeave: () => void
 }
 
 export const RecordingSessionContext = createContext<RecordingSessionValue | null>(null)
@@ -58,6 +75,12 @@ export function useRecordingNoteId(): string | null {
 export function useGuardLeave(): RecordingSessionValue['guardLeave'] {
   const ctx = useContext(RecordingSessionContext)
   return ctx?.guardLeave ?? (() => false)
+}
+
+/** Stand the session's confirm down — see `clearSessionLeave`. */
+export function useClearSessionLeave(): () => void {
+  const ctx = useContext(RecordingSessionContext)
+  return ctx?.clearSessionLeave ?? (() => {})
 }
 
 // What a note that does NOT own the session sees. Every field is the idle value, so a note off
@@ -87,8 +110,12 @@ export function useNoteRecording(noteId: string): NoteRecording {
   const owns = ctx?.boundNoteId === noteId
   // The lockout follows the CAPTURE. Keying it off the binding instead is what left the app
   // recordable-once: the binding never clears, so every other note stayed disabled forever.
-  const otherNoteRecording =
-    ctx != null && ctx.recordingNoteId !== null && ctx.recordingNoteId !== noteId
+  const otherNoteRecording = ctx != null && ctx.busyNoteId !== null && ctx.busyNoteId !== noteId
+  const otherNoteBusyReason: 'recording' | 'saving' | undefined = !otherNoteRecording
+    ? undefined
+    : ctx.recordingNoteId !== null
+      ? 'recording'
+      : 'saving'
   const startIn = ctx?.startIn
   const session = ctx?.session
 
@@ -98,7 +125,12 @@ export function useNoteRecording(noteId: string): NoteRecording {
   )
 
   return useMemo(
-    () => ({ ...(owns && session ? session : IDLE), startRecording, otherNoteRecording }),
-    [owns, session, startRecording, otherNoteRecording],
+    () => ({
+      ...(owns && session ? session : IDLE),
+      startRecording,
+      otherNoteRecording,
+      otherNoteBusyReason,
+    }),
+    [owns, session, startRecording, otherNoteRecording, otherNoteBusyReason],
   )
 }

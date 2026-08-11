@@ -31,6 +31,14 @@ export default function RecordControl({
   const { status, transcript, elapsedSeconds, error, startRecording, stopRecording, reset } =
     transcription;
   const otherNoteRecording = transcription.otherNoteRecording ?? false;
+  // Say which it is. "Another note is recording" is wrong and confusing when the other note
+  // has already stopped and is only finishing its save — the user sees nothing recording
+  // anywhere and is told something is.
+  const unavailableReason = !otherNoteRecording
+    ? undefined
+    : transcription.otherNoteBusyReason === 'saving'
+      ? "Still saving the last recording — you can start again once it's done"
+      : "Another note is recording — stop it first";
 
   const [hasRecordedThisSession, setHasRecordedThisSession] = useState(false);
   const [isAnalysing, setIsAnalysing] = useState(false);
@@ -190,7 +198,7 @@ export default function RecordControl({
           // says what to do about it; it deliberately does not name the holding note, which
           // this component has no way to resolve — the bar's marker is where you look for that.
           disabled={otherNoteRecording}
-          title={otherNoteRecording ? "Another note is recording — stop it first" : undefined}
+          title={unavailableReason}
         >
           <span className={styles.recordDot} aria-hidden="true" />
           Record

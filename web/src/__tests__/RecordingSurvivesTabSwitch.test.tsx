@@ -39,22 +39,33 @@ vi.mock('../components/LazyNoteEditor', () => ({
   ),
 }))
 
+// Set by the mocked hook so a test can end the background save on demand.
+let finishUpload: () => void = () => {}
+
 vi.mock('../hooks/useTranscription', () => ({
   useTranscription: (): UseTranscriptionResult => {
     const [status, setStatus] = useState<TranscriptionStatus>('idle')
     const [transcript, setTranscript] = useState('')
+    const [upload, setUpload] = useState<'idle' | 'uploading' | 'uploaded' | 'failed'>('idle')
+    finishUpload = () => setUpload('uploaded')
     return {
       status,
       transcript,
       elapsedSeconds: 0,
       error: undefined,
-      recordingUpload: 'idle',
+      recordingUpload: upload,
       diarization: 'idle',
       startRecording: () => {
         setStatus('recording')
         setTranscript('live words')
+        setUpload('idle')
       },
-      stopRecording: () => setStatus('stopped'),
+      // Stop does NOT mean finished: the audio upload and the speaker-labelling run on
+      // afterwards, for minutes on a long meeting. Modelling that is the whole point here.
+      stopRecording: () => {
+        setStatus('stopped')
+        setUpload('uploading')
+      },
       awaitCommit: async () => {},
       reset: () => {
         setStatus('idle')
@@ -78,6 +89,7 @@ vi.mock('../components/RecordControl', () => ({
       <div data-testid="mock-status">{transcription.status}</div>
       <div data-testid="mock-transcript">{transcription.transcript}</div>
       <div data-testid="mock-other-recording">{String(transcription.otherNoteRecording ?? false)}</div>
+      <div data-testid="mock-upload">{transcription.recordingUpload}</div>
     </>
   ),
 }))
@@ -246,7 +258,11 @@ describe('51-C — a recording keeps running while I read another note', () => {
   // page load, and re-recording the same note did nothing at all. Both passed every spec
   // above, because every spec above stops at "it is recording".
   describe('after a recording stops', () => {
-    it('lets another note record', async () => {
+    // Stop is not the end. The audio upload and the speaker-labelling keep running, and they
+    // read shared settings across each pause — so a second note starting mid-chain overwrites
+    // the first one's, and the first meeting silently loses its automatic write-up. Waiting
+    // makes that impossible rather than handled.
+    it('will not let another note record while the last one is still saving', async () => {
       renderApp()
       await openBothAndRecordInStandup()
       await userEvent.click(screen.getByTestId('mock-stop-recording'))
@@ -254,8 +270,25 @@ describe('51-C — a recording keeps running while I read another note', () => {
       await userEvent.click(within(tab('Client call')).getByTestId('open-note-tab-label'))
       await waitFor(() => expect(window.location.pathname).toBe('/w/__default__/notes/note-2'))
 
-      // The lock follows the live capture, not the note the session is still bound to.
-      expect(screen.getByTestId('mock-other-recording')).toHaveTextContent('false')
+      expect(screen.getByTestId('mock-other-recording')).toHaveTextContent('true')
+      await userEvent.click(screen.getByTestId('mock-start-recording'))
+
+      expect(screen.getByTestId('mock-status')).toHaveTextContent('idle')
+      expect(screen.queryByTestId('open-note-tab-recording')).toBeNull()
+    })
+
+    it('lets another note record once the save has finished', async () => {
+      renderApp()
+      await openBothAndRecordInStandup()
+      await userEvent.click(screen.getByTestId('mock-stop-recording'))
+      await userEvent.click(within(tab('Client call')).getByTestId('open-note-tab-label'))
+      await waitFor(() => expect(window.location.pathname).toBe('/w/__default__/notes/note-2'))
+
+      finishUpload()
+
+      await waitFor(() =>
+        expect(screen.getByTestId('mock-other-recording')).toHaveTextContent('false'),
+      )
       await userEvent.click(screen.getByTestId('mock-start-recording'))
       await waitFor(() => expect(screen.getByTestId('mock-status')).toHaveTextContent('recording'))
       expect(within(tab('Client call')).getByTestId('open-note-tab-recording')).toBeInTheDocument()
