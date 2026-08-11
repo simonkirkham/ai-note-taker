@@ -34,6 +34,13 @@ public sealed class AppPage
     // the Response event fires on a Playwright dispatcher thread, read on the test thread.
     private volatile string? latestNoteToken;
 
+    // BUG-79: the gated-vs-ungated discriminator. The response header alone cannot tell a gated
+    // read that came back fresh from a read that carried no token at all, because the server sets
+    // `X-Consistency` only when STALE — so both look identical. The probe records the request's
+    // OUTBOUND `If-Consistent-With` (visible only from inside a route) alongside the response, and
+    // separately marks a read that was issued and never answered. See ConsistencyProbe.
+    public ConsistencyProbe Probe { get; } = new();
+
     public AppPage(IPage page, string baseUrl, string? authToken = null)
     {
         this.page = page;
@@ -41,16 +48,13 @@ public sealed class AppPage
         this.authToken = authToken;
         page.Response += (_, r) =>
         {
+            Probe.RecordResponse(r);
             if (r.Url.Contains("/notes/cards", StringComparison.OrdinalIgnoreCase))
             {
-                // Record the X-Consistency response header (fresh vs stale) alongside the URL. This is
-                // the missing signal that disambiguates the flake: a `stale` here means the read WAS
-                // gated but the projector is genuinely behind the cap; its absence on an empty list
-                // means the read was ungated (raced). Header read is synchronous — never the body.
-                // The server sets X-Consistency only on a STALE read (NoteHandlers), so an absent
-                // header means fresh-or-ungated — labelled "none/fresh"; the injectedToken field below
-                // disambiguates (with the re-gate the read is always gated, so absent ⟹ fresh).
-                var consistency = r.Headers.TryGetValue("x-consistency", out var c) ? c : "none/fresh";
+                // Kept as the raw response-side log. It cannot distinguish gated-fresh from
+                // ungated on its own (the server emits X-Consistency only when stale) — that is
+                // what `Probe` is for, and both are surfaced so the two views can be compared.
+                var consistency = r.Headers.TryGetValue("x-consistency", out var c) ? c : "absent";
                 cardsRequestLog.Enqueue($"{r.Status} X-Consistency={consistency} {r.Url}");
             }
             // Capture the latest note-write token so the re-gate can wait on it after a reload.
@@ -256,15 +260,22 @@ public sealed class AppPage
     // whole header set, so start from the request's own headers and add ours — never drop Authorization.
     private async Task RegateCardsRead(IRoute route)
     {
-        var token = latestNoteToken;
-        if (string.IsNullOrEmpty(token))
-        {
-            await route.ContinueAsync();
-            return;
-        }
-        var headers = await route.Request.AllHeadersAsync();
-        headers["if-consistent-with"] = token;
+        // BUG-79: record before continuing. The injected token was previously invisible to the
+        // failure message except as "the token we would have injected" — which is not evidence the
+        // request carried it. Recording inside the route captures what actually goes on the wire.
+        var headers = await Probe.RecordRequestAsync(route, latestNoteToken);
         await route.ContinueAsync(new() { Headers = headers });
+    }
+
+    // BUG-79: the actions read is gated by the APP (the token is persisted in sessionStorage and
+    // replayed by gatedRead), not by the test — so there is nothing to inject, only to observe.
+    // A recording route is the only place the outbound header is visible.
+    private async Task RecordActionsRead(IRoute route)
+    {
+        await Probe.RecordRequestAsync(route, injectToken: null);
+        // Continue UNCHANGED — this route observes, it must not alter what the app sends, or the
+        // recording would be of the probe's own behaviour rather than the app's.
+        await route.ContinueAsync();
     }
 
     // Hang-proof failure diagnostics for the cards list: reads only already-resolved page state plus
@@ -286,10 +297,14 @@ public sealed class AppPage
         }
 
         var recentRequests = cardsRequestLog.TakeLast(5).ToList();
-        return $"TI-42: card '{title}' not in cards list after {timeoutMs}ms. " +
-               $"page.Url={url} | injectedToken={latestNoteToken ?? "<none>"} | " +
+        return $"TI-42/BUG-79: card '{title}' not in cards list after {timeoutMs}ms. " +
+               $"page.Url={url} | tokenAvailableToInject={latestNoteToken ?? "<none>"} | " +
                $"rendered cards({cardTitles.Count})=[{string.Join(" | ", cardTitles)}] | " +
-               $"last cards requests=[{string.Join(" ;; ", recentRequests)}]";
+               // BUG-79: the outbound token per read, and whether each read was ever answered.
+               // `tokenAvailableToInject` above is what the test HELD, not what the request CARRIED
+               // — reading it as proof the read was gated is the mistake this line exists to stop.
+               $"{Probe.Describe()} | " +
+               $"last cards responses=[{string.Join(" ;; ", recentRequests)}]";
     }
 
     // BUG-38: hang-proof page-state diagnostic for a cold-start element-never-visible failure. Reads
@@ -696,24 +711,91 @@ public sealed class AppPage
     // GET /notes/{id}/actions carries the sessionStorage-persisted action token, so the gate waits
     // for the async projector and the action appears deterministically. Reload-loop so a still-
     // warming projector re-polls (each reload re-sends the token and re-gates).
+    //
+    // BUG-79: this helper failed with a bare `Locator expected to be visible` and nothing else —
+    // no page URL, no rendered list, and above all no way to tell whether the read it was waiting
+    // on had been gated on the projector or had raced it (E2E run #164). The probe route records
+    // every actions read's outbound consistency token, and the deadline path now throws that
+    // evidence instead of letting Playwright's opaque timeout escape.
     public async Task AssertActionVisibleAfterReloadAsync(string description, int timeoutMs = 30000)
     {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (true)
+        await page.RouteAsync("**/actions*", RecordActionsRead);
+        try
         {
-            await page.ReloadAsync();
-            try
+            var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+            while (true)
             {
-                // CHANGE-27: a reload closes the actions popover — re-open it before asserting.
-                await page.GetByTestId("actions-pill").ClickAsync(new() { Timeout = 2500 });
-                await Assertions.Expect(page.GetByTestId("actions-list").GetByText(description))
-                    .ToBeVisibleAsync(new() { Timeout = 2500 });
-                return;
-            }
-            catch (PlaywrightException) when (DateTime.UtcNow < deadline)
-            {
+                await page.ReloadAsync();
+                try
+                {
+                    // CHANGE-27: a reload closes the actions popover — re-open it before asserting.
+                    await page.GetByTestId("actions-pill").ClickAsync(new() { Timeout = 2500 });
+                    await Assertions.Expect(page.GetByTestId("actions-list").GetByText(description))
+                        .ToBeVisibleAsync(new() { Timeout = 2500 });
+                    return;
+                }
+                catch (PlaywrightException) when (DateTime.UtcNow < deadline)
+                {
+                }
+                catch (PlaywrightException ex)
+                {
+                    throw new Exception(await DescribeMissingActionAsync(description, timeoutMs), ex);
+                }
             }
         }
+        finally
+        {
+            await page.UnrouteAsync("**/actions*", RecordActionsRead);
+        }
+    }
+
+    // BUG-79 probe self-check. Reload once and report the outbound consistency token the APP put on
+    // its actions read — `ConsistencyProbe.Ungated` when it sent none. `dropPersistedTokens` deletes
+    // the app's stored read-your-writes tokens first, which manufactures a known-ungated read: the
+    // control that proves the probe reports the two states differently rather than reporting the
+    // same thing twice. Without a control, a probe that always answered "gated" would look correct.
+    public async Task<string> ObserveActionsReadTokenAsync(bool dropPersistedTokens = false)
+    {
+        await page.RouteAsync("**/actions*", RecordActionsRead);
+        try
+        {
+            Probe.Clear();
+            if (dropPersistedTokens)
+            {
+                await page.EvaluateAsync(
+                    "() => { for (const k of Object.keys(sessionStorage)) " +
+                    "if (k.startsWith('ryw.')) sessionStorage.removeItem(k); }");
+            }
+
+            await page.ReloadAsync();
+            await page.GetByTestId("actions-pill").ClickAsync(new() { Timeout = 15000 });
+
+            // Wait for a read to have been RECORDED, not merely for the popover to open: the
+            // recording happens in the route, which fires independently of the DOM.
+            var deadline = DateTime.UtcNow.AddSeconds(15);
+            string? outbound;
+            while ((outbound = Probe.LastOutboundFor("/actions")) is null && DateTime.UtcNow < deadline)
+                await page.WaitForTimeoutAsync(100);
+
+            return outbound ?? "<no actions read observed>";
+        }
+        finally
+        {
+            await page.UnrouteAsync("**/actions*", RecordActionsRead);
+        }
+    }
+
+    public string DescribeProbe() => Probe.Describe();
+
+    // Hang-proof failure diagnostics for the actions list. Reads already-resolved page state plus
+    // the probe's request log — never a response body.
+    private async Task<string> DescribeMissingActionAsync(string description, int timeoutMs)
+    {
+        var rendered = await SafeTextAsync(page.GetByTestId("actions-list"));
+        var empty = await page.GetByTestId("actions-empty").CountAsync() > 0 ? "yes" : "no";
+        return $"BUG-79: action '{description}' not in the actions list after {timeoutMs}ms. " +
+               $"page.Url={page.Url} | actions-empty-shown={empty} | rendered=[{rendered}] | " +
+               $"{Probe.Describe()}";
     }
 
     // Phase 43-F/G: the agenda is DERIVED from the note body, so the coverage pill only moves once
