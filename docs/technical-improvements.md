@@ -93,6 +93,7 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 | TI-80 | **A broken workflow committed straight to `main` still reaches everyone unchecked — the new lint only ever runs on pull requests** | 🔲 **Open** — raised 2026-08-11 (reviewer, PR #464 / [TI-70]). [TI-70] closes the PR route; this is the other one. `docs-check.yml` declares `on: pull_request` only, and `CLAUDE.md` routes doc edits directly to `main`, so a workflow file changed by a direct push is linted by nothing — the same 162-red-X outcome [TI-69] produced. **Fix:** add `push: branches: [ main ]` with the same `paths:` list. ~6s per qualifying push, runs parallel to `doc-ids`, never gates a deploy (`docs-check.yml` is not in the deploy path). It also makes [TI-70] row 7 self-checking forever rather than once. **Verify with:** push the `${{ fromJSON(inputs.runs) * 4 + 15 }}` line straight to a branch that mimics `main` and watch the check go red. |
 | TI-79 | **An agent waiting for a build or a test run to finish can hang forever without saying so, and stops answering anyone trying to reach it** | 🔲 **Open** — raised 2026-08-11 ([TI-70] session). Detail in [TI-79](#ti-79-a-wait-loop-that-scans-process-cmdlines-can-never-exit) below. |
 | TI-78 | **A browser fault that happens late in a long session still goes unreported, and nothing says so** | 🔲 **Open** — raised 2026-08-11 ([TI-67] review). The injected RUM snippet in `.github/workflows/deploy.yml` never sets `sessionEventLimit`, so the client default of **200** applies: `canRecord()` is `session.record && !isLimitExceeded()`, and `isLimitExceeded()` is `session.eventCount >= 200`. With `telemetries: ["errors","performance","http"]` at `sessionSampleRate: 1`, HTTP and performance events alone can exhaust that inside one 30-minute session — after which **every** custom event is dropped silently (`sessionLimitExceeded++`, nothing logged). This lands hardest on exactly the signals [TI-67] just enabled, because faults tend to happen *after* someone has been working a while, and it is the same self-concealing shape TI-67 existed to fix. **Fix:** set `sessionEventLimit` explicitly in the snippet (0 = unlimited), and confirm by reading an event back late in a session rather than by reading the config. |
+| TI-81 | **Nobody can merge — the merge gate reports a deploy in progress that finished successfully half an hour ago and will never report itself finished** | 🔲 **Open** — raised 2026-08-11, hit live on deploy #762. Detail in [TI-81](#ti-81-an-orphaned-run-record-blocks-the-merge-gate-until-it-falls-out-of-the-window) below. |
 
 **2026-06-17 deploy-gate stabilisation session:** proved **10 consecutive green deploys** (#595 ×10). Root-caused and fixed a **44-min E2E suite hang** (PR #291's fire-and-forget response-body read on the reload loop) → replaced with a hang-proof, sync-only diagnostic (PR #292) and a **hard 120 s per-test cap** (**TI-43 done**, PR #293). **TI-42** cards-list flake did not recur in 13+ runs (not reproduced ≠ fixed; diagnostic now in place). **BUG-31** turned out to be three stacked causes — original image-reappear symptom fixed, `SaveAndReturnAsync` cards-refetch sync fixed (PR #297, suite-wide win), and a residual stuck-note-detail-read layer carved out as **TI-44**. Full write-up: [docs/learnings/e2e-gate-hang-and-the-diagnostic-that-caused-it.md](learnings/e2e-gate-hang-and-the-diagnostic-that-caused-it.md).
 
@@ -501,6 +502,34 @@ This is [BUG-69] recurring above the level TI-68 fixed. BUG-69 is closed correct
 **CI cannot prove this one — a manual demonstration is the only evidence.** `pr.yml:12` paths-ignores `.githooks/**` (and `scripts/**`), so **no check runs against this file on any PR**. A green PR here means nothing was tested, not that the change works. So the acceptance evidence is a hand-run red/green pair plus an injected defect: show the second commit failing today, show it waiting and passing after, then remove the guard and show it failing again. This is the [CLAUDE.md] "a mechanism nobody has watched work is not working" case, with the usual safety net removed — and the same blind spot that let [TI-69] sit unparsed for 162 pushes.
 
 **Note for whoever takes it:** [TI-64] merged 2026-08-10 (068c97d7), so `.githooks/pre-commit` is free. Two things TI-64 changed in it: the three Lambda publishes are now guarded by `test -f` so they only run when absent, and the hook is the sole place that logic lives. Interim mitigation already in use across sessions: agents poll `pgrep -fc 'vitest run'` before committing and treat a timeout in an untouched file as contention, not a defect.
+
+---
+
+## TI-81. An orphaned run record blocks the merge gate until it falls out of the window
+
+**What it costs:** every session on the machine is told `IN PROGRESS — wait, do not merge` about a deploy that finished successfully 30+ minutes earlier, and that deploy will never report itself finished. Nothing unsticks it except three more deploys pushing it out of the 5-run window — and the only obvious workarounds are merging past the gate or cancelling a run that succeeded.
+
+**Observed live, 2026-08-11.** `bash scripts/deploy-status.sh` printed `IN PROGRESS (#762 status=in_progress) — wait, do not merge` while #763 was already `completed`/`success`. All five of #762's jobs are `completed`/`success` (`deploy-production` finished 14:25:21Z), but the run's own `updated_at` is **14:24:22Z** — 59 seconds *earlier* than its last job completed. The record was not touched again after its own work finished; a GitHub-side stall, not a stuck deploy. Deploys themselves are healthy — #763 ran and completed normally.
+
+**Why the gate cannot see it.** `deploy-status.sh` enforces quiescence across the last 5 runs: any run not in a finished state means "in progress". That rule is load-bearing and stays — a `completed`+`success` run can be **re-run**, flipping it back to `in_progress`, so a `--limit 1` poll can catch a transient green mid-re-run. But an orphaned record satisfies the rule forever.
+
+**Fix — discount a run only when all three clauses hold**, and name all three in the message:
+
+| # | Clause | What it rules out |
+| --- | --- | --- |
+| 1 | Every job the run has created is terminal | A run still executing |
+| 2 | `pending_deployments` is empty | A run **awaiting environment approval**, which creates no job record for the gated job at all |
+| 3 | `updated_at` older than **10 minutes** | A run that will create more jobs — by definition its `updated_at` moves |
+
+Clause 3 does most of the work and is deliberately generous: waiting a few extra minutes on a genuinely slow run costs nothing, discounting a live deploy means merging on top of an unverified one.
+
+**Clause 2 is latent, not live.** No protection rules are configured on `deploy-test` or `deploy-production` today, so `pending_deployments` returns `[]` on every run — verified on #762 and #763. It is required anyway: `deploy.yml` declares `environment:` on both jobs, so the day someone adds a required reviewer or a wait timer, clauses 1 and 3 both hold while the deploy is genuinely pending. That is the repo's recurring absent-value shape relocated — *"no job is running" reads identically whether nothing is left or the next thing has not been allowed to start.* Caught in review by a peer session before it shipped.
+
+**Cost:** one extra `gh api .../jobs` call and one `.../pending_deployments` call, **per not-finished run only**. A quiescent window (the normal case) pays nothing.
+
+**The discount must be printed, never silent.** A gate that quietly ignores runs is worse than one that blocks, because nobody can tell it is doing it.
+
+**CI cannot prove this by a green PR** — `pr.yml` paths-ignores `scripts/**`. The evidence is `scripts/test-merge-gate.sh` (wired into `docs-check.yml` by [TI-77]) plus the live reading above.
 
 ---
 
