@@ -91,7 +91,7 @@ One scenario per distinct behaviour (happy path + each meaningful error/edge cas
 For a user-facing slice, produce tests at every relevant layer, with E2E tests as the primary spec:
 
 1. **E2E (Playwright)** (`tests/Browser.E2E/`) — the primary acceptance test. Describes what a user does and sees in the browser. One journey per acceptance criterion: open the note, type content, blur, navigate away, return — content is visible. These run against the deployed app and are the ground truth for "is the slice done?"
-2. **Domain BDD specs** (`tests/Domain.Specs/`) — cover aggregate behaviour: happy path, guard conditions, no-op. Use `[Fact(Skip = "Pip <slice-id>")]` so the pre-commit hook stays green until Pip implements.
+2. **Domain BDD specs** (`tests/Domain.Specs/`) — cover aggregate behaviour: happy path, guard conditions, no-op. Use `[Fact(Skip = "Pip <slice-id>")]` (frontend: `it.skip`) so **CI** stays green until Pip implements — the pre-commit hook was removed on 2026-08-11, so CI is the only gate a red spec would break. **Pip must unskip and run them once before implementing**, and confirm each fails for the reason it names; a spec seen only skipped-then-passing has never been shown to be capable of failing.
 3. **API integration tests** (`tests/Api.Integration/`) — cover HTTP contract: status codes, response shapes.
 4. **Smoke tests** (`tests/Api.Smoke/`) — cover the deployed API contract end-to-end.
 
