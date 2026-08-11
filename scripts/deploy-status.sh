@@ -62,23 +62,39 @@ PENDING = ("in_progress", "queued", "waiting", "requested", "pending")
 # Exactly two states mean "safe", and everything else blocks:
 #
 #   1. Normal            — run status == "completed" and conclusion == "success".
-#   2. Stalled record    — run status is not "completed", AND every job is
-#                          status == "completed" with conclusion == "success", AND
-#                          pending_deployments is empty, AND updated_at is older than
-#                          STALE_MINUTES.
+#   2. Stalled record    — run status is one of the KNOWN not-finished states (PENDING), AND
+#                          the jobs response is complete (len == total_count), AND every job
+#                          is status == "completed" with conclusion == "success", AND
+#                          pending_deployments is empty, AND BOTH updated_at and the newest
+#                          job completion are older than STALE_MINUTES.
 #
-# The form matters more than the clauses. Three separate clauses of this condition MOVED
-# rather than closed in one afternoon — a job count, then pending environment approvals, then
-# job conclusions (where "terminal" silently admits `failure`). Three positions, one shape: a
-# value that is absent, unexamined, or admits more than its name suggests. Excluding the
-# unsafe states requires enumerating everything that can go wrong, and that enumeration has
-# already failed three times; an allow-list FAILS CLOSED on anything unanticipated, which is
-# the property a merge gate actually wants. So there is deliberately no `else` treating an
-# unrecognised shape as fine: a status string that does not exist yet, a conclusion of
-# `skipped` or `neutral`, an empty job list or a missing field all fall through and block,
-# printing the raw values seen.
+# The form matters more than the clauses. SIX separate clauses of this condition moved rather
+# than closed while it was being written — a job count, pending environment approvals, job
+# conclusions (where "terminal" silently admits `failure`), the run status (never inspected at
+# all, so a suspended run was discounted), jobs-API pagination (page 1 read as the whole set),
+# and the staleness clock (keyed on the one field the incident proved unreliable). Six
+# positions, one shape: a value absent, unexamined, or admitting more than its name suggests.
+# Excluding the unsafe states requires enumerating everything that can go wrong, and that
+# enumeration failed six times in a day; an allow-list FAILS CLOSED on anything unanticipated,
+# which is the property a merge gate actually wants. So there is deliberately no `else`
+# treating an unrecognised shape as fine: a status string that does not exist yet, a conclusion
+# of `skipped` or `neutral`, a truncated jobs page, an empty job list or a missing field all
+# fall through and block, printing the raw values seen.
 #
 # Why each clause of state 2 is there:
+#
+#   A KNOWN not-finished run status. classify() originally never looked at the run status, so
+#   every status except "completed" was eligible. Proven with a stub: a run with status
+#   `paused_for_maintenance`, all jobs completed+success and a stale record was discounted, and
+#   beside an older green run the gate printed `GREEN — safe to merge` on a run suspended
+#   mid-flight whose deploy-production had never started. A status meaning "held, will resume"
+#   defeats every other clause at once — work is paused, so the created jobs ARE finished and
+#   the record DOES go quiet.
+#
+#   A COMPLETE jobs response. `per_page` defaults to 30 and the response carries total_count; a
+#   40-job run whose page-2 job is still executing would otherwise present 30 finished jobs and
+#   be discounted. Not reachable with the 5 jobs deploy.yml has — which is the point of checking it
+#   rather than asserting it.
 #
 #   Jobs all completed+success. Not merely "terminal": terminal admits failure, cancelled and
 #   timed_out, and discounting one of those would report GREEN on a run whose deploy-production
@@ -96,26 +112,48 @@ PENDING = ("in_progress", "queued", "waiting", "requested", "pending")
 #   protection rules exist today (pending_deployments returns [] on every run; checked on #762
 #   and #763), so this is LATENT — which is exactly why it needs a test rather than a comment.
 #
-#   updated_at older than STALE_MINUTES. This is what closes the gap the other two cannot: a run
+#   BOTH clocks older than STALE_MINUTES. This is what closes the gap the others cannot: a run
 #   that is going to create more jobs has, by definition, a MOVING updated_at. Ten minutes of
 #   total silence with every job finished is unambiguous where two minutes would not be. Chosen
 #   generous on purpose: the #762 record was already 51 minutes stale when this gate was read,
 #   and the asymmetry is stark: waiting a few extra minutes on a genuinely slow run costs
 #   nothing, while discounting a live deploy means merging on top of one nobody has verified.
+#   The NEWEST JOB COMPLETION is required to be old as well, because updated_at is the field
+#   this very incident proved untrustworthy — on #762 it froze 59 seconds BEFORE the last job
+#   finished, i.e. it fails EARLY, in the direction that admits a discount sooner than the
+#   truth warrants. A fix that keys solely on the misreporting clock inherits the defect it is
+#   fixing; the job clock comes from a different part of the API and was correct on #762.
 STALE_MINUTES = 10
 
 # Not part of the safety decision — the allow-list above already blocks every one of these.
-# This only decides how LOUDLY a blocked run is reported: a job that actually failed is the
-# more actionable fact and gets named as NOT SAFE rather than folded into "wait".
-FAILED_CONCLUSIONS = ("failure", "timed_out", "startup_failure", "cancelled", "action_required")
+# This only decides how LOUDLY a blocked run is reported: a job that genuinely failed is the
+# more actionable fact and gets named rather than folded into "wait".
+#
+# `cancelled` and `action_required` are deliberately NOT here. Entering the busy `deploy`
+# concurrency group cancels the pending run rather than queuing it, so a cancelled job means
+# superseded far more often than broken — the `case` block at the bottom of this same file
+# exists precisely to stop that being reported as a broken main, and listing it here would
+# have reintroduced TI-77 one screen above its own fix. Both still BLOCK; they just do not get
+# a failure verdict pinned on them.
+FAILED_CONCLUSIONS = ("failure", "timed_out", "startup_failure")
 
 # API cost: TWO extra calls (jobs, pending_deployments) per NOT-FINISHED run, and none at all
 # for a finished one. The normal case is a quiescent window, which pays nothing; the worst
 # case is 5 not-finished runs = 10 extra calls. Both calls short-circuit: a run with a job
 # still running never reaches the pending_deployments call.
+#
+# A bounded timeout because this runs inside a merge gate: without one, a hung connection
+# hangs the gate silently and indefinitely, which is TI-79 in a different costume. A timeout
+# is an unreadable API, which blocks.
+API_TIMEOUT_SECONDS = 20
+
+
 def gh_json(path):
     try:
-        p = subprocess.run(["gh", "api", path], capture_output=True, text=True)
+        p = subprocess.run(["gh", "api", path], capture_output=True, text=True,
+                           timeout=API_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        return None, "no response within %ds" % API_TIMEOUT_SECONDS
     except OSError as e:
         return None, str(e)
     if p.returncode != 0:
@@ -160,12 +198,27 @@ def classify(r):
     rid = r.get("databaseId")
     if not rid:
         return "block", "%s: the run list carried no databaseId, so its jobs cannot be read" % raw
-    jobs, err = gh_json("repos/{owner}/{repo}/actions/runs/%s/jobs" % rid)
+    # `per_page=100` because the default page is 30 and this reads the list as if it were the
+    # whole set: a 40-job run whose page-2 job is still executing would present 30 finished
+    # jobs and be discounted — failing OPEN, the one property this design claims not to have.
+    # `filter=latest` is load-bearing rather than decorative: it is the default, but the
+    # alternative (`all`) returns every ATTEMPT of a re-run, so the stale records of a superseded attempt
+    # job records would be folded in as if current. Both are stated so neither can be dropped
+    # as noise. deploy.yml has 5 jobs and no matrix today; the guard below is what makes that
+    # a fact the script checks rather than an assumption it holds.
+    jobs, err = gh_json(
+        "repos/{owner}/{repo}/actions/runs/%s/jobs?per_page=100&filter=latest" % rid)
     if err is not None:
         return "block", "%s: could not read its jobs (%s)" % (raw, err)
     jl = jobs.get("jobs") or []
     if not jl:
         return "block", "%s: the run has created no jobs yet" % raw
+    total = jobs.get("total_count")
+    if total is None:
+        return "block", "%s: the jobs response carried no total_count, so it cannot be shown complete" % raw
+    if len(jl) != total:
+        return "block", "%s: read %d of %d jobs (the response is paginated), so it cannot be established that every job finished" % (
+            raw, len(jl), total)
 
     # The one job check. Not (completed, success) is not the safe state — whatever it is.
     unsafe = [j for j in jl
@@ -174,6 +227,8 @@ def classify(r):
         listed = ", ".join("%s status=%s conclusion=%s"
                            % (shown(j.get("name")), shown(j.get("status")), shown(j.get("conclusion")))
                            for j in unsafe[:3])
+        if len(unsafe) > 3:
+            listed += ", and %d more" % (len(unsafe) - 3)
         failed = [j for j in unsafe if j.get("conclusion") in FAILED_CONCLUSIONS]
         if failed:
             return "jobfail", "%s: %d of %d jobs did not succeed (%s)" % (
@@ -188,28 +243,56 @@ def classify(r):
         return "block", "%s: all %d jobs are completed+success, but %d deployment(s) await approval" % (
             raw, len(jl), len(pend))
 
+    # TWO clocks, and both must be old. `updated_at` is the field the incident proved
+    # unreliable — on #762 it froze at 14:24:22Z, 59 seconds BEFORE the last job finished at
+    # 14:25:21Z, i.e. it failed EARLY, in the direction that admits a discount sooner than the
+    # truth warrants. Keying the staleness test solely on the field that misreports is how a
+    # fix inherits the defect it is fixing. The newest job completion is derived from a
+    # different part of the API and would still have been correct on #762, so requiring both
+    # means a single misreporting clock cannot open the gate on its own.
     age = age_minutes(r.get("updatedAt"))
     if age is None:
         return "block", "%s: the run record carried no readable updatedAt" % raw
-    if age < STALE_MINUTES:
-        return "block", "%s: all %d jobs completed+success, but the record was updated %dm ago (under the %dm threshold)" % (
-            raw, len(jl), age, STALE_MINUTES)
 
-    # All three clauses named, not just the one that tripped last: the next person reuses
-    # whichever clause they remember, and a message that reports only part of its reasoning is
-    # how a half-condition gets copied into the next gate.
-    return "discount", "#%s orphaned (all %d jobs completed+success; no deployments awaiting approval; record stale since %s, %dm > %dm threshold) — ignoring" % (
-        n, len(jl), r.get("updatedAt"), age, STALE_MINUTES)
+    job_ages = [age_minutes(j.get("completed_at")) for j in jl]
+    if any(a is None for a in job_ages):
+        return "block", "%s: a job carried no readable completed_at, so the run cannot be shown finished" % raw
+    job_age = min(job_ages)
+
+    if age < STALE_MINUTES or job_age < STALE_MINUTES:
+        return "block", "%s: all %d jobs completed+success, but the record was updated %dm ago and the newest job finished %dm ago (threshold %dm)" % (
+            raw, len(jl), age, job_age, STALE_MINUTES)
+
+    # Every clause named, not just the one that tripped last: the next person reuses whichever
+    # clause they remember, and a message that reports only part of its reasoning is how a
+    # half-condition gets copied into the next gate.
+    return "discount", "#%s orphaned (all %d jobs completed+success; no deployments awaiting approval; record stale since %s, %dm, and newest job finished %dm ago, both > %dm threshold) — ignoring" % (
+        n, len(jl), shown(r.get("updatedAt")), age, job_age, STALE_MINUTES)
 
 
 runs = json.load(sys.stdin)
 discounts, blocks, jobfails, ignored = [], [], [], set()
 
 for r in runs:
-    if r.get("status") == "completed":
+    st = r.get("status")
+    if st == "completed":
         continue
-    # Anything not "completed" goes through the allow-list — including a status string this
-    # script has never seen. PENDING is used only to say so precisely in the message.
+    # PENDING is an ELIGIBILITY allow-list, not a label. Only a run in a status known to mean
+    # "not finished yet" may be considered for the stalled-record exception; any other status
+    # blocks outright and prints what it saw.
+    #
+    # This was a real hole, not a hypothetical: classify() never looked at the run status, so
+    # ANY status other than "completed" was eligible. A stub run with status
+    # `paused_for_maintenance`, all jobs completed+success and a stale record was discounted,
+    # and beside an older green run the gate printed `GREEN (#899) — safe to merge` on a run
+    # suspended mid-flight whose deploy-production had never started. A future status meaning
+    # "held, will resume" is exactly the shape that breaks the other clauses: work is paused,
+    # so every created job IS finished and the record DOES go quiet.
+    if st not in PENDING:
+        blocks.append("#%s status=%s: unrecognised run status, not one of the known "
+                      "not-finished states %s; not eligible to be discounted"
+                      % (r.get("number"), shown(st), "/".join(PENDING)))
+        continue
     outcome, msg = classify(r)
     if outcome == "discount":
         discounts.append(msg)
@@ -217,8 +300,6 @@ for r in runs:
     elif outcome == "jobfail":
         jobfails.append(msg)
     else:
-        if r.get("status") not in PENDING:
-            msg += " (unrecognised run status)"
         blocks.append(msg)
 
 note = "; ".join(discounts)
@@ -226,13 +307,17 @@ note = "; ".join(discounts)
 if not runs:
     kind, number, status, conclusion, detail = "EMPTY", "", "", "", ""
 elif jobfails:
-    # Ahead of a plain block: a run with a failed job is the more actionable fact, and it is
-    # never discounted however stale its record has become.
+    # Ahead of a plain block: a run with a genuinely failed job is the more actionable fact,
+    # and it is never discounted however stale its record has become.
     kind, number, status, conclusion, detail = "JOBFAIL", "", "", "", "; ".join(jobfails)
 elif blocks:
     kind, number, status, conclusion, detail = "PENDING", "", "", "", "; ".join(blocks)
 else:
-    live = [r for r in runs if r.get("number") not in ignored]
+    # Sorted explicitly rather than trusting the order gh happened to return. createdAt was
+    # already being fetched and never used, which is the cheaper half of the same bug: the
+    # newest run decides the verdict, so "newest" has to be established, not assumed.
+    live = sorted((r for r in runs if r.get("number") not in ignored),
+                  key=lambda r: str(r.get("createdAt") or ""), reverse=True)
     if not live:
         kind, number, status, conclusion, detail = "NONE", "", "", "", ""
     else:
@@ -243,8 +328,17 @@ else:
         conclusion = latest.get("conclusion") if latest.get("conclusion") else "null"
         detail = ""
 
-# Pipe-delimited so a message containing spaces survives the handoff intact.
-print("|".join(str(x) for x in (kind, number, status, conclusion, detail, note)))
+# Pipe-delimited so a message containing spaces survives the handoff intact. Any `|` or
+# newline INSIDE a field is replaced first: the bash side splits on `|` and `read` takes only
+# the first line, so a gh error or job name containing either would shift every later field —
+# printing a fabricated `[discounted: ...]` annotation on a run that nothing discounted. The
+# exit code is unaffected (kind is field 1), but the discount annotation is the disclosure
+# this whole design leans on, so it must not be forgeable by an error string.
+def clean(v):
+    return str(v).replace("|", "/").replace("\n", " ").replace("\r", " ")
+
+
+print("|".join(clean(x) for x in (kind, number, status, conclusion, detail, note)))
 ' 2>&1); then
   echo "NOT SAFE — could not read the run list (missing python3, or gh returned something unparseable): $verdict"
   exit 1
