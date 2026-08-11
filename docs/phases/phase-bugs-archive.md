@@ -337,3 +337,34 @@ Fix: the unmount effect **chains** on the in-flight stop sequence rather than co
 ✅ PR #450, merged 2026-08-10, deploy #752 on its own merge sha. No error, no retry, and the Stop button did not help — for anyone who waited on the note rather than navigating away. Local transcription only, when the on-device engine faults while shutting down. Found by probe during review of [BUG-72]: make `window.desktop.local.discard()` throw — it is called from the local branch's `finally`, so the throw REPLACES the completion and rejects the whole stop sequence — and the sequence never reaches `commitTranscript()`, never reaches `setStatus('stopped')`, and surfaces an unhandled rejection. [BUG-72] fixes exactly this outcome for the user who LEAVES the note; the stay-mounted half was untouched, so the same failure had two very different endings depending on whether you navigated away.
 
 Fix: guarded at the **shape**, not per call site, after review showed a site-local fix leaves the others — the listener-detach closure is guarded where it is built (covering the stop sequence, `cleanup()` and the cloud-fallback path in one change), `discard()` is guarded in its `finally`, and `cleanup()`'s capture-track teardown is guarded because it runs inside React's effect teardown, where a throw escapes the unmount itself. That third site was found by this bug's own test throwing out of `view.unmount()`. A terminal `.catch` closes the class for any site nobody has named. Each guard is pinned by a test that reddens when it alone is removed. **Review then found the fix's own diagnostic was the last unguarded pre-commit throw:** `recordRumEvent` calls a third-party global and this bug had placed it inside every catch it added, so a failing telemetry call re-created the exact fault being reported — guarded once at source, covering ~14 call sites elsewhere. The terminal handler commits and cleans up as well as restoring the status; without that, an unnamed throw left the user on `stopped` with the transcript uncommitted, the microphone still live and a retry blocked by the idempotency guard. Those lines are **unpinned by design** — with every named site guarded nothing reaches them, which is what a terminal handler is for.
+
+## BUG-76 — The agenda count disagreed with the ticks on screen
+
+✅ **Fixed 2026-08-11** — PR #460 (`3623a7c3`), deploy #764, **verified in production**.
+
+**What you hit:** a note's header showed "X / Y" agenda items, and the number disagreed with
+what was actually on screen. A topic written as a checklist indented under a plain bullet
+(`- Shopping` / `  - [ ] Milk`) was counted by the server but never shown in the header, so
+you could not tick it where you were reading it.
+
+**Why:** the editor's topic walk only read a top-level `taskList`, while the server's parser
+read checklist items at any depth. The walk now descends through nested list structure, so
+both readings agree.
+
+**Proof it works:** verified against `https://note-taker-ai.com` on 2026-08-11 with a real
+browser and a genuine authenticated session. A note with the exact bug shape showed
+`0 / 3` with all three topics visible (Milk, Bread, Top-level topic); ticking Milk from the
+header moved it to `1 / 3`, struck the pill, flipped the checkbox in the body, and survived
+a save and a cold reload. A DOM emulation of the pre-fix walk returned `[]` against the same
+live document, so the check distinguishes broken from shipped rather than passing on trust.
+
+**Also came out of it:** the C#/TypeScript agenda parity register is now asserted rather than
+justified in prose — a comment claiming two divergences "are normalised by the first save"
+was load-bearing and unpinned; both claims are now tests. A third divergence (emoji
+shortcodes) was registered, and the parity editor was found to be missing the app's own
+`emojifyMarkdown` step, so the fixture had been measuring an editor the app never builds.
+Cause (b) was corrected (real symptom, wrong mechanism — a note image is a block node the
+parser hoists out of the task item) and cause (c) retracted outright (the republish already
+happens; `setEditable(true)` emits `update` unconditionally). [BUG-80] was filed for the
+remaining placement defect.
+

@@ -180,7 +180,7 @@ Live doc (open items + the index): [technical-improvements.md](technical-improve
 
 ## TI-77. `merge-gate.sh` reports uncomputed mergeability as a conflict
 
-✅ PR #463, merged 2026-08-11 (`69d643c4`). The merge gate said `BLOCKED — rebase/resolve conflicts` on a branch that was perfectly clean, so the next move was a pointless rebase — or blaming whoever wrote the branch for a conflict that never existed. Hit on PR #460, moments after two merges landed on main.
+✅ PR #463, merged 2026-08-11 (`69d643c4`), deploy #762 green. Verified live on main immediately after: `deploy-status.sh` reported `IN PROGRESS (#762 status=in_progress)` then `GREEN (#763) — safe to merge`, both from the rewritten branches, and `merge-gate.sh` gated the merge itself. The merge gate said `BLOCKED — rebase/resolve conflicts` on a branch that was perfectly clean, so the next move was a pointless rebase — or blaming whoever wrote the branch for a conflict that never existed. Hit on PR #460, moments after two merges landed on main.
 
 **Why:** GitHub computes mergeability on demand and answers `UNKNOWN`/`UNKNOWN` while it is still working — routine for up to a minute after main moves, and neither a conflict nor an error. The gate read it once and treated every value other than `MERGEABLE`/`CLEAN` as a conflict, printing a fixed remedy. Re-polling #460 returned `MERGEABLE`/`CLEAN` three times out of three.
 
@@ -193,3 +193,15 @@ Live doc (open items + the index): [technical-improvements.md](technical-improve
 1. **`scripts/test-merge-gate.sh` exists because `pr.yml` paths-ignores `scripts/**`** — CI had never once exercised these scripts, so every past edit shipped unverified and a green PR proved nothing. Now wired into `docs-check.yml`, the workflow that exists for exactly the paths `pr.yml` ignores. 23 stub-driven cases, ~16s, no network.
 2. **It paid for itself on its first CI run**, catching a defect no local run could see: `merge-gate.sh` executed `deploy-status.sh` directly, but `scripts/` is committed `100644`, so gate 3 died with `Permission denied` on any Linux checkout — invisible on the author's drvfs mount, where every file reports executable.
 3. **Injecting the defect is what found the tests that were not testing anything.** Two assertions passed with the fix reverted — the gate-3 stand-in was unreachable because `deploy-status.sh`'s own guards always print something, and both gate-3 cases asserted on output while discarding the exit code, so `fail=1` → `true` left the suite green while the gate printed `safe to merge` on a broken main. Neither would have been found by reading a green.
+
+## TI-73. The pre-commit gate is unbounded across sessions
+
+✅ **Closed 2026-08-11 — obsolete, not fixed.** Committing while another session was also
+committing could fail your commit on tests you never touched, because the pre-commit gate
+ran the full suite with no idea anything else was running. The hook was removed entirely on
+2026-08-11 (build and test moved to CI), so there is no longer a gate to contend for. The
+proposed fix — make the hook wait on a load gate — was never built, and its stated direction
+was wrong anyway: `load1` was measured reading 0.28 with three suites live, because it lags
+about 90 seconds. Had it been built, it would have waved commits straight into a saturated
+box. Counting runner processes is the sound instrument; load average is corroboration only.
+

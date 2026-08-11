@@ -53,5 +53,8 @@ Thumbs.db
 eval-fixtures-real/
 __pycache__/
 
+# Local scratch for commit messages passed via `git commit -F` (see .pr-body.md above)
+.commit-msg.txt
+
 # actionlint binary cached by scripts/lint-workflows.sh (pinned, checksummed, re-fetchable)
 .tools/

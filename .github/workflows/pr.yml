@@ -9,7 +9,6 @@ on:
       - "LICENSE"
       - ".gitignore"
       - ".gitattributes"
-      - ".githooks/**" # local git hooks, never run in CI
       - ".claude/**" # agent skills/config, never built or deployed
       - "scripts/**" # dev/ops scripts, never built or deployed
 

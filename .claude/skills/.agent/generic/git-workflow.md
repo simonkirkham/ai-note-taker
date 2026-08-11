@@ -14,20 +14,21 @@ Remote is **GitHub**, driven with the `gh` CLI. There is no Bitbucket, no rebase
 | Never | commit slice work directly to `main` |
 | Parallel slices are normal | independent slices run concurrently in their own worktrees — see `run-pipeline` for what may and may not parallelise |
 
-First-time setup in a fresh worktree: `dotnet restore ai-note-taker.sln`, `npm --prefix web install`, and publish all three Lambdas (`Api`, `Projector`, `TranscribeCompletion`) so the pre-commit `cdk synth` can find its assets.
+First-time setup in a fresh worktree: `dotnet restore ai-note-taker.sln` and `npm --prefix web install`. Publish all three Lambdas (`Api`, `Projector`, `TranscribeCompletion`) only if you intend to run `cdk synth`/`cdk deploy` yourself.
 
 ## Committing
 
-- The gate is a **pre-commit** hook (`.githooks/pre-commit`), not pre-push. It needs `git config core.hooksPath .githooks` **once per clone** — a clone that never ran it is silently unprotected.
-- The hook is scoped to what is staged: docs-only commits skip the build/test gate; `cdk synth` runs only for infra-affecting paths.
-- **A commit staging `src/`, `tests/` or `web/` runs the full suite — run it with `run_in_background`.** A foreground `git commit` gets killed by the command timeout and leaves the change staged but uncommitted.
-- **Never `--no-verify`.** A missing build artefact is a setup gap to fix, not a check to skip.
+- **There is no pre-commit hook** (removed 2026-08-11). Committing is instant and checks nothing locally; **CI is the gate** and nothing merges without it green.
+- The old hook ran lint, two typechecks, the full vitest suite, a dotnet build and three test runs — 10-15 minutes per commit, against ~3 for the same checks in `pr.yml`. It was four times slower than the thing it protected against, and it only ever ran on a clone that had opted in.
+- Commit in the **foreground**; no `run_in_background` needed.
+- Expect the occasional red PR. That is the accepted trade — a break costs ~3 minutes to find in CI.
+- Want early feedback? Run the specific thing you changed (`npm --prefix web run lint`, `npx vitest run <file>`, `dotnet test <project>`), not the whole suite.
 - Commit in small working increments: backend before frontend, one endpoint/component/utility at a time.
 
 ## Updating a branch
 
 - **Merge, don't rebase:** `git merge origin/main` inside the worktree, resolve, re-run the gate, push.
-- The three tracking tables carry `merge=union` in `.gitattributes`, so concurrent *appends* resolve automatically. Union's bad case is two branches editing the **same row** — `scripts/check-doc-ids.sh` catches it (pre-commit hook + `docs-check.yml`).
+- The three tracking tables carry `merge=union` in `.gitattributes`, so concurrent *appends* resolve automatically. Union's bad case is two branches editing the **same row** — `scripts/check-doc-ids.sh` catches it in `docs-check.yml`; run it locally too after any conflicted merge of those files.
 
 ## Pull requests
 
