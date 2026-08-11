@@ -261,3 +261,53 @@
     max-width: min(14rem, calc(100vw - 13rem));
   }
 }
+
+/* 51-C — the recording marker.
+
+   Colour is not the only channel: the dot is aria-hidden and the tab's accessible name
+   carries ", recording" instead, so it reads the same to a screen reader as it looks. The
+   pulse is the only *motion* cue, so it is dropped under prefers-reduced-motion — the dot
+   stays, since removing it would take the information with it.
+
+   Deliberately identical to RecordControl's `.dot` — same token, same 8px, same 1.2s/0.3
+   pulse. Both are on screen at once while you stand on the recording note, and two red dots
+   pulsing at different rates drift in and out of phase, which reads as a glitch rather than
+   as one fact shown twice.
+
+   `--color-error`, NOT `--color-danger`: the latter is undefined in tokens.css, so every
+   `var(--color-danger, #hex)` here silently renders its hardcoded fallback in all 12 themes.
+   Four files do that today, with four DIFFERENT reds. This one is no longer the fifth. */
+.recordingDot {
+  display: inline-block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-right: 0.375rem;
+  border-radius: 50%;
+  background: var(--color-error);
+  animation: recordingPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes recordingPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .recordingDot {
+    animation: none;
+  }
+}
+
+/* The visually-hidden ", recording" suffix. Clip rather than display:none — a hidden node is
+   not announced at all, which would silently undo the point of the suffix. */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}

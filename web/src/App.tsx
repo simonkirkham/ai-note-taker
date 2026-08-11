@@ -27,6 +27,8 @@ import SignInPage from "./components/SignInPage";
 import { useToast } from "./components/toastContext";
 import { UNFILED_ID } from "./constants";
 import { findNode, findPath } from "./folderTree";
+import { RecordingSessionProvider } from "./hooks/recordingSession";
+import { useClearSessionLeave, useGuardLeave, useRecordingNoteId } from "./hooks/recordingSessionContext";
 import {
   useCreateFolder,
   useRenameFolder,
@@ -98,7 +100,13 @@ function AppGate() {
         path="/w/:wsId/*"
         element={
           <WorkspaceProvider>
-            <AppContent signOut={signOut} />
+            {/* 51-C: the recording outlives the note screen, so it is mounted here — above
+                every in-workspace navigation, below the workspace itself. NOTE: being inside
+                WorkspaceProvider does NOT mean a workspace switch unmounts it — same route,
+                no key, so it reconciles in place. See the warning in recordingSession.tsx. */}
+            <RecordingSessionProvider>
+              <AppContent signOut={signOut} />
+            </RecordingSessionProvider>
           </WorkspaceProvider>
         }
       />
@@ -180,6 +188,12 @@ function AppContent({ signOut }: { signOut: () => void }) {
   const noteMatch = useMatch("/w/:wsId/notes/:noteId");
   const activeNoteId = noteMatch?.params.noteId;
   const { tabs, openTab, closeTab } = useOpenNoteTabs(wsId);
+  // 51-C: which note is capturing, so the bar can mark it. Null unless something is.
+  const recordingNoteId = useRecordingNoteId();
+  // 51-C review follow-up: the session's own leave guard, used whenever the recording note is
+  // not the one mounted. See requestLeave below.
+  const guardLeave = useGuardLeave();
+  const clearSessionLeave = useClearSessionLeave();
   // Titles follow the note-cards list so a rename re-derives; the title captured at open
   // time covers a note too new to be in the list yet.
   //
@@ -260,33 +274,22 @@ function AppContent({ signOut }: { signOut: () => void }) {
     const state: NoteNavState = {};
     if (isNew) state.isNew = true;
     if (title) state.initialTitle = title;
-    // 49-A: opening a note adds it to the open set (a no-op if it is already there, so
-    // re-opening focuses the existing tab rather than duplicating it) and navigates. Guarded
-    // like a tab switch: `onOpenNote` is reachable from INSIDE a recording note (the `/ai`
-    // create-note and next-occurrence paths), and it unmounts that note just the same.
-    requestLeave(() => {
-      // The count rides the event so an unbounded bar — which would mean the dedupe above
-      // has regressed — is visible without a user reporting it. Count the RECONCILED set,
-      // not the raw one: since 49-B the stored set retains dead ids until the next write, so
-      // `tabs.length` over-reports by exactly the tabs the user cannot see — inflating the
-      // one signal that exists to detect an unbounded bar.
-      if (!tabs.some((t) => t.noteId === noteId)) {
-        recordRumEvent("noteTabOpened", { tabCount: openNoteTabs.length + 1 });
-      }
-      openTab(noteId, title);
-      void navigate(w(`/notes/${noteId}`), { state });
-      onProceed?.();
-    }, openNoteDestination(noteId, title, isNew));
-  }
-
-  // CHANGE-33. Most openNote callers pass no title (the preview panel, "+ New Note"), so
-  // fall back to the card list before giving up on a generic name — a named note is the
-  // whole point of the banner. "Untitled note" matches what the tab bar calls a blank
-  // title (openNoteTabs above), so the same note reads the same either way you reach it.
-  function openNoteDestination(noteId: string, title?: string, isNew?: boolean) {
-    if (isNew) return "open the new note";
-    const known = title || cards.find((c) => c.noteId === noteId)?.title || "";
-    return `open ${destinationName(known, "Untitled note")}`;
+    // 49-A opened a note behind the recording guard, because doing so unmounted the note that
+    // was capturing. 51-C hoists the session above the route, so it no longer does: the
+    // recording keeps running and there is nothing left to protect or to ask about. This is
+    // the one confirm the slice is certain to remove — the rest (closing this tab, sign-out,
+    // workspace switch, moving the note, browser-back) all still destroy the capture.
+    //
+    // The count rides the event so an unbounded bar — which would mean the dedupe above has
+    // regressed — is visible without a user reporting it. Count the RECONCILED set, not the
+    // raw one: since 49-B the stored set retains dead ids until the next write, so
+    // `tabs.length` over-reports by exactly the tabs the user cannot see.
+    if (!tabs.some((t) => t.noteId === noteId)) {
+      recordRumEvent("noteTabOpened", { tabCount: openNoteTabs.length + 1 });
+    }
+    openTab(noteId, title);
+    void navigate(w(`/notes/${noteId}`), { state });
+    onProceed?.();
   }
 
   // 49-A: switching or closing a tab is an in-app navigate, which does NOT fire the popstate
@@ -295,20 +298,39 @@ function AppContent({ signOut }: { signOut: () => void }) {
   // Stable identity: it reads a ref, so it never needs to change — and it is a context
   // value, so a new one each render would re-render every consumer.
   const requestLeave = useCallback((proceed: () => void, destination: string, opts?: LeaveOptions) => {
+    // Two guards, and never both at once.
+    //
+    // The MOUNTED note's guard wins when it is registered, because it does strictly more: it
+    // also flushes that note's unsaved content draft before handing over (BUG-54). It only
+    // registers when the note on screen is itself recording.
+    //
+    // Otherwise fall back to the SESSION's guard, which is the whole point of the 51-C review
+    // fix: the capture outlives the note screen, so from any other note — or the notes list,
+    // or a folder — the note-owned guard does not exist and this used to run `proceed()`
+    // immediately. Signing out then cleared the token before the transcript committed and the
+    // POST 401'd, which is BUG-55 reproduced on this slice's headline flow.
+    //
+    // `guardLeave` returns false when nothing is capturing, which is the ordinary case for
+    // every one of these callers.
     const guard = leaveGuardRef.current;
-    if (guard) guard(proceed, destination, opts);
-    else proceed();
-  }, []);
+    if (guard) {
+      // Stand the session's confirm down first. Without this both can be live at once: the
+      // session raises one while the recording note is off-screen, the user then navigates TO
+      // that note (unguarded, by design), asks again, and the note's guard raises a second on
+      // top — two banners, and the stale one still holding an armed sign-out.
+      clearSessionLeave();
+      guard(proceed, destination, opts);
+      return;
+    }
+    if (guardLeave(proceed, destination, opts?.awaitTranscript ?? false)) return;
+    proceed();
+  }, [guardLeave, clearSessionLeave]);
 
   function handleSelectTab(noteId: string) {
     if (noteId === activeNoteId) return;
-    // CHANGE-33: openNoteTabs already resolves a blank title to "Untitled note"; the
-    // fallback covers only a click on a tab that is no longer in the set.
-    const title = openNoteTabs.find((t) => t.noteId === noteId)?.title ?? "";
-    requestLeave(
-      () => void navigate(w(`/notes/${noteId}`)),
-      `open ${destinationName(title, "Untitled note")}`,
-    );
+    // 51-C: unguarded, for the same reason as openNote above — switching tabs no longer
+    // unmounts a recording, so it no longer asks. This is the whole point of the slice.
+    void navigate(w(`/notes/${noteId}`));
   }
 
   function handleCloseTab(noteId: string) {
@@ -319,11 +341,18 @@ function AppContent({ signOut }: { signOut: () => void }) {
       if (noteId !== activeNoteId) return;
       void navigate(next ? w(`/notes/${next}`) : w(""));
     };
-    // Closing the note being recorded into unmounts it — same protection as switching away.
-    // Named "close this tab", not by the note it lands on: closing is what the user asked
-    // for, and where it lands (the neighbour, or home) is a consequence they did not pick.
-    if (noteId === activeNoteId) requestLeave(doClose, "close this tab");
-    else doClose();
+    // Closing the note being recorded into destroys the capture — the one tab-bar action this
+    // slice deliberately keeps guarded. Named "close this tab", not by the note it lands on:
+    // closing is what the user asked for, and where it lands (the neighbour, or home) is a
+    // consequence they did not pick.
+    //
+    // Guarded on EITHER the active note or the recording one. Gating on `activeNoteId` alone
+    // meant closing the recording note's tab from a different tab took the unguarded branch —
+    // no confirm, and the capture left running with no tab left to mark it. That hole opened
+    // the moment 51-C let the user be somewhere else while recording.
+    if (noteId === activeNoteId || noteId === recordingNoteId) {
+      requestLeave(doClose, "close this tab");
+    } else doClose();
   }
 
   async function handleNewNote() {
@@ -383,26 +412,28 @@ function AppContent({ signOut }: { signOut: () => void }) {
     void qc.invalidateQueries({ queryKey: keys.noteCards });
   }
 
-  // BUG-54: these three leave the note screen without being *about* the note, so each must
-  // ask before unmounting a recording.
+  // BUG-54 guarded these three because leaving the note screen unmounted the capture with it.
   //
-  // Source state vs destination state decides what waits. Closing the sidebar belongs to
-  // the CLICK (source) — on mobile it is an overlay whose scrim would dim and block the
-  // very "Still recording" confirm the guard just raised — so it happens immediately.
-  // Anything belonging to where you are GOING (the folder preview) waits for the leave.
+  // 51-C: unguarded. The session lives above the route now, so going to the notes list, a
+  // folder or Unfiled leaves the recording running — proven off-route in
+  // RecordingSurvivesTabSwitch, which returns and reads the transcript back. Asking anyway
+  // would be worse than noise: the tab bar is on these screens too (51-B) and would be
+  // showing the note as live while a dialog claimed the recording was about to be lost.
+  //
+  // What still guards: closing the recording tab, sign-out, workspace switch, moving the
+  // note, and leaving the browser (`beforeunload`, registered inside `useTranscription`, so
+  // it follows the session rather than whichever note happens to be mounted).
   function handleUnfiledSelect() {
     setSidebarOpen(false);
-    requestLeave(() => void navigate(w("/folders/unfiled")), "go to Unfiled");
+    void navigate(w("/folders/unfiled"));
   }
 
   function handleFolderSelect(folderId: string, folderPath: string[]) {
     setSidebarOpen(false);
     const folderName = folderPath[folderPath.length - 1] ?? "";
-    requestLeave(() => {
-      void navigate(w(`/folders/${folderId}`));
-      setPreviewFolderId(folderId);
-      setPreviewFolderName(folderName);
-    }, `go to ${destinationName(folderName, "that folder")}`);
+    void navigate(w(`/folders/${folderId}`));
+    setPreviewFolderId(folderId);
+    setPreviewFolderName(folderName);
   }
 
   function handleHome() {
@@ -411,7 +442,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
     // Filters live in the query string (CHANGE-23), so pathname alone is not "already here":
     // replacing a FILTERED home entry would destroy it and Back could never return to it.
     const alreadyHome = location.pathname === w("") && location.search === "";
-    requestLeave(() => void navigate(w(""), alreadyHome ? { replace: true } : undefined), "go to Home");
+    void navigate(w(""), alreadyHome ? { replace: true } : undefined);
   }
 
   function handleCreateFolder(name: string, parentFolderId?: string) {
@@ -539,6 +570,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
             activeNoteId={activeNoteId}
             homeIsCurrentPage={!activeNoteId && !activeFolderId}
             reconciled={cardsLoaded}
+            recordingNoteId={recordingNoteId}
             onSelect={handleSelectTab}
             onSelectHome={handleHome}
             onClose={handleCloseTab}

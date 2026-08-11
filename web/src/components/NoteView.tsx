@@ -8,6 +8,7 @@ import { NoteDeletedError, StaleContentError, type NoteDetail } from "../api/not
 import { keys } from "../api/queryKeys";
 import { presignRecordingDownload } from "../api/recordings";
 import { completeTranscription, discardTranscriptionDraft } from "../api/transcription";
+import { useNoteRecording } from "../hooks/recordingSessionContext";
 import { useActions } from "../hooks/useActions";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useCreateNoteFromNextOccurrence, useLinkNoteToCalendar, useUnlinkNoteFromCalendar } from "../hooks/useMeetingMutations";
@@ -15,7 +16,7 @@ import { useNoteDetail } from "../hooks/useNoteDetail";
 import { useAnalyseNote, useEditContent, useRenameNoteDetail, useSetNoteDate } from "../hooks/useNoteDetailMutations";
 import { useTagNote, useUntagNote } from "../hooks/useTagMutations";
 import { useTags } from "../hooks/useTags";
-import { useTranscription } from "../hooks/useTranscription";
+import type { useTranscription } from "../hooks/useTranscription";
 import type { AgendaEditorApi, LiveTopic } from "../lib/agendaEditorApi";
 import { reportDeletedNote } from "../lib/deletedNoteRescue";
 import { recordRumEvent } from "../rum";
@@ -91,7 +92,7 @@ export default function NoteView({
   // 19-E2: the streaming transcription hook lives in the common parent so its state flows DOWN as
   // props to RecordControl (controlled). Declared before useNoteDetail so its diarization status
   // can drive the note poll (33-B1). Exactly one instance — a second would start a second session.
-  const transcription = useTranscription(noteId);
+  const transcription = useNoteRecording(noteId);
   // 33-B1: while a batch diarization job is refining the transcript, poll the note until
   // transcriptIsDiarized flips true (then useNoteDetail stops itself).
   const { data: detail, isLoading: loadingDetail, isError, error } = useNoteDetail(

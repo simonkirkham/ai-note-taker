@@ -1,5 +1,6 @@
 import NoteView from '../components/NoteView'
 import { ToastProvider } from '../components/ToastProvider'
+import { RecordingSessionProvider } from '../hooks/recordingSession'
 import type { TranscriptionStatus, UseTranscriptionResult } from '../hooks/useTranscription'
 import { render, screen } from '../test/render'
 
@@ -34,16 +35,32 @@ vi.mock('../hooks/useTranscription', () => ({
 }))
 
 // Passive RecordControl stand-in (mirrors the controlled component).
-vi.mock('../components/RecordControl', () => ({
-  default: () => <div data-testid="record-control-mock" />,
-}))
+//
+// 51-C: it now claims the session on mount. The session lives above the note, and a note only
+// sees it if it OWNS it — ownership being established by starting a recording. A note that is
+// 'finalising' is by definition one that recorded, so claiming here reproduces the real path.
+// The alternative — letting an unclaimed note adopt whatever session is active — would be
+// production code existing only to satisfy a test, and could bind a capture to the wrong note.
+vi.mock('../components/RecordControl', async () => {
+  const { useEffect } = await import('react')
+  return {
+    default: function RecordControlMock({ transcription }: { transcription: UseTranscriptionResult }) {
+      // Mount-once. Keyed on `transcription` it re-fired on every render, since
+      // `useNoteRecording` returns a fresh object each time; that only ever terminated
+      // because a repeat claim happened to be a no-op, which is not a property to lean on.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      useEffect(() => { transcription.startRecording(true, true) }, [])
+      return <div data-testid="record-control-mock" />
+    },
+  }
+})
 
 const noop = () => {}
 const asyncNoop = async () => {}
 
 function renderFresh() {
   return render(
-    <ToastProvider>
+    <ToastProvider><RecordingSessionProvider>
       <NoteView
         noteId="note-fin"
         initialTitle=""
@@ -53,7 +70,7 @@ function renderFresh() {
         onDateSet={noop}
         onOpenNote={noop}
       />
-    </ToastProvider>,
+    </RecordingSessionProvider></ToastProvider>,
   )
 }
 
