@@ -1277,6 +1277,12 @@ public sealed class NoteTakerStack : Stack
             Name = rumMonitorName,
             Domain = rumDomain,
             CwLogEnabled = true,
+            // AWS defaults custom events to DISABLED, which makes every
+            // cwr("recordEvent", …) call a silent no-op in the browser (TI-67).
+            CustomEvents = new CfnAppMonitor.CustomEventsProperty
+            {
+                Status = "ENABLED"
+            },
             AppMonitorConfiguration = new CfnAppMonitor.AppMonitorConfigurationProperty
             {
                 AllowCookies = true,

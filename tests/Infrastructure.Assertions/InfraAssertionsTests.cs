@@ -980,6 +980,35 @@ public class InfraAssertionsTests
     }
 
     [Fact]
+    public void Rum_CustomEventsAreEnabled()
+    {
+        // TI-67: recordRumEvent() calls cwr("recordEvent", …), which RUM silently
+        // drops unless custom events are enabled on the monitor. AWS defaults this
+        // to DISABLED, so every custom event shipped before this was a no-op.
+        _template.HasResourceProperties("AWS::RUM::AppMonitor", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Name"] = "notetaker-rum",
+            ["CustomEvents"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Status"] = "ENABLED"
+            })
+        }));
+    }
+
+    [Fact]
+    public void Rum_CustomEventsAreEnabled_OnTheDomainScopedMonitor()
+    {
+        // Prod is the domain-scoped stack, so that is the template that has to carry it.
+        _domainTemplate.HasResourceProperties("AWS::RUM::AppMonitor", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["CustomEvents"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Status"] = "ENABLED"
+            })
+        }));
+    }
+
+    [Fact]
     public void Rum_MonitorIdOutputExists()
     {
         _template.HasOutput("RumMonitorId", Match.AnyValue());

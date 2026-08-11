@@ -14,8 +14,13 @@ export function recordRumEvent(type: string, data: Record<string, unknown>): voi
   // reported. This bug is exactly that: guarding the on-device teardown, then emitting the failure
   // from inside the guard, put a fresh unguarded throw on the pre-commit path. Guarded once here
   // rather than at each of the ~14 call sites.
+  // TI-67: ONE payload object, never positional args. The global is installed as
+  // `(c, p) => push({c, p})`, so a third argument is silently dropped and `recordEvent`
+  // then throws IncorrectParametersException on the bare `type` string — swallowed by the
+  // guard below, which is why this went unnoticed. `recordError` genuinely takes one
+  // payload, which is why resource-error reporting has always worked.
   try {
-    cwr()?.("recordEvent", type, data);
+    cwr()?.("recordEvent", { type, data });
   } catch {
     /* a failed diagnostic is not worth a failed operation */
   }

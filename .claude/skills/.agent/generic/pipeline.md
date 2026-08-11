@@ -53,7 +53,7 @@ Only stop for genuinely destructive or ambiguous calls (reverting someone's slic
 | Workflow | Trigger | Jobs |
 | --- | --- | --- |
 | `pr.yml` | PR opened/updated | `backend`, `frontend`, `eventstore`, `desktop` |
-| `docs-check.yml` | PR touching the tracking docs | `doc-ids` (duplicate BUG/TI/CHANGE ids) |
+| `docs-check.yml` (**"Repo Checks"**) | PR touching the tracking docs, `.github/workflows/**` or `.github/actions/**` | `doc-ids` (duplicate BUG/TI/CHANGE ids); `workflows` (actionlint + shellcheck — a workflow that does not parse fails HERE and nowhere else) |
 | `deploy.yml` | **push to `main` only** | `detect-changes` → `validate-frontend` / `validate-backend` → `deploy-test` (**E2E lives here**) → `deploy-production` |
 | `e2e.yml` | manual — `gh workflow run e2e.yml -f runs=N [-f filter=X]` | N E2E runs against the deployed test env, no deploy |
 

@@ -1,6 +1,6 @@
-name: Docs Check
+name: Repo Checks
 
-# Validates the tracking docs on every PR that touches them.
+# Cheap guards over the parts of the repo that pr.yml cannot see, or does not check.
 #
 # Why this exists as its own workflow: pr.yml `paths-ignore`s docs/**, **/*.md and
 # scripts/**, so a docs-only PR runs NO checks at all. The tracking-doc id check lived
@@ -9,7 +9,23 @@ name: Docs Check
 # elsewhere, so the check had never run there. A guard that depends on per-machine
 # setup protects nobody by default; this runs for every clone and every session.
 #
-# Deliberately narrow: it does not build, test, or deploy anything. Pure grep, ~10s.
+# The workflow lint (TI-70) is here for a different reason. pr.yml DOES trigger on a
+# workflow-only change — .github/** is not paths-ignored — but every check it runs is a
+# build or a test, and none of them so much as parses a workflow file. That is how
+# TI-69 shipped: `timeout-minutes: ${{ fromJSON(inputs.runs) * 4 + 15 }}` is a PARSE
+# error, so e2e.yml never loaded, `on:` was never read, `workflow_dispatch` was never
+# registered, and 162 pushes over three days each got a zero-job red run named by file
+# path with no failing check and no annotation anywhere. Its PR was green.
+#
+# The merge-gate self-test (TI-77) is here for the third variant of the same reason:
+# pr.yml paths-ignores scripts/**, so every past edit to the merge gate shipped
+# unexercised.
+#
+# Deliberately narrow: it does not build, test, or deploy anything. Grep + a stubbed
+# shell test + one Go binary, well under a minute. Both jobs run whenever any listed
+# path changes — a docs-only PR also pays ~6s of actionlint and a workflow-only PR also
+# pays the grep and the self-test, which is cheaper than the machinery needed to scope
+# each job to its own paths.
 
 on:
   pull_request:
@@ -20,7 +36,19 @@ on:
       - "docs/technical-improvements.md"
       - "docs/roadmap.md"
       - "scripts/check-doc-ids.sh"
+      # TI-77's merge-gate self-test (PR #463)
+      - "scripts/merge-gate.sh"
+      - "scripts/deploy-status.sh"
+      - "scripts/test-merge-gate.sh"
+      # TI-70's workflow lint (PR #464). ".github/workflows/**" subsumes the explicit
+      # docs-check.yml entry above it; both kept so neither side of the merge lost a line.
+      - "scripts/lint-workflows.sh"
       - ".github/workflows/docs-check.yml"
+      - ".github/workflows/**"
+      # Metadata only — actionlint validates a local action's YAML and `runs.using` via the
+      # workflow that `uses:` it, but NOT the shell inside its own `run:` block. Listed anyway
+      # so the metadata check runs when one changes. See scripts/lint-workflows.sh's header.
+      - ".github/actions/**"
 
 concurrency:
   group: docs-check-${{ github.head_ref || github.ref }}
@@ -46,3 +74,29 @@ jobs:
         # executable bit does not survive, so most of scripts/ is committed 100644. The bit is
         # set on this script too, but `bash` means a future script losing it cannot break the gate.
         run: bash ./scripts/check-doc-ids.sh
+
+      # The merge gate and the deploy-status check are reachable by no other workflow:
+      # pr.yml paths-ignores scripts/**, so every past edit to them shipped unexercised —
+      # which is how TI-77 (uncomputed mergeability reported as a conflict, sending you to
+      # rebase a clean branch) survived. Stub-driven, deterministic, no network, ~15s.
+      - name: Merge-gate self-test
+        run: bash ./scripts/test-merge-gate.sh
+
+  workflows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      # actionlint parses every workflow, checks each ${{ }} against the real expression
+      # grammar and the contexts available at that key, rejects unknown keys, and pipes
+      # each `run:` block through shellcheck. The same script runs in .githooks/pre-commit,
+      # so there is one definition of "a valid workflow" rather than two that can drift.
+      #
+      # LINT_WORKFLOWS_REQUIRE_SHELLCHECK: ubuntu-latest ships shellcheck, but actionlint
+      # drops those rules SILENTLY if it is ever absent, leaving a green run at half
+      # coverage. Fail loudly instead of shrinking quietly.
+      - name: Workflow lint (actionlint)
+        env:
+          LINT_WORKFLOWS_REQUIRE_SHELLCHECK: "1"
+        run: bash ./scripts/lint-workflows.sh

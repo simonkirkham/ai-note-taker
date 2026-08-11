@@ -6,7 +6,7 @@ namespace EventStore.Integration;
 
 public sealed class DynamoDbFixture : IAsyncLifetime
 {
-    private readonly DynamoDbContainer _container = new DynamoDbBuilder("amazon/dynamodb-local:1.21.0").Build();
+    private readonly DynamoDbContainer _container = new DynamoDbBuilder(DynamoDbLocalImage.Reference).Build();
 
     public IAmazonDynamoDB DynamoDb { get; private set; } = null!;
     public string TableName { get; } = "test-events";
@@ -41,7 +41,10 @@ public sealed class DynamoDbFixture : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
-        DynamoDb.Dispose();
+        // Null when InitializeAsync threw before assigning it — a failed container start,
+        // which is the case this whole item is about. Disposing unconditionally raises a
+        // NullReferenceException that xUnit reports above the real error and hides it.
+        DynamoDb?.Dispose();
         await _container.DisposeAsync();
     }
 }

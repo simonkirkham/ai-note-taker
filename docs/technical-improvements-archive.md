@@ -40,7 +40,7 @@ Live doc (open items + the index): [technical-improvements.md](technical-improve
 
 ## TI-11. Add `cdk synth` to the pre-commit hook
 
-✅ 2026-06-10. `.githooks/pre-commit` runs `dotnet publish src/Api` + `cdk synth --quiet`, but **only when infra-affecting files are staged** (`src/Infrastructure/`, `src/Api/`, `*.sln`/`*.csproj`/`*.props`/`*.targets`, `cdk.json`) — docs/web/tests-only commits skip it. Uses the global `cdk` CLI, matching CI; no AWS creds needed.
+✅ 2026-06-10. `.githooks/pre-commit` runs `dotnet publish src/Api` + `cdk synth --quiet` — extended by TI-64 (below) to publish the Projector and TranscribeCompletion assets too — but **only when infra-affecting files are staged** (`src/Infrastructure/`, `src/Api/`, `*.sln`/`*.csproj`/`*.props`/`*.targets`, `cdk.json`) — docs/web/tests-only commits skip it. Uses the global `cdk` CLI, matching CI; no AWS creds needed.
 
 ## TI-12. Split the single API Lambda into individual Lambdas (CQRS + async projectors)
 
@@ -149,3 +149,47 @@ Live doc (open items + the index): [technical-improvements.md](technical-improve
 ## TI-43. Hard per-test E2E timeout so no single test can hang the deploy gate
 
 ✅ PR #293, deploy #595, 2026-06-17. `E2EFactAttribute : FactAttribute { Timeout = 120_000 }` across all journeys — caps the 44-min-hang class (PR #291's body-reading diagnostic). **120 s** chosen: reload-tolerant helpers allow 30 s each and Tags journeys chain 2–3 → ~90 s legit worst case. **Verified it fires** — xUnit's `Timeout` is silently ignored when parallelization is disabled; confirmed with a throwaway probe (load-bearing precondition: no `xunit.runner.json`, no `DisableTestParallelization`).
+
+## TI-64. Pre-commit `cdk synth` fails in every fresh worktree — only `src/Api` is published
+
+✅ PR #457, 2026-08-10. The first commit in every new slice died several minutes in — **after** the whole test suite had already run — with `Cannot find asset at …/src/Projector/…/publish`, and read as "my change broke CDK" rather than "this worktree was never fully published". The hook published only `src/Api`; the stack has packaged three Lambda assets since 27-B (Projector) and 33-B1 (TranscribeCompletion). `.githooks/pre-commit` now publishes the other two **when their artefact is absent** — `cdk synth` fingerprints an asset directory but never validates its contents, so a fresh worktree pays ~48 s once and every later commit pays two `test -f` calls. `cdk synth` still always runs; nothing is skipped. `CLAUDE.md` (`## How to run`, `## Worktrees`) and `README.md` shipped in the same merge, because all three still prescribed publishing only `src/Api` — a manual `cdk synth`/`cdk deploy` from a clone hit the identical error with no hook involved. **Verified by running the hook, not by reading it:** red before the change, green after in a second zero-artefact worktree, and still red with a defect injected into the stack's asset path. `pr.yml` paths-ignores `.githooks/**`, so that demonstration is the only evidence — CI covered none of it. Learnings: [ti-64-the-workaround-that-outlived-its-bug](learnings/ti-64-the-workaround-that-outlived-its-bug.md).
+
+## TI-67. Every `recordRumEvent` call in the app was inert — no browser fault ever reached CloudWatch
+
+✅ PR #458, deploy #760, 2026-08-11. When something broke in a user's browser — a dead note link, a failed pinned-tab restore, a 404'd editor chunk, a blocked sign-in — nobody found out. **10 event types across 16 call sites had never emitted once**, across six slices, while looking exactly like telemetry with no traffic. Absence of complaints was the symptom, not the evidence.
+
+**Two independent gates, both closed — either one alone kept every event inert.** (1) *Server side:* CloudWatch RUM drops custom events unless enabled on the app monitor; AWS defaults that to `DISABLED` and `CustomEvents` appeared nowhere in the CDK. (2) *Client side:* `recordRumEvent` called `cwr("recordEvent", type, data)` with three positional args, but the deployed 3.x client installs the global as `(c, p) => push({c, p})` — **arity two**. The third argument was dropped, `recordEvent` got the bare `type` string, its guard threw `IncorrectParametersException`, and the BUG-74 `try/catch` swallowed it. `recordError` was never affected (genuinely one payload), which is why JS-error telemetry always landed and masked the gap.
+
+**The second gate is the whole lesson: the item's own prescribed fix would not have worked.** TI-67 was written up as "add `CustomEvents = ENABLED` to the CDK". Shipping only that would have closed one gate, left the other shut, and produced a signal that *looks* fixed — monitor reports `ENABLED`, row gets closed, still nothing arrives. Worse than the original bug, because nobody would have had reason to look again. The client half surfaced only because Hawk reviewed the PR against the **shipped artefact** rather than the write-up.
+
+**Fix:** `CustomEvents.Status = ENABLED` on `CfnAppMonitorProps` (in-place update — `createOnlyProperties` is `[Name, Platform]`, so the monitor `Id` the injected snippet and log-group name derive from survives); `cwr()?.("recordEvent", { type, data })` in `web/src/rum.ts`; two `Infrastructure.Assertions` cases (default + domain-scoped template, since prod is the domain-scoped stack); and `web/src/__tests__/recordRumEvent.test.ts`, which replays the deployed client's own parameter guard so a wrong-arity call fails the test instead of vanishing — mutation-tested across nine variants with zero false greens.
+
+**Verified by observation, not by proxy.** Baseline first: a 90-day Logs Insights query over the RUM log group (5 285 records) returned *only* built-in `com.amazon.rum.*` types — zero custom types ever, with `js_error_event = 2` corroborating that only `recordEvent` was broken. Then, after deploy #760 (`backend=true`, `deploy-production` confirmed executed) and `get-app-monitor` showing `"CustomEvents": {"Status": "ENABLED"}`, the deployed site was driven headlessly to make the shipped bundle emit for real: `authStorageBlocked` at `signIn`, which returns before redirecting so it needs no credentials. Two data-plane POSTs returned 200 and the event was **read back** — `event_type: authStorageBlocked`, `event_id: 3d732878-34c0-4ac0-ae92-66f6a193fe72`, 08:26:28Z. First custom event in the log group's history. Steps 1 and 2 both passed while the property was still unproven, which is exactly why step 3 was not optional.
+
+**Follow-up:** [TI-78] — the injected snippet never sets `sessionEventLimit`, so the client default of 200 applies and custom events are dropped silently late in a long session.
+
+## TI-71. A PR goes red with 26 failed tests that never ran, on a Docker Hub rate limit rather than anything in the diff
+
+✅ PR #462, commit `7866992c`, 2026-08-11. The `eventstore` check failed 26 of 37 with `Docker.DotNet.DockerImageNotFoundException: No such image: amazon/dynamodb-local:1.21.0` on a PR that changed only a workflow file and a docs row. Every occurrence was a false red, a blocked merge gate and a re-run — and the message actively misled, naming an image tag that was fine.
+
+**Why:** Testcontainers reports a pull that never landed as an image that does not exist. Docker Hub's anonymous pull limit is what a GitHub runner keeps tripping (shared egress IPs), and the failure is at *fixture* level, so one throttled pull surfaces as 26 independent test failures.
+
+**Fix:** pull AWS's own ECR Public copy instead — `public.ecr.aws/aws-dynamodb-local/aws-dynamodb-local:1.21.0`, an identical artefact (the 1.21.0 manifest digests match Docker Hub's byte for byte). Named in one place per side: `DynamoDbLocalImage.DefaultReference` for local runs, `DYNAMODB_LOCAL_IMAGE` in `pr.yml` so CI's pre-pull step and the tests cannot name different images. That pre-pull is load-bearing rather than an optimisation: each test class owns its own container and xUnit starts them in parallel, and ECR Public allows one anonymous pull per second per IP, so a concurrent burst is throttled even from a healthy registry.
+
+**Worth noting for the next item:** this row sat `🔲 Open` in the live doc after it had shipped. A backlog that lists finished work inflates itself and invites someone to redo it — the misleading-living-doc failure the human has asked to be prioritised. The fix was real; the *closing* was the part nobody checked.
+
+## TI-77. `merge-gate.sh` reports uncomputed mergeability as a conflict
+
+✅ PR #463, merged 2026-08-11 (`69d643c4`). The merge gate said `BLOCKED — rebase/resolve conflicts` on a branch that was perfectly clean, so the next move was a pointless rebase — or blaming whoever wrote the branch for a conflict that never existed. Hit on PR #460, moments after two merges landed on main.
+
+**Why:** GitHub computes mergeability on demand and answers `UNKNOWN`/`UNKNOWN` while it is still working — routine for up to a minute after main moves, and neither a conflict nor an error. The gate read it once and treated every value other than `MERGEABLE`/`CLEAN` as a conflict, printing a fixed remedy. Re-polling #460 returned `MERGEABLE`/`CLEAN` three times out of three.
+
+**Fix:** re-poll (5 × 2s, exiting on the first definite answer, so a settled PR still costs one call), then report the condition actually established. `CONFLICTING` keeps the rebase advice exclusively; still-`UNKNOWN` says it is not yet computed and names no cause; `UNSTABLE`/`BEHIND`/`DRAFT` each say what they are; a failing `gh` says *that* instead of arriving as two empty strings. `deploy-status.sh` carried the same shape and was fixed with it — a `cancelled` run (3 of the last 200 main deploys; the busy `deploy` concurrency group cancels rather than queues) and the pre-run statuses `waiting`/`requested`/`pending` all said `fix main first`, blaming main for a run that was superseded or had not started.
+
+**The general rule this item is the exemplar of: a check must report what it observed, never a cause it has not established.** A plausible, actionable, wrong remedy sends the investigation to the accused instead of the instrument. Two more instances were found *inside the fix itself* during review, which is how routine the shape is.
+
+**Three things worth keeping:**
+
+1. **`scripts/test-merge-gate.sh` exists because `pr.yml` paths-ignores `scripts/**`** — CI had never once exercised these scripts, so every past edit shipped unverified and a green PR proved nothing. Now wired into `docs-check.yml`, the workflow that exists for exactly the paths `pr.yml` ignores. 23 stub-driven cases, ~16s, no network.
+2. **It paid for itself on its first CI run**, catching a defect no local run could see: `merge-gate.sh` executed `deploy-status.sh` directly, but `scripts/` is committed `100644`, so gate 3 died with `Permission denied` on any Linux checkout — invisible on the author's drvfs mount, where every file reports executable.
+3. **Injecting the defect is what found the tests that were not testing anything.** Two assertions passed with the fix reverted — the gate-3 stand-in was unreachable because `deploy-status.sh`'s own guards always print something, and both gate-3 cases asserted on output while discarding the exit code, so `fail=1` → `true` left the suite green while the gate printed `safe to merge` on a broken main. Neither would have been found by reading a green.
