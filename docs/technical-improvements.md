@@ -533,9 +533,9 @@ So `until ! pgrep -f "bin/eslint"; do sleep 15; done` never exits, whatever esli
 
 ## TI-70. What must be true before TI-70 is archived
 
-**In flight — PR [#464](https://github.com/simonkirkham/ai-note-taker/pull/464).** This section exists because the item's own subject is checks nobody watched run, so its own closing conditions must live somewhere durable rather than in a merged PR description nobody re-reads.
+**Merged 2026-08-11** — PR [#464](https://github.com/simonkirkham/ai-note-taker/pull/464), squash `a43574e6`, deploy #763. **Still open**: row 7 below is unproven, and it is the only row that tests the merged state. This section exists because the item's own subject is checks nobody watched run, so its own closing conditions must live somewhere durable rather than in a merged PR description nobody re-reads.
 
-**Owner:** whoever runs Scribe for #464.
+**Who ticks row 7, and when:** the next session that opens a PR touching only `.github/workflows/**` — for any reason, this item does not need its own PR. [TI-80] is the natural candidate, since its fix edits `docs-check.yml` and nothing else. **How:** `gh pr checks <n>` on that PR must list a check named `workflows`. Do not infer it from a green PR — `pr.yml` also runs on `.github/**`, so green proves nothing here; look for the check *by name*. If it is absent, the `paths:` widening did not take and TI-70 is not fixed.
 
 | # | Check | State |
 | --- | --- | --- |
@@ -545,7 +545,7 @@ So `until ! pgrep -f "bin/eslint"; do sleep 15; done` never exits, whatever esli
 | 4 | **Injected defect** — disable the failure path and confirm the red case passes | ✅ `"$bin" -color \|\| true` → exit 0 with the defect still present; reverted |
 | 5 | A PR whose diff is **only** `.github/workflows/**` gets a `workflows` run | ✅ PR #467 (base `proof/ti70-base`, head `proof/ti70-head`) — changed files = `[.github/workflows/e2e.yml]`, `workflows` pass. (The proof branch was cut before [TI-77] merged, so its `paths:` list is a **subset** of the shipped one — but it contains `.github/workflows/**`, the entry under test, and path filters are OR'd, so a superset cannot stop a glob matching.) |
 | 6 | A workflow-only PR got **no** `Docs Check` run before this change | ✅ PR #466 — `gh run list` returns only `PR Checks` |
-| 7 | **After merge:** the first real PR touching only `.github/workflows/**` shows a `Repo Checks / workflows` run | 🔲 **Outstanding** |
+| 7 | **After merge:** the first real PR touching only `.github/workflows/**` shows a `Repo Checks / workflows` run | 🔲 **Outstanding** — merged 2026-08-11 (PR [#464](https://github.com/simonkirkham/ai-note-taker/pull/464), squash `a43574e6`, deploy #763), so the widened filter is now live on `main` and this is the only unproven row |
 
 **Do not archive TI-70 until row 7 is ticked.** Rows 1-6 were all demonstrated on a branch; row 7 is the only one that tests the merged `paths:` filter on `main`, which is the half that TI-69 actually fell through. A green PR is not evidence for it — check for the run by name.
 
