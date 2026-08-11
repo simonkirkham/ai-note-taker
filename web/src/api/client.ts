@@ -106,12 +106,14 @@ async function fetchWithRetry(url: string, requestInit: RequestInit, init: Reque
   }
 }
 
-// BUG-77: the pre-flight refusal in apiFetch synthesises a 401 that the caller cannot tell apart
-// from one the server sent — yet the two need different diagnosis, because in the first case no
-// request ever left the browser and no server-side log, metric or access record will ever mention
-// it. Marking the synthetic response lets failure reporting say which happened. Lower-case: header
-// names are case-insensitive, and `Headers.get` normalises, so this reads back either way.
-export const NOT_SENT_HEADER = 'x-client-not-sent'
+// BUG-77: the pre-flight refusal below synthesises a 401 the caller cannot tell apart from one the
+// server sent — yet the two need different diagnosis, because in the first case no request ever left
+// the browser and no server-side log, metric or access record will ever mention it. Marked by
+// identity rather than by a header: `/api` is same-origin, so a header would be both readable and
+// settable on the wire, and a server or intermediary could make a genuine 401 masquerade as one that
+// was never sent — corrupting the exact distinction this exists to draw. A WeakSet is unreachable
+// from outside this module and releases the entry when the response is collected.
+const notSentResponses = new WeakSet<Response>()
 
 export async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
   let token = getToken()
@@ -120,7 +122,9 @@ export async function apiFetch(url: string, init?: RequestInit): Promise<Respons
     token = await refreshOnce()
     if (!token) {
       triggerUnauthorized()
-      return new Response(null, { status: 401, headers: { [NOT_SENT_HEADER]: 'token-refresh-failed' } })
+      const refused = new Response(null, { status: 401 })
+      notSentResponses.add(refused)
+      return refused
     }
   }
   const res = await fetchWithRetry(url, withAuth(init, token), init)
@@ -165,7 +169,7 @@ function ensureOk(res: Response, path: string, init: RequestInit | undefined, ok
   throw new ApiError(
     res.status,
     `${init?.method ?? 'GET'} ${path} failed: ${res.status}`,
-    res.headers.get(NOT_SENT_HEADER) !== null,
+    notSentResponses.has(res),
   )
 }
 

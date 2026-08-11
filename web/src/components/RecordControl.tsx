@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { analyseNote } from "../api/notes";
 import type { UseTranscriptionResult } from "../hooks/useTranscription";
-import { describeAnalyseFailure } from "../lib/analyseFailure";
-import { recordRumEvent } from "../rum";
+import { type AnalyseTrigger, reportAnalyseFailure } from "../lib/analyseFailure";
 import styles from "./RecordControl.module.css";
 
 function formatTime(seconds: number): string {
@@ -72,7 +71,7 @@ export default function RecordControl({
   // was therefore undiagnosable: no client-side record existed, and the message named the wrong
   // subsystem. Keep what actually failed, say something true, and emit it.
   const handleAnalyse = useCallback(
-    async (trigger: "manual" | "auto") => {
+    async (trigger: AnalyseTrigger) => {
       setIsAnalysing(true);
       setAnalyseError(null);
       const startedAt = Date.now();
@@ -80,25 +79,7 @@ export default function RecordControl({
         await analyseNote(noteId);
         onAnalysisComplete?.();
       } catch (err) {
-        const failure = describeAnalyseFailure(err);
-        setAnalyseError(failure.message);
-        recordRumEvent("analyseFailed", {
-          noteId,
-          // Which of the two entry points failed: the button, or the automatic analyse that runs
-          // after a recording stops. The reported occurrence was the automatic one, and only that
-          // path can fail without the user having asked for anything.
-          trigger,
-          kind: failure.kind,
-          status: failure.status,
-          sent: failure.sent,
-          // How long it took to fail separates an instant refusal from a request that ran and then
-          // gave up — the analyse path is slow (a calendar fetch precedes the model call), so a
-          // deadline interacting with it is an untested candidate for the original occurrence.
-          elapsedMs: Date.now() - startedAt,
-          online: navigator.onLine,
-          detail: failure.detail,
-        });
-        console.error(`Analyse failed for note ${noteId} (${failure.kind})`, err);
+        setAnalyseError(reportAnalyseFailure(err, { noteId, trigger, startedAt }).message);
       } finally {
         setIsAnalysing(false);
       }

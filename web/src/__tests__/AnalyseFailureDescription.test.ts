@@ -1,5 +1,10 @@
-import { ApiError, NOT_SENT_HEADER } from '../api/client'
-import { describeAnalyseFailure } from '../lib/analyseFailure'
+import { ApiError } from '../api/client'
+import { describeAnalyseFailure, reportAnalyseFailure } from '../lib/analyseFailure'
+
+const recordRumEvent = vi.fn()
+vi.mock('../rum', () => ({
+  recordRumEvent: (type: string, data: Record<string, unknown>) => recordRumEvent(type, data),
+}))
 
 // BUG-77. AnalyseFailureReporting.test.tsx drives the four failures a user is most likely to meet
 // through the real component; this isolates every remaining arm of the mapping, so a regression in
@@ -69,11 +74,33 @@ describe('describeAnalyseFailure', () => {
     expect(neverSent.message).toBe(fromServer.message)
   })
 
-  it('marks the synthetic pre-flight refusal with the header the error is built from', () => {
-    // Guards the wiring, not the mapping: apiFetch marks the response it invents, and ensureOk
-    // reads that header back. A rename on one side alone silently reverts the distinction above.
-    const marked = new Response(null, { status: 401, headers: { [NOT_SENT_HEADER]: 'token-refresh-failed' } })
+})
 
-    expect(marked.headers.get(NOT_SENT_HEADER)).toBe('token-refresh-failed')
+describe('reportAnalyseFailure', () => {
+  beforeEach(() => recordRumEvent.mockClear())
+
+  // Every way of asking for an analysis reports through here, so the record is the same shape
+  // whichever one failed — the "generate final notes" button included, which reported its own way
+  // and recorded nothing until BUG-77.
+  it('records the failure and hands back the sentence to show, whichever entry point failed', () => {
+    const failure = reportAnalyseFailure(new ApiError(500, 'x'), {
+      noteId: 'note-9',
+      trigger: 'finalNotes',
+      startedAt: Date.now() - 1200,
+    })
+
+    expect(failure.message).toMatch(/temporarily unavailable/i)
+    expect(recordRumEvent).toHaveBeenCalledWith(
+      'analyseFailed',
+      expect.objectContaining({
+        noteId: 'note-9',
+        trigger: 'finalNotes',
+        kind: 'server',
+        status: 500,
+        sent: true,
+        online: true,
+      }),
+    )
+    expect(recordRumEvent.mock.calls[0][1].elapsedMs).toBeGreaterThanOrEqual(1200)
   })
 })

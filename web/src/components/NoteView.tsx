@@ -17,6 +17,7 @@ import { useTagNote, useUntagNote } from "../hooks/useTagMutations";
 import { useTags } from "../hooks/useTags";
 import { useTranscription } from "../hooks/useTranscription";
 import type { AgendaEditorApi, LiveTopic } from "../lib/agendaEditorApi";
+import { reportAnalyseFailure } from "../lib/analyseFailure";
 import { reportDeletedNote } from "../lib/deletedNoteRescue";
 import { recordRumEvent } from "../rum";
 import AgendaSection from "./AgendaSection";
@@ -409,6 +410,11 @@ export default function NoteView({
   }
 
   async function handleGenerateFinalNotes() {
+    // BUG-77: this is the app's OTHER way to ask for an analysis, and it had the same bare
+    // `catch {}` — one sentence for every cause and nothing recorded. Two entry points reporting
+    // failure two different ways is how the first occurrence stayed undiagnosable; both now go
+    // through the same reporter, so "every failed analyse leaves a record" is true of both.
+    const startedAt = Date.now();
     try {
       // BUG-32: persist any just-typed note edit (e.g. a `/ai` instruction) and WAIT for it
       // to land before analysing, so the server reads the latest content. handleSaveContent
@@ -417,8 +423,8 @@ export default function NoteView({
       handleSaveContent();
       if (pendingContentSaveRef.current) await pendingContentSaveRef.current;
       await analyseM.mutateAsync();
-    } catch {
-      showError("Couldn't generate final notes. Please try again.");
+    } catch (err) {
+      showError(reportAnalyseFailure(err, { noteId, trigger: "finalNotes", startedAt }).message);
     }
   }
 

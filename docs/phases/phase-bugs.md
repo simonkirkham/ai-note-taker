@@ -16,7 +16,7 @@ Ordered by severity, then by id.
 
 | Item | Summary | Status | Depends on |
 |------|---------|--------|------------|
-| BUG-77 | You finish a recording and the note is never analysed. You are now told what actually stopped it — an expired sign-in, an unreachable server, a missing note — instead of one catch-all sentence, but why it happens at all is still unknown. | Open | TI-67, TI-78, BUG-33 |
+| BUG-77 | You finish a recording and the note is never analysed. You are now told what actually stopped it — an unreachable server, a note that has gone, a service that is briefly down — instead of one catch-all sentence, and the failure is recorded so a repeat can be diagnosed. Why it happens at all is still unknown. | Open | TI-67, TI-78, BUG-33 |
 | BUG-79 | Something you just created — an action item, or a note — can be missing after you reload, and stay missing. Rare, but this is the one guarantee the app is built to make. | Open | — |
 | BUG-70 | Clicking "+ New Note" while recording and then choosing to keep recording still leaves a blank, untitled note behind on your home list. | Open — held behind 51-C | BUG-54, 51-C |
 | BUG-73 | Signing out while an on-device transcript is still finishing can park you for up to an hour with no way to leave — a real problem on a shared machine. | Open | BUG-55 |
@@ -34,17 +34,20 @@ Further bugs will be appended as they are identified.
 
 **Severity:** High — a core action fails with an explanation that can be actively misleading, and nothing is recorded when it happens. **Status:** Open. **Hit live** 2026-08-10 ~14:50Z on the desktop app (`1.0.0-20260810.196`); the same note analysed fine 30 minutes later.
 
-**Confirmed defect — the mis-reporting. Fixed, PR #TBD.** `RecordControl.tsx:73` caught with a bare `catch {}` and discarded the error, so a dead network, an expired sign-in, a refused request and a parse error all printed one sentence that named the wrong subsystem and advised a retry that may have been incapable of working. Compounded by [TI-67] (RUM `CustomEvents: DISABLED` in prod), so nothing client-side was recorded either.
+**Confirmed defect — the mis-reporting. Fixed, PR #472.** `RecordControl.tsx:73` caught with a bare `catch {}` and discarded the error, so a dead network, an expired sign-in, a refused request and a parse error all printed one sentence that named the wrong subsystem and advised a retry that may have been incapable of working. `NoteView.handleGenerateFinalNotes` — the app's *second* way of asking for an analysis — had the same bare catch and its own catch-all sentence. Compounded by [TI-67] (RUM `CustomEvents: DISABLED` in prod), so nothing client-side was recorded either.
 
 **What the fix changed:**
 
 | Now | Detail |
 |---|---|
-| The message names the real failure | Expired sign-in → *sign in again*; unreachable server → *check your connection*; server fault → *temporarily unavailable*; missing note → *no longer exists*, with the retry advice dropped where a retry cannot work |
-| Every failure emits `analyseFailed` to RUM | `kind`, `status`, `sent`, `elapsedMs`, `trigger` (the automatic post-recording analyse vs the button), `noteId`, `online`, truncated `detail`. Query in [observability.md](../observability.md#why-did-a-notes-analysis-fail) |
-| A request that never left the browser is distinguishable from one the server refused | `apiFetch`'s synthetic pre-flight 401 now carries `x-client-not-sent`, surfaced as `ApiError.notSent` → `sent: false`. Both are 401 and neither reaches the gateway, so nothing else could tell them apart |
+| The message names the real failure | Unreachable server → *check your connection*; server fault → *temporarily unavailable*; missing note → *no longer exists*, with the retry advice dropped where a retry cannot work |
+| Both entry points report the same way | `RecordControl` (button + the automatic post-recording analyse) and `NoteView`'s *Generate final notes* both route through `reportAnalyseFailure`. Two paths reporting two different ways is how this stayed invisible |
+| Every failure emits `analyseFailed` to RUM | `kind`, `status`, `sent`, `elapsedMs`, `trigger`, `noteId`, `online`, truncated `detail`. Query in [observability.md](../observability.md#why-did-a-notes-analysis-fail) |
+| A request that never left the browser is distinguishable from one the server refused | `apiFetch`'s synthetic pre-flight 401 is tagged by identity (a module-private `WeakSet`), surfaced as `ApiError.notSent` → `sent: false`. Both are 401 and neither reaches the gateway, so nothing else could tell them apart |
 
-**The record can still be dropped, until [TI-78] lands.** The RUM client's default `sessionEventLimit` of 200 is not overridden, so custom events stop being sent late in a long session — which is exactly when a post-recording analyse happens. Treat an absent `analyseFailed` on a long session as unproven, not as evidence the failure did not occur.
+**The auth and forbidden arms are a fallback the user will not normally see** — any 401 whose refresh fails, and any 403, trips `triggerUnauthorized`/`triggerForbidden` first, and `App.tsx` replaces the whole screen with the session-expired banner. Verified by reading the chain (`client.ts` → `AuthContext` → `App.tsx:80`), not measured. The record still lands, which is the part that matters here.
+
+**Two reasons the record is not yet conclusive.** No `analyseFailed` has ever been observed arriving in prod — [TI-67] proved the channel with a different event, and this one is unwatched until it fires. And until [TI-78] lands, the RUM client's default `sessionEventLimit` of 200 drops custom events late in a long session, which is exactly when a post-recording analyse happens. Treat an absent record as unproven, not as evidence the failure did not occur.
 
 **Trigger — still open, and a previous diagnosis is retracted.** An earlier version of this row asserted the cause was a terminally expired sign-in. **That was wrong.** The reasoning was that `apiFetch` (`client.ts:112-118`) pre-flights every call and, if the JWT is expired and the silent refresh fails, returns a synthetic `new Response(null, {status:401})` **without sending** — which would produce exactly this silent, traceless failure — and the refresh endpoint was observed failing every time.
 

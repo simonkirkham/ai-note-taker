@@ -91,14 +91,15 @@ To trace a request:
 
 ## Why did a note's analysis fail?
 
-Every failed analyse emits the `analyseFailed` custom event from the browser (BUG-77). It is the only record of the failure when the request never reaches the gateway, which is exactly the case that left the first live occurrence undiagnosable.
+Every failed analyse — all three ways of asking for one — emits the `analyseFailed` custom event from the browser (BUG-77). It is the only record of the failure when the request never reaches the gateway, which is exactly the case that left the first live occurrence undiagnosable.
+
+**Two things stop this being conclusive, and both are open.** The event has never yet been seen arriving in prod (the channel itself was proven by [TI-67], with a different event). And until [TI-78] lands, the RUM client's default 200-event session cap drops custom events late in a long session — which is exactly when a post-recording analyse happens. So an absent record is not evidence the failure did not occur.
 
 ```bash
-aws logs start-query --region eu-west-2 --profile prod \
+aws logs filter-log-events --region eu-west-2 --profile prod \
   --log-group-name "/aws/vendedlogs/RUMService_notetaker-rum5a2b155e" \
-  --start-time $(( $(date +%s) - 86400 )) --end-time $(date +%s) \
-  --query-string 'fields @timestamp, event_details.kind, event_details.status, event_details.sent, event_details.elapsedMs, event_details.trigger, event_details.noteId, event_details.detail, user_details.sessionId
-    | filter event_type = "analyseFailed" | sort @timestamp desc'
+  --start-time $(( ($(date +%s) - 86400) * 1000 )) \
+  --filter-pattern '"analyseFailed"' --query 'events[].message' --output text
 ```
 
 The payload lands **directly** under `event_details` — not `event_details.data`, despite the client being called with `{type, data}`. Read off a real record in this log group (`authStorageBlocked` → `"event_details":{"at":"signIn"}`), because a wrong field path returns empty columns and reads exactly like no failures.
@@ -108,7 +109,7 @@ The payload lands **directly** under `event_details` — not `event_details.data
 | `kind` | `auth` / `forbidden` / `notFound` / `rateLimited` / `server` / `network` / `request` / `unknown` |
 | `sent` | `false` means the browser refused the request before dispatching it — nothing left the machine, so no gateway metric or Lambda log will ever mention it |
 | `elapsedMs` | Separates an instant refusal from a request that ran and gave up |
-| `trigger` | `auto` = the analyse that runs on its own after a recording; `manual` = the button |
+| `trigger` | `auto` = the analyse that runs on its own after a recording; `manual` = the Analyse note button; `finalNotes` = the Generate final notes button |
 
 ## Did something breach a threshold?
 

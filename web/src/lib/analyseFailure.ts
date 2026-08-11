@@ -1,4 +1,5 @@
 import { ApiError } from '../api/client'
+import { recordRumEvent } from '../rum'
 
 // BUG-77: analysis used to report every failure as "Analysis failed. Please try again." — one
 // sentence covering a dead network, an expired sign-in, a refused request and a server fault, so
@@ -85,4 +86,37 @@ export function describeAnalyseFailure(error: unknown): AnalyseFailure {
     sent: true,
     detail,
   }
+}
+
+/**
+ * Which of the three ways an analyse can be asked for failed. `auto` is the one that runs on its
+ * own after a recording stops — the only one that can fail without the user having asked for
+ * anything, and the one the first live occurrence came from.
+ */
+export type AnalyseTrigger = 'auto' | 'manual' | 'finalNotes'
+
+/**
+ * Describe the failure, record it, and hand the caller the sentence to show. Every analyse entry
+ * point goes through here — a second one that reports its own way is how BUG-77 stayed invisible.
+ */
+export function reportAnalyseFailure(
+  error: unknown,
+  context: { noteId: string; trigger: AnalyseTrigger; startedAt: number },
+): AnalyseFailure {
+  const failure = describeAnalyseFailure(error)
+  recordRumEvent('analyseFailed', {
+    noteId: context.noteId,
+    trigger: context.trigger,
+    kind: failure.kind,
+    status: failure.status,
+    sent: failure.sent,
+    // How long it took to fail separates an instant refusal from a request that ran and gave up —
+    // the analyse path is slow (a calendar fetch precedes the model call), so a deadline
+    // interacting with it is an untested candidate, not a diagnosis.
+    elapsedMs: Date.now() - context.startedAt,
+    online: navigator.onLine,
+    detail: failure.detail,
+  })
+  console.error(`Analyse failed for note ${context.noteId} (${failure.kind})`, error)
+  return failure
 }
