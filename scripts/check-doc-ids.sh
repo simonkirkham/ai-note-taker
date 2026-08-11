@@ -33,6 +33,28 @@ check docs/phases/phase-bugs.md          BUG
 check docs/technical-improvements.md     TI
 check docs/phases/phase-minor-changes.md CHANGE
 
+# The bugs archive holds one "## BUG-N" entry per fixed bug. Same duplicate check, different shape.
+if [ -f docs/phases/phase-bugs-archive.md ]; then
+  dupes=$(grep -oE '^## BUG-[0-9]+' docs/phases/phase-bugs-archive.md | sort | uniq -d)
+  if [ -n "$dupes" ]; then
+    echo "ERROR: duplicate entries in docs/phases/phase-bugs-archive.md:" >&2
+    printf '%s\n' "$dupes" | sed 's/^/  /' >&2
+    status=1
+  fi
+
+  # A fixed bug moves OUT of phase-bugs.md and INTO the archive. Living in both means a close
+  # was half-done: either the row was never deleted, or it was re-added on another branch.
+  both=$(comm -12 \
+    <(grep -oE '^\| BUG-[0-9]+ \|' docs/phases/phase-bugs.md 2>/dev/null | grep -oE 'BUG-[0-9]+' | sort -u) \
+    <(grep -oE '^## BUG-[0-9]+' docs/phases/phase-bugs-archive.md | grep -oE 'BUG-[0-9]+' | sort -u))
+  if [ -n "$both" ]; then
+    echo "ERROR: these bugs are in BOTH phase-bugs.md and phase-bugs-archive.md:" >&2
+    printf '%s\n' "$both" | sed 's/^/  /' >&2
+    echo "  A fixed bug is archived and its row deleted - it lives in exactly one file." >&2
+    status=1
+  fi
+fi
+
 # The roadmap must not re-introduce a hand-maintained copy of bug status: that duplication
 # is what made it both stale and a conflict magnet (three times on one PR). phase-bugs.md
 # is the single source; the roadmap links to it.

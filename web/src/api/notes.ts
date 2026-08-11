@@ -6,8 +6,9 @@ import {
   getStreamToken,
   setLatestToken,
   setStreamToken,
+  tokenStream,
 } from './consistencyTokens';
-import { gatedRead, gatedReadResult, type GatedResult } from './gatedRead';
+import { gatedReadResult, type GatedResult } from './gatedRead';
 
 // Read-your-writes (RYW-2): the note flows are async (the projector builds the read models). A
 // note write returns its write token in `X-Consistency-Token`; the next note read echoes it in
@@ -16,8 +17,19 @@ import { gatedRead, gatedReadResult, type GatedResult } from './gatedRead';
 // recently written note (the one the user just edited).
 export const NOTE_CARDS_SCOPE = 'noteCards';
 
+const NOTE_STREAM_PREFIX = 'note#';
+
 function noteStream(noteId: string): string {
-  return `note#${noteId}`;
+  return `${NOTE_STREAM_PREFIX}${noteId}`;
+}
+
+// The note a `<stream>@<version>` token names, or null if the token is absent or names some other
+// aggregate. Only note writes ever reach the cards scope, but the cards guard acts on this id, so a
+// foreign stream must degrade to "protect nothing" rather than to a bogus note id.
+export function noteIdFromToken(token: string | null): string | null {
+  if (!token) return null;
+  const stream = tokenStream(token);
+  return stream.startsWith(NOTE_STREAM_PREFIX) ? stream.slice(NOTE_STREAM_PREFIX.length) : null;
 }
 
 // Record a note write's token both against its own stream (for the note-detail read) and as the
@@ -236,13 +248,24 @@ export async function deleteNote(noteId: string): Promise<void> {
   captureNoteToken(noteId, response);
 }
 
-export async function getNoteCards(): Promise<NoteCard[]> {
-  const body = await gatedRead<{ cards: NoteCard[] }>(
+// The cards list plus what the gate actually promised. `stale` means the gate gave up while the
+// projector was still behind, so this body predates the write it was waiting on — and `gatedNoteId`
+// names the single note that write touched (design decision #7: a list gate holds one stream
+// token). That pairing is what lets the caller protect one row instead of the whole list (TI-65).
+export interface NoteCardsResult {
+  cards: NoteCard[];
+  stale: boolean;
+  gatedNoteId: string | null;
+}
+
+export async function getNoteCards(): Promise<NoteCardsResult> {
+  const token = getLatestToken(NOTE_CARDS_SCOPE);
+  const { body, stale } = await gatedReadResult<{ cards: NoteCard[] }>(
     `/notes/cards`,
-    getLatestToken(NOTE_CARDS_SCOPE),
+    token,
     () => clearLatestToken(NOTE_CARDS_SCOPE),
   );
-  return body.cards;
+  return { cards: body.cards, stale, gatedNoteId: stale ? noteIdFromToken(token) : null };
 }
 
 export function analyseNote(noteId: string): Promise<void> {

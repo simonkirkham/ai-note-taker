@@ -2,6 +2,7 @@ import '@testing-library/jest-dom'
 import { webcrypto } from 'node:crypto'
 import { setupServer } from 'msw/node'
 import { retryConfig } from '../api/client'
+import { resetStaleCardsTrackingForTests } from '../hooks/useNoteCards'
 import { resetStaleDetailTrackingForTests } from '../hooks/useNoteDetail'
 import { resetDeletedNoteRescueForTests } from '../lib/deletedNoteRescue'
 import { resetWorkspaceForTests } from '../workspace/workspaceStore'
@@ -33,6 +34,8 @@ afterEach(() => {
   resetWorkspaceForTests()
   // BUG-48: the note-detail stale-read tracker is module state too — same leak class.
   resetStaleDetailTrackingForTests()
+  // TI-65: same class again for the cards-list stale-read hold budget.
+  resetStaleCardsTrackingForTests()
   // BUG-59: the deleted-note rescue store is module state by design (it must survive unmount and
   // query invalidation), so it survives a test too — clear it or one test's banner shows in the next.
   resetDeletedNoteRescueForTests()

@@ -63,7 +63,11 @@ For every candidate, before writing anything:
 
 ## Step 3 — Write it up (evidence-backed, terse)
 
-Add a summary-table row **and** a detail section to the routed doc, following that doc's existing format (`## Summary` table row + a `## BUG-N` / `## TI-N` detail block). Each detail block carries:
+Add a summary-table row **and** a detail section to the routed doc, following that doc's existing format (`## Summary` table row + a `## BUG-N` / `## TI-N` detail block).
+
+**The row is one or two lines, in plain language, saying what the person using the app experiences** — no file names, no log groups, no exception types, no status codes. Everything you gathered goes in the detail block, not the cell; a row that carries its own evidence makes the `Summary` column unreadable, which is the only job that column has. Allocate the id with `scripts/next-doc-id.sh <bug|ti>` — never hand-picked.
+
+Each detail block carries:
 
 - **Status / Severity** (one line each).
 - **Symptom** — what the user/operator sees (status code, the exact request path, `X-Cache`, etc.).

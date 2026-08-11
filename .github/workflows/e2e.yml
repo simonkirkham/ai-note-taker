@@ -213,6 +213,13 @@ jobs:
           API_URL: ${{ steps.outputs.outputs.api-url }}
           FRONTEND_URL: ${{ steps.outputs.outputs.frontend-url }}
           E2E_GOOGLE_ID_TOKEN: ${{ steps.token.outputs.id_token }}
+          # Read by scripts/warm-projector.sh:45, invoked as a CHILD PROCESS before each run
+          # below. Nothing in this step's own script reads it, so shellcheck reports it unused
+          # (SC2034) — suppressed in the run block, not deleted. Deleting it stops the projector
+          # warm/drain silently: warm-projector.sh prints `::warning::no token`, exits 0, and the
+          # caller has `|| true`, so every run then races a cold projector and the flake count
+          # this workflow exists to produce gets polluted by RYW failures. Same reason
+          # mint_token re-assigns it below.
           TOKEN: ${{ steps.token.outputs.id_token }}
           # Needed by mint_token: a run long enough to outlive the ~1h id_token must be able
           # to exchange the refresh token again mid-loop.
@@ -242,6 +249,10 @@ jobs:
               return 1
             fi
             echo "::add-mask::$id"
+            # TOKEN is read by scripts/warm-projector.sh, a child process. shellcheck cannot
+            # see across an exec, so SC2034 "appears unused" is a false positive here — and
+            # acting on it silently disables the projector warm/drain for every run.
+            # shellcheck disable=SC2034
             TOKEN="$id"; export E2E_GOOGLE_ID_TOKEN="$id"
             token_minted_at=$SECONDS
           }

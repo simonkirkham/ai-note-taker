@@ -1,0 +1,145 @@
+{
+  "_comment": [
+    "BUG-76 — the shared contract between the server's reading of a note body and the editor's.",
+    "Since 43-H2 the body is the ONLY source of the agenda, so a line the server counts and the",
+    "header does not show is a topic the user can neither see nor tick, while the 'X / Y' pill goes",
+    "on counting it.",
+    "",
+    "Both sides assert this file, so neither reading can drift alone:",
+    "  server — tests/Domain.Specs/Projections/AgendaParityFixtureSpec.cs (AgendaFromContent.Parse)",
+    "  client — web/src/__tests__/agendaParity.test.ts (agendaEditorApi.readTopics)",
+    "",
+    "Fields per case:",
+    "  markdown     the stored note body, exactly as both sides receive it",
+    "  topics       what the SERVER reads: text + ticked state, in document order",
+    "  header       what the HEADER reads, present ONLY where it differs from `topics`",
+    "  divergence   why they differ and why it is not closed here; required whenever `header` is",
+    "               present, so a real gap can never be hidden by quietly adding an override",
+    "",
+    "WHAT GETS REGISTERED: a case earns a row whenever a body a user can CURRENTLY be looking at",
+    "makes the header and the server disagree — whether or not a later save reconciles them. That",
+    "is the whole rule; `header` differing from `topics` is the mechanical test for it, and every",
+    "such row must carry a `divergence`.",
+    "",
+    "Two divergences are deliberately left OUT, and they predate the register. This is not a claim",
+    "that no others exist, only that these two are excluded and why. Both are PRE-EXISTING —",
+    "neither is reached by widening the topic walk to nested lists — only imported or hand-written",
+    "markdown gets to them, and the first save normalises both away. Verified against a real editor,",
+    "and ASSERTED rather than left as prose — see agendaParity.test.ts, 'the divergences justified",
+    "by \"a save fixes it\" really are fixed by a save'. A tiptap-markdown upgrade that stopped",
+    "hoisting, or a serializer that stopped fencing, turns those tests red instead of turning this",
+    "paragraph silently false.",
+    "  `1. [ ] Numbered task` — the server's marker class is [-*+], so it reads no topic. The",
+    "     client reads one, but NOT through the numbered list: the parser leaves the orderedList",
+    "     item empty and hoists a sibling TOP-LEVEL taskList, which the walk has always read.",
+    "     Saving rewrites the line as `- [ ] Numbered task` and the two agree again. The save is",
+    "     NOT lossless: it also leaves a stray empty `1. ` item in the note. That item is inert —",
+    "     neither side reads it as a topic — but it is visible, so do not call the save clean.",
+    "  a 4-space-indented code block holding a checklist line — the server counts it (its only",
+    "     code rule is a ``` / ~~~ fence), the client sees a codeBlock and reads none. Saving",
+    "     re-emits it fenced, after which the server skips it too."
+  ],
+  "cases": [
+    {
+      "name": "a flat checklist",
+      "markdown": "- [ ] Budget (Q3)\n- [x] Hiring plan",
+      "topics": [
+        { "text": "Budget (Q3)", "checked": false },
+        { "text": "Hiring plan", "checked": true }
+      ]
+    },
+    {
+      "name": "a checklist nested under another task item",
+      "markdown": "- [ ] Budget (Q3)\n  - [ ] Cloud spend\n- [ ] Hiring plan",
+      "topics": [
+        { "text": "Budget (Q3)", "checked": false },
+        { "text": "Cloud spend", "checked": false },
+        { "text": "Hiring plan", "checked": false }
+      ]
+    },
+    {
+      "name": "a checklist nested under a plain bullet",
+      "markdown": "- Shopping\n  - [ ] Milk\n  - [x] Bread",
+      "topics": [
+        { "text": "Milk", "checked": false },
+        { "text": "Bread", "checked": true }
+      ]
+    },
+    {
+      "name": "a checklist nested under a numbered item",
+      "markdown": "1. Shopping\n   - [ ] Milk",
+      "topics": [{ "text": "Milk", "checked": false }]
+    },
+    {
+      "name": "a checklist two levels down, under a bullet under a task item",
+      "markdown": "- [ ] Budget (Q3)\n  - Cloud spend\n    - [ ] Storage tier\n- [ ] Hiring plan",
+      "topics": [
+        { "text": "Budget (Q3)", "checked": false },
+        { "text": "Storage tier", "checked": false },
+        { "text": "Hiring plan", "checked": false }
+      ]
+    },
+    {
+      "name": "an item with no text yet",
+      "markdown": "- [ ] Budget (Q3)\n- [ ] \n- [ ] Hiring plan",
+      "topics": [
+        { "text": "Budget (Q3)", "checked": false },
+        { "text": "Hiring plan", "checked": false }
+      ]
+    },
+    {
+      "name": "a blockquoted checklist is someone else's agenda",
+      "markdown": "> - [ ] Quoted topic\n\n- [ ] Budget (Q3)",
+      "topics": [{ "text": "Budget (Q3)", "checked": false }]
+    },
+    {
+      "name": "a checklist inside a fenced code block is code",
+      "markdown": "```\n- [ ] Not a topic\n```\n\n- [ ] Budget (Q3)",
+      "topics": [{ "text": "Budget (Q3)", "checked": false }]
+    },
+    {
+      "name": "inline emphasis is not part of the topic text",
+      "markdown": "- [ ] **Budget** (Q3)",
+      "topics": [{ "text": "Budget (Q3)", "checked": false }]
+    },
+    {
+      "name": "escaped brackets read as the characters the note shows",
+      "markdown": "- [ ] Review Q3 \\[draft\\]",
+      "topics": [{ "text": "Review Q3 [draft]", "checked": false }]
+    },
+    {
+      "name": "a checklist line holding only an image (KNOWN DIVERGENCE, open)",
+      "markdown": "- [ ] ![Burn-up chart](notes/n1/burnup.png)\n- [ ] Hiring plan",
+      "topics": [
+        { "text": "![Burn-up chart](notes/n1/burnup.png)", "checked": false },
+        { "text": "Hiring plan", "checked": false }
+      ],
+      "header": [{ "text": "Hiring plan", "checked": false }],
+      "divergence": "The editor's markdown parser cannot put an image inside a checklist line: a note image is a BLOCK node, so the parser hoists it out of the task item and leaves the item genuinely empty (`taskList > taskItem > paragraph(empty)`, then a sibling `image`). Nothing in the item is skipped, because nothing is there — so no change to the topic walk can close this. Closing it means making note images inline in the editor schema, which must also fix the same shape's destructive round-trip: re-serialising this body yields `- [ ] \\n\\n![Burn-up chart](notes/n1/burnup.png)- [ ] Hiring plan`, which glues the next checklist line onto the image and loses it as a topic on the next save."
+    },
+    {
+      "name": "a checklist line holding an image and text (KNOWN DIVERGENCE, open)",
+      "markdown": "- [ ] ![Burn-up chart](notes/n1/burnup.png) Budget\n- [ ] Hiring plan",
+      "topics": [
+        { "text": "![Burn-up chart](notes/n1/burnup.png) Budget", "checked": false },
+        { "text": "Hiring plan", "checked": false }
+      ],
+      "header": [{ "text": "Hiring plan", "checked": false }],
+      "divergence": "Same block-image hoist as the image-only case, and the same reason it cannot be closed in the topic walk — but the text is hoisted out too, into a sibling paragraph, so the topic loses its words as well as its checkbox. Its round-trip is not destructive, so it is the milder half of the pair. This is the shape NoteEditor.test.tsx drives, because it is the one whose reading CHANGES between the mount-time (image-stripped) document and the resolved one."
+    },
+    {
+      "name": "a topic containing a link (KNOWN DIVERGENCE, open)",
+      "markdown": "- [ ] See [the doc](https://example.com) now",
+      "topics": [{ "text": "See [the doc](https://example.com) now", "checked": false }],
+      "header": [{ "text": "See the doc now", "checked": false }],
+      "divergence": "The header shows the link's TEXT, the server shows the link's markdown. Both are readings of the same line and neither is wrong on its own: the editor holds a link mark over the words, so textContent is what the note displays, while the server reads the raw line and CHANGE-38's StripInlineMarks strips emphasis but not link syntax. Count, order and ticked state agree — only the label differs — so nothing is miscounted and no command addresses the wrong line. Registered rather than left out because, unlike the two divergences in the header comment above, this one SURVIVES the round-trip: no save normalises it, so it is permanent until the server's strip learns link syntax (the fix belongs there, in AgendaFromContent, not in the walk — the header is already showing what the user sees)."
+    },
+    {
+      "name": "a topic containing an emoji shortcode (KNOWN DIVERGENCE, open)",
+      "markdown": "- [ ] Ship it :rocket:",
+      "topics": [{ "text": "Ship it :rocket:", "checked": false }],
+      "header": [{ "text": "Ship it 🚀", "checked": false }],
+      "divergence": "The header shows the emoji, the server shows the shortcode that produced it. The app loads note content through `emojifyMarkdown`, so `:rocket:` is already unicode before the parser sees it, while the server reads the stored line as written. Count, order and ticked state agree — only the label differs. SELF-HEALING, unlike the link and image cases: the editor now holds the unicode character, so the next save writes `- [ ] Ship it 🚀` and the two agree from then on. Asserted rather than described — see agendaParity.test.ts, 'rewrites an emoji shortcode to the character the server then reads back'. Registered even so, because the membership rule is about what a user can be looking at NOW, and until that save happens this is a live divergence on real content."
+    }
+  ]
+}

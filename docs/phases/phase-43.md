@@ -131,7 +131,7 @@ Scenario: Nothing to collapse
 
 ### 43-E — One way to track topics
 
-**User value:** the old per-heading ✓ confused "is this a topic?" with "is this a heading?" — and had stopped working ([BUG-37](phase-bugs.md#bug-37)). Removing it leaves one clear, predictable way to track what you've discussed.
+**User value:** the old per-heading ✓ confused "is this a topic?" with "is this a heading?" — and had stopped working ([BUG-37](phase-bugs-archive.md#bug-37)). Removing it leaves one clear, predictable way to track what you've discussed.
 
 **How it works:**
 - The floating ✓ on headings is gone, along with its keyboard-shortcut entry.

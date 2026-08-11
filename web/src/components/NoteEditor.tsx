@@ -295,8 +295,16 @@ export default function NoteEditor({ noteId, value, onChange, onBlur, onAgendaAp
         for (const [key, url] of Object.entries(urls)) {
           displaySrcToKey.current[url] = key;
         }
-        // emitUpdate:false so the resolve doesn't dirty the draft; the resolved markdown
-        // has no bare-key src, so this setContent never triggers the BUG-24 fetch.
+        // emitUpdate:false so the setContent itself raises no update; the resolved markdown has
+        // no bare-key src, so it never triggers the BUG-24 fetch.
+        // BUG-76 correction: this does NOT leave the draft untouched, and must not be read as a
+        // guarantee that it does. `setEditable(true)` below emits `update` unconditionally
+        // (@tiptap/core: `setEditable(editable, emitUpdate = true)`), so onUpdate runs anyway —
+        // harmlessly, because `serialize` maps every src back to its key, but it DOES run. The
+        // agenda in the header depends on it running: the mount-time document has image keys
+        // stripped, so its topic list can differ from the resolved one, and the header must be
+        // told or its indices address a document that no longer exists. NoteEditor.test.tsx
+        // "republishes the agenda after an image resolve" pins that.
         editor.commands.setContent(emojifyMarkdown(keysToSrcs(initial, urls)), {
           emitUpdate: false,
         });

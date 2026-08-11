@@ -8,7 +8,7 @@ namespace EventStore.Integration;
 
 public sealed class DynamoDbTranscriptionDraftStoreTests : IAsyncLifetime
 {
-    private readonly DynamoDbContainer _container = new DynamoDbBuilder("amazon/dynamodb-local:1.21.0").Build();
+    private readonly DynamoDbContainer _container = new DynamoDbBuilder(DynamoDbLocalImage.Reference).Build();
     private const string TableName = "test-draft-transcription";
     private IAmazonDynamoDB _dynamo = null!;
     private DynamoDbTranscriptionDraftStore _store = null!;
@@ -30,7 +30,8 @@ public sealed class DynamoDbTranscriptionDraftStoreTests : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
-        _dynamo.Dispose();
+        // Null when InitializeAsync threw before assigning it — see DynamoDbFixture.
+        _dynamo?.Dispose();
         await _container.DisposeAsync();
     }
 

@@ -1,70 +1,43 @@
 #!/bin/sh
 set -e
 
-# Gate scoped to what is actually staged, so docs-only and single-stack
-# commits don't pay for the whole suite. Backend builds once and reuses the
-# output for all three test runs (--no-build); the frontend block runs only
-# when web/ is touched (and node_modules is present).
+# FAST checks only. Anything that takes more than a few seconds lives in CI.
+#
+# Why: the full gate (build + 3 dotnet test runs + lint + typecheck + vitest) took
+# ~10-15 minutes per commit, while PR CI runs the same checks in ~3. The hook was four
+# times slower than the thing it was protecting against, so it was cheaper to push and
+# let CI answer. It also only ever ran on a clone that had run
+# `git config core.hooksPath .githooks` — so it was never the real gate anyway.
+#
+# pr.yml covers all of it and more: domain specs (:52), API integration (:55), infra
+# assertions (:58), cdk synth (:78), lint (:97), BOTH typechecks (:101, :105) and vitest
+# (:109), plus EventStore.Integration (:174) which this hook never ran. Nothing merges
+# without those passing.
+#
+# What is left below runs in about a second, and each item is here because CI does not
+# cover it cheaply or at all.
 
 staged=$(git diff --cached --name-only --diff-filter=ACMR)
 
-echo "$staged" | grep -Eq '^(src/|tests/)|\.(sln|csproj|props|targets)$' && backend=1 || backend=0
-echo "$staged" | grep -Eq '^web/' && frontend=1 || frontend=0
-# cdk synth is slow (needs a Release publish of the API first), so gate it to
-# infra-affecting changes only: the CDK app, the API it packages, or any
-# build/project/cdk config. Docs-only, web-only, and tests-only commits skip it.
-echo "$staged" | grep -Eq '^(src/Infrastructure/|src/Api/)|\.(sln|csproj|props|targets)$|^cdk\.json$' && infra=1 || infra=0
-
-# Tracking-doc id check. Deliberately ABOVE the docs-only early exit below: a docs-only
-# commit is precisely the kind this guards, and pr.yml paths-ignores docs/**, so CI never
-# sees it either. This hook is the only enforcement point. Pure grep, no network.
+# Tracking-doc id check. Catches the `merge=union` failure mode (two branches editing the
+# same row, both copies kept) and a duplicate id claimed on another session's branch.
+# Pure grep, no network, instant.
 if echo "$staged" | grep -Eq '^docs/(phases/phase-(bugs|minor-changes)\.md|technical-improvements\.md|roadmap\.md)$'; then
   echo "→ tracking-doc ids..."
   ./scripts/check-doc-ids.sh
 fi
 
-if [ "$backend" = 0 ] && [ "$frontend" = 0 ]; then
-  echo "→ no src/tests/web changes staged — skipping build/test gate"
-  echo "✓ pre-commit checks passed"
-  exit 0
+# Workflow lint. A broken workflow file fails as an unparseable run rather than a red
+# check, which is invisible until someone looks at the Actions tab (TI-69: 162 push red
+# X's, nobody noticed). LINT_WORKFLOWS_OPTIONAL lets a machine that cannot fetch the
+# actionlint binary print a loud skip rather than block; CI has no such escape.
+#
+# Invoked via `bash` because this repo lives on a Windows/WSL mount with
+# core.fileMode=false, so `./scripts/...` is "Permission denied" on a clone with a real
+# filesystem.
+if echo "$staged" | grep -Eq '^\.github/(workflows|actions)/'; then
+  echo "→ workflow lint..."
+  LINT_WORKFLOWS_OPTIONAL=1 bash ./scripts/lint-workflows.sh
 fi
 
-if [ "$backend" = 1 ]; then
-  echo "→ build (warnings as errors)..."
-  dotnet build ai-note-taker.sln -p:TreatWarningsAsErrors=true --nologo -v quiet
-
-  echo "→ domain specs..."
-  dotnet test tests/Domain.Specs/Domain.Specs.csproj --no-build --nologo -v quiet
-
-  echo "→ API integration tests..."
-  dotnet test tests/Api.Integration/Api.Integration.csproj --no-build --nologo -v quiet
-
-  echo "→ infra assertions..."
-  dotnet test tests/Infrastructure.Assertions/Infrastructure.Assertions.csproj --no-build --nologo -v quiet
-fi
-
-if [ "$infra" = 1 ]; then
-  echo "→ publish API for cdk synth..."
-  dotnet publish src/Api/Api.csproj -c Release -o src/Api/bin/Release/net10.0/publish --nologo -v quiet
-
-  echo "→ cdk synth..."
-  cdk synth --quiet
-fi
-
-if [ "$frontend" = 1 ]; then
-  if [ ! -d web/node_modules ]; then
-    echo "→ web/ changed but web/node_modules is absent — skipping frontend gate"
-    echo "  (run 'npm --prefix web install' in this worktree to enable lint/typecheck/tests)"
-  else
-    echo "→ frontend lint..."
-    npm --prefix web run lint
-
-    echo "→ frontend typecheck..."
-    npm --prefix web exec -- tsc -p web/tsconfig.app.json --noEmit
-
-    echo "→ component tests..."
-    npm --prefix web run test
-  fi
-fi
-
-echo "✓ pre-commit checks passed"
+echo "✓ pre-commit checks passed (build/test gate is in CI)"

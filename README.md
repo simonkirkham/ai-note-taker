@@ -136,15 +136,20 @@ The analysis eval harness scores prompt/model variants of the AI note analysis �
 ### Infrastructure
 
 ```bash
-# Validate the CDK stack (publish Lambda first — asset path is checked at synth time)
-dotnet publish src/Api/Api.csproj -c Release -o src/Api/bin/Release/net10.0/publish
+# Validate the CDK stack. It packages three Lambdas and every asset path is checked
+# at synth time, so publish all three or synth aborts with "Cannot find asset at ...".
+for p in Api Projector TranscribeCompletion; do
+  dotnet publish src/$p/$p.csproj -c Release -o src/$p/bin/Release/net10.0/publish
+done
 cdk synth
 
 # Preview changes before deploying
 cdk diff
 
-# Deploy to AWS
-dotnet publish src/Api/Api.csproj -c Release -o src/Api/bin/Release/net10.0/publish
+# Deploy to AWS — re-publish first; cdk packages whatever is on disk
+for p in Api Projector TranscribeCompletion; do
+  dotnet publish src/$p/$p.csproj -c Release -o src/$p/bin/Release/net10.0/publish
+done
 cdk deploy
 ```
 

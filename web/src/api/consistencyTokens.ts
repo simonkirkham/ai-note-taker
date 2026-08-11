@@ -30,7 +30,7 @@ const safeRemove = safeSession.remove;
 
 // A write token is `<stream>@<version>`; stream versions are monotonic. Parse the two parts so a
 // later capture can't regress the gate to an older version (BUG-22).
-function tokenStream(token: string): string {
+export function tokenStream(token: string): string {
   const at = token.lastIndexOf("@");
   return at >= 0 ? token.slice(0, at) : token;
 }

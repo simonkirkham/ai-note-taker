@@ -13,7 +13,7 @@
 
 **Ordering:** 30-C is independent and can ship first (pure frontend, immediately reduces the symptom). 30-A is the architectural core; 30-B must follow 30-A (dropping forced consent before the store exists would break long sessions on a dead cookie). 30-D is hardening on top of 30-A.
 
-**Root cause this phase fixes:** the refresh token lives **only** in the `rt` httpOnly cookie — there is no durable server-side copy. Any cookie loss (idle > 30 days, cleared cookies, new browser/device) leaves the backend with nothing, and the only way to obtain a new refresh token from Google is to force `prompt=consent` → the re-authorise screen. Normal SSO apps store the token server-side and consent once. See [BUG-33](phase-bugs.md#bug-33) for the immediate-symptom defect (30-C is its fix).
+**Root cause this phase fixes:** the refresh token lives **only** in the `rt` httpOnly cookie — there is no durable server-side copy. Any cookie loss (idle > 30 days, cleared cookies, new browser/device) leaves the backend with nothing, and the only way to obtain a new refresh token from Google is to force `prompt=consent` → the re-authorise screen. Normal SSO apps store the token server-side and consent once. See [BUG-33](phase-bugs-archive.md#bug-33) for the immediate-symptom defect (30-C is its fix).
 
 ---
 
