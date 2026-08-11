@@ -180,7 +180,7 @@ Live doc (open items + the index): [technical-improvements.md](technical-improve
 
 ## TI-77. `merge-gate.sh` reports uncomputed mergeability as a conflict
 
-✅ PR #463, merged 2026-08-11 (`69d643c4`). The merge gate said `BLOCKED — rebase/resolve conflicts` on a branch that was perfectly clean, so the next move was a pointless rebase — or blaming whoever wrote the branch for a conflict that never existed. Hit on PR #460, moments after two merges landed on main.
+✅ PR #463, merged 2026-08-11 (`69d643c4`), deploy #762 green. Verified live on main immediately after: `deploy-status.sh` reported `IN PROGRESS (#762 status=in_progress)` then `GREEN (#763) — safe to merge`, both from the rewritten branches, and `merge-gate.sh` gated the merge itself. The merge gate said `BLOCKED — rebase/resolve conflicts` on a branch that was perfectly clean, so the next move was a pointless rebase — or blaming whoever wrote the branch for a conflict that never existed. Hit on PR #460, moments after two merges landed on main.
 
 **Why:** GitHub computes mergeability on demand and answers `UNKNOWN`/`UNKNOWN` while it is still working — routine for up to a minute after main moves, and neither a conflict nor an error. The gate read it once and treated every value other than `MERGEABLE`/`CLEAN` as a conflict, printing a fixed remedy. Re-polling #460 returned `MERGEABLE`/`CLEAN` three times out of three.
 
