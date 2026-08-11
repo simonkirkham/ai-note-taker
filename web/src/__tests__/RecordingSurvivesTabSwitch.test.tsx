@@ -241,6 +241,64 @@ describe('51-C — a recording keeps running while I read another note', () => {
     expect(screen.getByTestId('mock-status')).toHaveTextContent('recording')
   })
 
+  // Everything below the Stop button. Review found the slice shipped with NO coverage past
+  // Stop, and two defects were living in exactly that gap: the app was recordable ONCE per
+  // page load, and re-recording the same note did nothing at all. Both passed every spec
+  // above, because every spec above stops at "it is recording".
+  describe('after a recording stops', () => {
+    it('lets another note record', async () => {
+      renderApp()
+      await openBothAndRecordInStandup()
+      await userEvent.click(screen.getByTestId('mock-stop-recording'))
+
+      await userEvent.click(within(tab('Client call')).getByTestId('open-note-tab-label'))
+      await waitFor(() => expect(window.location.pathname).toBe('/w/__default__/notes/note-2'))
+
+      // The lock follows the live capture, not the note the session is still bound to.
+      expect(screen.getByTestId('mock-other-recording')).toHaveTextContent('false')
+      await userEvent.click(screen.getByTestId('mock-start-recording'))
+      await waitFor(() => expect(screen.getByTestId('mock-status')).toHaveTextContent('recording'))
+      expect(within(tab('Client call')).getByTestId('open-note-tab-recording')).toBeInTheDocument()
+    })
+
+    it('takes the marker off the tab', async () => {
+      renderApp()
+      await openBothAndRecordInStandup()
+      expect(within(tab('Standup')).getByTestId('open-note-tab-recording')).toBeInTheDocument()
+
+      await userEvent.click(screen.getByTestId('mock-stop-recording'))
+
+      await waitFor(() =>
+        expect(within(tab('Standup')).queryByTestId('open-note-tab-recording')).toBeNull(),
+      )
+    })
+
+    // The Continue / Re-record path from 18-C. The claim already sits on this note, so the
+    // start cannot rely on the bound id CHANGING to trigger it — a same-value setState is a
+    // no-op and the request never fires.
+    it('lets the same note record again', async () => {
+      renderApp()
+      await openBothAndRecordInStandup()
+      await userEvent.click(screen.getByTestId('mock-stop-recording'))
+      await waitFor(() => expect(screen.getByTestId('mock-status')).toHaveTextContent('stopped'))
+
+      await userEvent.click(screen.getByTestId('mock-start-recording'))
+
+      await waitFor(() => expect(screen.getByTestId('mock-status')).toHaveTextContent('recording'))
+    })
+
+    // The note that stopped keeps its own session view while the transcript commits and the
+    // recording uploads — it must not be handed the idle view the moment capture ends.
+    it('leaves the stopped note still seeing its own session', async () => {
+      renderApp()
+      await openBothAndRecordInStandup()
+      await userEvent.click(screen.getByTestId('mock-stop-recording'))
+
+      expect(screen.getByTestId('mock-status')).toHaveTextContent('stopped')
+      expect(screen.getByTestId('mock-transcript')).toHaveTextContent('live words')
+    })
+  })
+
   // The guard that must NOT be dropped. Closing the tab destroys the note that is capturing,
   // so this keeps BUG-54's protection exactly where it still applies.
   it('closing the recording tab still asks first', async () => {

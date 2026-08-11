@@ -45,9 +45,11 @@ vi.mock('../components/RecordControl', async () => {
   const { useEffect } = await import('react')
   return {
     default: function RecordControlMock({ transcription }: { transcription: UseTranscriptionResult }) {
-      useEffect(() => {
-        transcription.startRecording(true, true)
-      }, [transcription])
+      // Mount-once. Keyed on `transcription` it re-fired on every render, since
+      // `useNoteRecording` returns a fresh object each time; that only ever terminated
+      // because a repeat claim happened to be a no-op, which is not a property to lean on.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      useEffect(() => { transcription.startRecording(true, true) }, [])
       return <div data-testid="record-control-mock" />
     },
   }

@@ -17,10 +17,20 @@ export type StartArgs = Parameters<UseTranscriptionResult['startRecording']>
 export type NoteRecording = UseTranscriptionResult & { otherNoteRecording?: boolean }
 
 export interface RecordingSessionValue {
-  /** The note that owns the live session, or null when nothing is recording. */
+  /**
+   * The note the session is BOUND to — the one that sees it. Outlives the capture on purpose:
+   * after Stop, the transcript commit, the WAV upload and the diarization trigger all still
+   * target this note, and the note still renders its own 'stopped'/'finalising' UI.
+   */
+  boundNoteId: string | null
+  /**
+   * The note actively CAPTURING, or null. Narrower than `boundNoteId` — it clears the moment
+   * the capture ends, which is what frees every other note to record and what takes the
+   * marker out of the tab bar.
+   */
   recordingNoteId: string | null
   session: UseTranscriptionResult
-  /** Claim the session for `noteId` and start it once the claim has landed. */
+  /** Claim the session for `noteId` and start it. */
   startIn: (noteId: string, ...args: StartArgs) => void
 }
 
@@ -52,8 +62,14 @@ const IDLE: Omit<UseTranscriptionResult, 'startRecording'> = {
  */
 export function useNoteRecording(noteId: string): NoteRecording {
   const ctx = useContext(RecordingSessionContext)
-  const owns = ctx?.recordingNoteId === noteId
-  const otherNoteRecording = ctx != null && ctx.recordingNoteId !== null && !owns
+  // Ownership follows the BINDING, not the capture: a note that has just stopped still owns
+  // the session while its transcript commits and its recording uploads, and must keep seeing
+  // the real status ('stopped'/'finalising') rather than being handed the idle view.
+  const owns = ctx?.boundNoteId === noteId
+  // The lockout follows the CAPTURE. Keying it off the binding instead is what left the app
+  // recordable-once: the binding never clears, so every other note stayed disabled forever.
+  const otherNoteRecording =
+    ctx != null && ctx.recordingNoteId !== null && ctx.recordingNoteId !== noteId
   const startIn = ctx?.startIn
   const session = ctx?.session
 

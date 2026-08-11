@@ -164,7 +164,7 @@ Scenario: Only one note records at a time
   | Home / folder / Unfiled navigation | **dropped** | the conditional resolved to yes. The session is hoisted above the route, so all three leave the capture running — proven by `RecordingSurvivesTabSwitch`, which leaves the note entirely, returns and reads the transcript back. Keeping them would also have contradicted the bar, which is on those screens (51-B) showing the note as live |
   | Close the recording tab | **kept** | unmounts the recording |
   | Sign out (`awaitTranscript: true`) | **kept** | clears the token, unmounts everything |
-  | Workspace switch / create-and-switch (`WorkspaceSwitcher.tsx`, 2 sites) | **kept** | leaves the workspace the note lives in |
+  | Workspace switch / create-and-switch (`WorkspaceSwitcher.tsx`, 2 sites) | **kept** | leaves the workspace the note lives in. **Corrected during review:** the session does NOT unmount on a switch — same `/w/:wsId/*` route, no `key`, reconciled in place — so the capture survives while `api/client.ts` starts rewriting paths to the new workspace, sending checkpoints and the final commit to `/w/<new>/notes/<old-id>`. The prompt is load-bearing for that reason, not the assumed one |
   | Move note to another workspace | **kept** | the note survives the move, the transcript does not |
   | `beforeunload` | **kept**, and already correct | registered inside `useTranscription`, so hoisting moved it with the session — it follows the recording rather than whichever note is mounted |
   | `popstate` (`NoteView.tsx`) | **kept as-is** | now redundant on most paths: browser-back within the workspace no longer destroys the capture, so this asks about a navigation that is safe. Left alone deliberately — narrowing BUG-34's trap is not this slice's call. Follow-up if the double-confirm annoys |
@@ -181,6 +181,32 @@ Scenario: Only one note records at a time
   - [ ] The recording tab is marked as recording in the bar
   - [ ] Closing a recording tab confirms first and stops the recording cleanly
   - [ ] A second recording cannot be started from another tab while one is live
+
+### 51-C — outstanding from review (PR #468, REQUEST CHANGES)
+
+**Fixed in-branch:** the claim was released only on `status === 'idle'`, which Stop never reaches — so the app was recordable once per page load, every other note stayed locked out and the tab kept a pulsing dot. Re-recording the same note was also stranded by React's same-value `setState` bailout. Both came from conflating two different things, now separated: `boundNoteId` (which note the session belongs to — outlives the capture so the commit and upload still target it) and `recordingNoteId` (derived from status — what locks other notes out and draws the marker). Specs added for the whole post-Stop phase, which had **no** coverage at all; that absence is what let both defects through a green PR.
+
+**NOT fixed — these block the merge. One root cause, one fix.**
+
+The leave guard is still registered by the *mounted* `NoteView`, gated on that note's own recording state (`NoteView.tsx` `onRegisterLeaveGuard`, consumed by `App.tsx`'s `requestLeave`). This slice's whole purpose is to let the user be somewhere else while recording — and in every one of those positions no guard is registered, so `requestLeave` falls straight through to `proceed()`:
+
+| Symptom | Consequence |
+|---|---|
+| **Sign out while recording from another note or the notes list** | No confirm. `signOut` clears the token synchronously, the unmount commit POSTs without it, 401, nothing retries — **transcript lost**. This is BUG-55 reproduced on the slice's headline flow |
+| **Close the recording note's tab while standing on a different tab** | `App.tsx` only routes through `requestLeave` when the closed note is the *active* one. Closes with no confirm; the capture keeps running with no tab to mark it |
+| **Switch workspace while recording from elsewhere** | Same missing guard. The session does **not** unmount (see the corrected row above), so the capture survives into the new workspace and its checkpoints and final commit go to `/w/<new>/notes/<old-id>` |
+| **Browser-back from any screen that is not the recording note** | The `popstate` trap is `NoteView`-owned too. Back past the workspace entry ends the recording with no warning and skips the WAV upload (the transcript itself still commits) |
+
+**The fix is to make the guard session-owned:** register it from `RecordingSessionProvider`, which knows `recordingNoteId` and the live status, and render the confirm app-scoped rather than inside the note. `NoteView` then calls `requestLeave` for its own Save/back like every other caller instead of being the thing that provides it.
+
+**Do not attempt this as a quick patch.** It moves a transcript-loss-critical path, and the two-guards-at-once shape is what the phase doc rejected keep-mounted for in the first place. Slice it: prove one guarded exit (sign-out) end-to-end through the session-owned guard, then move the rest.
+
+**Also outstanding, lower severity:**
+- Auto-analyse is silently lost if the user leaves the recording note and comes back — `hasRecordedThisSession` is `useState` in `RecordControl`, and `NoteView` is `key={noteId}`, so the round trip remounts it to `false`. Derive it from the session instead.
+- `RecordingTabJourney`'s worst case (two 30s reload-tolerant gates + a 30s start wait + launch + navigation) can exceed the 120s `E2EFact` cap on a cold projector, and would then fail with a bare xUnit timeout carrying none of the helper's diagnosis.
+- The journey's no-confirm assertion is pass-by-default (asserts absence before the destination has rendered); assert the destination loaded first.
+- The journey's Stop click is the last statement, so an earlier failure skips it, and `DisposeAsync` NREs if `InitializeAsync` throws early.
+- `NoteViewFinalising.test.tsx`'s RecordControl mock starts recording from an effect keyed on `[transcription]`, which is a new object every render — it only avoids looping because of the same-value bailout that was just fixed. Re-key on `noteId`.
 
 ### Observability
 

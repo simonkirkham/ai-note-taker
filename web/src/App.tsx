@@ -101,8 +101,9 @@ function AppGate() {
         element={
           <WorkspaceProvider>
             {/* 51-C: the recording outlives the note screen, so it is mounted here — above
-                every in-workspace navigation, below the workspace itself. Switching
-                workspace still tears it down, which is why that leave-prompt is kept. */}
+                every in-workspace navigation, below the workspace itself. NOTE: being inside
+                WorkspaceProvider does NOT mean a workspace switch unmounts it — same route,
+                no key, so it reconciles in place. See the warning in recordingSession.tsx. */}
             <RecordingSessionProvider>
               <AppContent signOut={signOut} />
             </RecordingSessionProvider>
