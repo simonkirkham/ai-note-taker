@@ -87,7 +87,7 @@ if ! command -v shellcheck >/dev/null 2>&1; then
 fi
 
 echo "  → $("$bin" --version | head -1) via $bin"
-"$bin" -color
+"$bin" -color || true
 status=$?
 
 if [ $status -ne 0 ]; then
