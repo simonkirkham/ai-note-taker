@@ -344,3 +344,4 @@ jobs:
             trace-run-*.zip
             **/trace*.zip
           if-no-files-found: ignore
+# (proof branch: harmless comment, workflow-only change)
