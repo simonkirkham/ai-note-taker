@@ -163,7 +163,9 @@ run_deploy "in-progress waits"   1 "IN PROGRESS" "discounted"      "[{\"number\"
 printf '{"total_count":0,"jobs":[]}\n' >"$API/8.jobs.json"
 run_deploy "waiting-for-approval is not a broken main" \
                                  1 "IN PROGRESS" "fix main first"  "[{\"number\":8,\"databaseId\":8,\"status\":\"waiting\",\"conclusion\":null,\"updatedAt\":\"$FRESH\"}]"
-run_deploy "failed main"         1 "did not succeed" -             '[{"number":9,"status":"completed","conclusion":"failure"}]'
+# Asserts `fix main first` POSITIVELY. Four other cases assert its absence and none its
+# presence, so rewording it out of the failure arm went unnoticed by the whole suite.
+run_deploy "failed main"         1 "fix main first" -             '[{"number":9,"status":"completed","conclusion":"failure"}]'
 run_deploy "cancelled is not a broken main" \
                                  1 "cancelled, not failed" "fix main first" \
                                                                    '[{"number":9,"status":"completed","conclusion":"cancelled"}]'
@@ -359,8 +361,13 @@ run_deploy "a cancelled job blocks without blaming main" \
 # a failure verdict" bucket as cancelled, and nothing established that.
 jobs_fixture 784 detect-changes:completed:success deploy-production:completed:action_required
 pending_fixture 784 '[]'
+# The positive assertion must be ARM-UNIQUE. `conclusion=action_required` alone is printed by
+# the block arm AND the jobfail arm (both share the `listed` detail), so only the negative
+# selected the arm — and one reword of classify()'s jobfail return would empty this case in
+# silence, exactly the way round 2 emptied the cancelled case. `are not completed+success`
+# belongs to the block arm alone.
 run_deploy "an action_required job blocks without a failure verdict" \
-                                 1 "conclusion=action_required" "did not succeed" \
+                                 1 "are not completed+success (deploy-production status=completed conclusion=action_required)" "did not succeed" \
   "[{\"number\":784,\"databaseId\":784,\"status\":\"in_progress\",\"conclusion\":null,\"updatedAt\":\"$STALE\"}]"
 
 # A job reporting `completed` with NO completed_at. Unreachable from real payloads today, but it
@@ -377,9 +384,13 @@ d = json.load(open(p))
 d["jobs"][1]["completed_at"] = None     # completed, but reported no completion time
 json.dump(d, open(p, "w"))
 PY
+# Two runs, not one: with a single run a wrongly-granted discount collapses to "every run in
+# the window was discounted", which still exits 1, so the case would pin the MESSAGE while
+# the real failure mode — a false green — went unpinned. The older green gives the verdict
+# somewhere to land, so the injection moves the exit code, which no rewording can de-fang.
 run_deploy "a job with no completed_at cannot establish that the run finished" \
-                                 1 "no readable completed_at" "orphaned" \
-  "[{\"number\":785,\"databaseId\":785,\"status\":\"in_progress\",\"conclusion\":null,\"updatedAt\":\"$STALE\"}]"
+                                 1 "no readable completed_at" "safe to merge" \
+  "[{\"number\":785,\"databaseId\":785,\"status\":\"in_progress\",\"conclusion\":null,\"createdAt\":\"2026-08-11T18:00:00Z\",\"updatedAt\":\"$STALE\"},{\"number\":786,\"databaseId\":786,\"status\":\"completed\",\"conclusion\":\"success\",\"createdAt\":\"2026-08-11T10:00:00Z\",\"updatedAt\":\"$STALE\"}]"
 
 # An API that cannot be reached mid-decision must make the gate MORE conservative, never less.
 printf '!FAIL gh: HTTP 503 upstream\n' >"$API/776.jobs.json"

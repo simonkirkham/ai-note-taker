@@ -354,7 +354,9 @@ print("|".join(clean(x) for x in (kind, number, status, conclusion, detail, note
   echo "NOT SAFE — could not read the run list (missing python3, or gh returned something unparseable): $verdict"
   exit 1
 fi
-IFS='|' read -r kind number status conclusion detail note <<<"$verdict"
+# `tail -n1`: anything the python block writes to stderr ahead of the verdict (a warning, a
+# deprecation notice) is folded in by the 2>&1 above and would otherwise become `kind`.
+IFS='|' read -r kind number status conclusion detail note <<<"$(tail -n1 <<<"$verdict")"
 
 # The discount rides on every verdict, whatever it is. A gate that quietly ignores runs is
 # worse than one that blocks, because nobody can tell it is doing it.
