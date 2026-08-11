@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { Editor } from '@tiptap/core'
+import Link from '@tiptap/extension-link'
 import { TaskItem } from '@tiptap/extension-task-item'
 import StarterKit from '@tiptap/starter-kit'
 import { Markdown } from 'tiptap-markdown'
@@ -54,8 +55,10 @@ afterAll(() => {
 })
 
 // The extension set NoteEditor builds, minus the ones that cannot change what counts as a topic.
-// ImageWithResize is NOT optional: without it the image case parses to something the app never
-// produces, and the divergence the fixture records would be untestable.
+// Two of these are NOT optional. Without ImageWithResize an image line parses to something the app
+// never produces; without Link a linked topic does, and both are divergences the fixture records —
+// they would be untestable, or worse, test a document shape no user can create.
+// `link: false` on StarterKit then a separate Link mirrors NoteEditor, which configures its own.
 function makeEditor(markdown: string) {
   const editor = new Editor({
     extensions: [
@@ -65,6 +68,7 @@ function makeEditor(markdown: string) {
       MarkdownTaskList,
       TaskItem.configure({ nested: true }),
       ImageWithResize,
+      Link.configure({ protocols: ['http', 'https', 'mailto'] }),
     ],
     content: markdown,
   })
@@ -79,13 +83,20 @@ describe('the header reads the same agenda the server does (BUG-76)', () => {
     })
   }
 
-  it('the register of known divergences is exactly the two that were signed off', () => {
-    // Named, not counted: "at least one divergence exists" would let a third in behind a rename
+  it('the register of known divergences is exactly the three that were signed off', () => {
+    // Named, not counted: "at least one divergence exists" would let a fourth in behind a rename
     // and a one-word excuse, with both suites still green. Adding a row here is a deliberate act
-    // a reviewer sees in the diff.
-    expect(fixture.cases.filter((c) => c.header !== undefined).map((c) => c.name)).toEqual([
-      'a checklist line holding only an image (KNOWN DIVERGENCE, open)',
+    // a reviewer sees in the diff. Sorted, so reordering the fixture is not a failure — only the
+    // SET is the contract.
+    expect(
+      fixture.cases
+        .filter((c) => c.header !== undefined)
+        .map((c) => c.name)
+        .sort(),
+    ).toEqual([
       'a checklist line holding an image and text (KNOWN DIVERGENCE, open)',
+      'a checklist line holding only an image (KNOWN DIVERGENCE, open)',
+      'a topic containing a link (KNOWN DIVERGENCE, open)',
     ])
     for (const c of fixture.cases) {
       if (c.header === undefined) continue
@@ -97,7 +108,41 @@ describe('the header reads the same agenda the server does (BUG-76)', () => {
     // Both sides iterate whatever `cases` holds, so DELETING a case silently deletes coverage from
     // this suite and from AgendaParityFixtureSpec at once. The count is pinned in both places; it
     // has to be raised deliberately, in the same commit as the case that raises it.
-    expect(fixture.cases).toHaveLength(12)
+    expect(fixture.cases).toHaveLength(13)
+  })
+})
+
+// The fixture's header comment keeps two divergences OUT of the register on one ground: the first
+// save normalises them away. That claim is the whole justification, and prose in a JSON blob goes
+// silently false the day a dependency changes — a tiptap-markdown that stops hoisting, or a
+// serializer that stops fencing, would re-open a real count divergence with nothing going red.
+// So the claim is asserted, not written down.
+describe('the divergences left out of the register really are normalised by a save (BUG-76)', () => {
+  const md = (e: Editor) => e.storage.markdown.getMarkdown()
+
+  it('rewrites a numbered task marker to a bullet the server counts', () => {
+    const e = makeEditor('1. [ ] Numbered task')
+
+    // The client reads the topic without ever descending a numbered list: the parser leaves the
+    // orderedList item empty and hoists a sibling TOP-LEVEL taskList. That is why widening the
+    // walk to nested lists does not reach this case.
+    expect(createAgendaEditorApi(e).readTopics().map((t) => t.text)).toEqual(['Numbered task'])
+    // Saved as `- [ ]`, which the server's [-*+] marker class does match, so the two agree after.
+    expect(md(e)).toContain('- [ ] Numbered task')
+    expect(md(e)).not.toMatch(/^\s*1\.\s+\[ ]/m)
+    // Not lossless: the emptied numbered item survives as a visible `1. ` line. Inert for the
+    // agenda (neither side reads it as a topic) but the note is not left as the user wrote it.
+    expect(md(e)).toMatch(/^1\.\s*$/m)
+  })
+
+  it('re-emits a 4-space-indented code block fenced, so the server stops counting its line', () => {
+    const e = makeEditor('    - [ ] Indented code task\n\n- [ ] Real topic')
+
+    expect(createAgendaEditorApi(e).readTopics().map((t) => t.text)).toEqual(['Real topic'])
+    // AgendaFromContent's only code rule is a ``` / ~~~ fence — it has no indented-code rule — so
+    // the fence is exactly what stops it counting the line inside.
+    expect(md(e).indexOf('```')).toBeGreaterThanOrEqual(0)
+    expect(md(e).indexOf('```')).toBeLessThan(md(e).indexOf('- [ ] Indented code task'))
   })
 })
 

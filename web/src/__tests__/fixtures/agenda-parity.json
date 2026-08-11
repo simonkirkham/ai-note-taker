@@ -19,11 +19,16 @@
     "The register covers bodies the EDITOR can produce. Two further divergences are deliberately",
     "out of it. Both are PRE-EXISTING — neither is reached by widening the topic walk to nested",
     "lists — only imported or hand-written markdown gets to them, and the first save normalises",
-    "both away. Verified against a real editor, not reasoned about:",
+    "both away. Verified against a real editor, and ASSERTED rather than left as prose — see",
+    "agendaParity.test.ts, 'the divergences left out of the register really are normalised by a",
+    "save'. A tiptap-markdown upgrade that stopped hoisting, or a serializer that stopped fencing,",
+    "turns those tests red instead of turning this paragraph silently false.",
     "  `1. [ ] Numbered task` — the server's marker class is [-*+], so it reads no topic. The",
     "     client reads one, but NOT through the numbered list: the parser leaves the orderedList",
     "     item empty and hoists a sibling TOP-LEVEL taskList, which the walk has always read.",
-    "     Saving rewrites the line as `- [ ] Numbered task` and the two agree again.",
+    "     Saving rewrites the line as `- [ ] Numbered task` and the two agree again. The save is",
+    "     NOT lossless: it also leaves a stray empty `1. ` item in the note. That item is inert —",
+    "     neither side reads it as a topic — but it is visible, so do not call the save clean.",
     "  a 4-space-indented code block holding a checklist line — the server counts it (its only",
     "     code rule is a ``` / ~~~ fence), the client sees a codeBlock and reads none. Saving",
     "     re-emits it fenced, after which the server skips it too."
@@ -115,6 +120,13 @@
       ],
       "header": [{ "text": "Hiring plan", "checked": false }],
       "divergence": "Same block-image hoist as the image-only case, and the same reason it cannot be closed in the topic walk — but the text is hoisted out too, into a sibling paragraph, so the topic loses its words as well as its checkbox. Its round-trip is not destructive, so it is the milder half of the pair. This is the shape NoteEditor.test.tsx drives, because it is the one whose reading CHANGES between the mount-time (image-stripped) document and the resolved one."
+    },
+    {
+      "name": "a topic containing a link (KNOWN DIVERGENCE, open)",
+      "markdown": "- [ ] See [the doc](https://example.com) now",
+      "topics": [{ "text": "See [the doc](https://example.com) now", "checked": false }],
+      "header": [{ "text": "See the doc now", "checked": false }],
+      "divergence": "The header shows the link's TEXT, the server shows the link's markdown. Both are readings of the same line and neither is wrong on its own: the editor holds a link mark over the words, so textContent is what the note displays, while the server reads the raw line and CHANGE-38's StripInlineMarks strips emphasis but not link syntax. Count, order and ticked state agree — only the label differs — so nothing is miscounted and no command addresses the wrong line. Registered rather than left out because, unlike the two divergences in the header comment above, this one SURVIVES the round-trip: no save normalises it, so it is permanent until the server's strip learns link syntax (the fix belongs there, in AgendaFromContent, not in the walk — the header is already showing what the user sees)."
     }
   ]
 }
