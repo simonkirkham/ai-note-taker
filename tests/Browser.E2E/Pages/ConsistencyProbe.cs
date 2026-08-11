@@ -53,6 +53,9 @@ public sealed class ConsistencyProbe
     private readonly object gate = new();
     private int nextSeq;
 
+    // Guarded by `gate`, like everything else here. See Find().
+    private int fallbackMatches;
+
     // Call from a route handler. Returns the header set to continue with — the request's own
     // headers, plus `If-Consistent-With` when `injectToken` is supplied. Playwright's
     // ContinueAsync REPLACES the whole header set, so it must start from the request's own
@@ -122,9 +125,16 @@ public sealed class ConsistencyProbe
         }
     }
 
-    // Reference identity first — Playwright hands the same IRequest to the route and to the
-    // Response/RequestFailed events, so this is exact. The method+URL fallback exists only for the
-    // case where it is not, and is deliberately narrow: oldest unanswered wins.
+    // Reference identity first, method+URL second.
+    //
+    // Whether Playwright hands the SAME IRequest to the route and to the Response/RequestFailed
+    // events is not something this code asserts — the previous version of this file did assert the
+    // opposite, untested, and that assumption is exactly why it used the weaker match and
+    // mis-attributed replies during a reload loop. Correctness no longer depends on the answer:
+    // identity is tried first and the fallback is narrow (oldest unanswered wins). But the answer
+    // is worth knowing, so every fallback hit is COUNTED and printed in the summary. If a dump ever
+    // shows `matched-by-url` climbing, identity is not preserved and the fallback is carrying the
+    // correlation — which is the point at which its limits start to matter.
     private Entry? Find(IRequest request, string method, string url)
     {
         foreach (var e in entries)
@@ -132,7 +142,10 @@ public sealed class ConsistencyProbe
 
         foreach (var e in entries)
             if (!e.Answered && e.Method == method && string.Equals(e.Url, url, StringComparison.Ordinal))
+            {
+                fallbackMatches++;
                 return e;
+            }
 
         return null;
     }
@@ -167,7 +180,8 @@ public sealed class ConsistencyProbe
                    $"gated-stale={v.Count(x => x == "GATED-stale")} " +
                    $"gated-unanswered={v.Count(x => x == "GATED-UNANSWERED")} " +
                    $"gated-aborted={v.Count(x => x.StartsWith("GATED-ABORTED", StringComparison.Ordinal))} " +
-                   $"ungated={v.Count(x => x.StartsWith("UNGATED", StringComparison.Ordinal))}";
+                   $"ungated={v.Count(x => x.StartsWith("UNGATED", StringComparison.Ordinal))} " +
+                   $"matched-by-url={fallbackMatches}";
         }
     }
 
