@@ -35,9 +35,18 @@ MERGEABILITY_DELAY=2
 
 mergeable=""
 state=""
+query_error=""
 for ((attempt = 1; attempt <= MERGEABILITY_ATTEMPTS; attempt++)); do
-  read -r mergeable state <<<"$(gh pr view "$PR" --json mergeable,mergeStateStatus \
-    -q '.mergeable + " " + .mergeStateStatus')"
+  # `read a b <<<"$(cmd)"` discards cmd's exit status, so an auth expiry, a rate limit or
+  # a bad PR number would arrive as two empty strings and be reported as an unrecognised
+  # state. Capture the status: "GitHub could not be queried" is establishable, and blank
+  # values are indistinguishable from a genuinely odd state.
+  if ! raw=$(gh pr view "$PR" --json mergeable,mergeStateStatus \
+      -q '.mergeable + " " + .mergeStateStatus' 2>&1); then
+    query_error="$raw"
+    break
+  fi
+  read -r mergeable state <<<"$raw"
   if [[ "$mergeable" != "UNKNOWN" && "$state" != "UNKNOWN" ]]; then
     break
   fi
@@ -46,7 +55,15 @@ for ((attempt = 1; attempt <= MERGEABILITY_ATTEMPTS; attempt++)); do
   fi
 done
 
-if [[ "$mergeable" == "MERGEABLE" && "$state" == "CLEAN" ]]; then
+# Each arm reports the condition it actually established. UNSTABLE/BEHIND/DRAFT are
+# documented, precise states GitHub *has* established — UNSTABLE especially, since this
+# gate is what you poll while CI runs — so they get their own line rather than being
+# swept into "unrecognised". CONFLICTING is tested before UNKNOWN so a real conflict is
+# never softened into "not yet computed".
+if [[ -n "$query_error" ]]; then
+  echo "MERGEABLE: FAIL — could not query GitHub for PR #$PR: $query_error"
+  fail=1
+elif [[ "$mergeable" == "MERGEABLE" && "$state" == "CLEAN" ]]; then
   echo "MERGEABLE: ok ($state)"
 elif [[ "$mergeable" == "CONFLICTING" ]]; then
   echo "MERGEABLE: FAIL (mergeable=$mergeable state=$state) — rebase/resolve conflicts"
@@ -55,6 +72,17 @@ elif [[ "$mergeable" == "UNKNOWN" || "$state" == "UNKNOWN" ]]; then
   echo "MERGEABLE: FAIL (mergeable=$mergeable state=$state) — GitHub has not finished computing mergeability"
   echo "    after $MERGEABILITY_ATTEMPTS polls over $((MERGEABILITY_DELAY * (MERGEABILITY_ATTEMPTS - 1)))s. This says nothing about conflicts — it is routine for a minute"
   echo "    or so after main moves. Re-run the gate."
+  fail=1
+elif [[ "$state" == "UNSTABLE" ]]; then
+  echo "MERGEABLE: FAIL (mergeable=$mergeable state=$state) — mergeable, but a check or commit"
+  echo "    status is not passing. Gate 2 below reads check runs only, so a failing commit"
+  echo "    STATUS shows here and not there."
+  fail=1
+elif [[ "$state" == "BEHIND" ]]; then
+  echo "MERGEABLE: FAIL (mergeable=$mergeable state=$state) — head is behind base; update the branch"
+  fail=1
+elif [[ "$state" == "DRAFT" ]]; then
+  echo "MERGEABLE: FAIL (mergeable=$mergeable state=$state) — PR is a draft; mark it ready"
   fail=1
 else
   echo "MERGEABLE: FAIL (mergeable=$mergeable state=$state) — unrecognised combination, neither"

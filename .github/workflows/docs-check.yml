@@ -20,6 +20,9 @@ on:
       - "docs/technical-improvements.md"
       - "docs/roadmap.md"
       - "scripts/check-doc-ids.sh"
+      - "scripts/merge-gate.sh"
+      - "scripts/deploy-status.sh"
+      - "scripts/test-merge-gate.sh"
       - ".github/workflows/docs-check.yml"
 
 concurrency:
@@ -46,3 +49,10 @@ jobs:
         # executable bit does not survive, so most of scripts/ is committed 100644. The bit is
         # set on this script too, but `bash` means a future script losing it cannot break the gate.
         run: bash ./scripts/check-doc-ids.sh
+
+      # The merge gate and the deploy-status check are reachable by no other workflow:
+      # pr.yml paths-ignores scripts/**, so every past edit to them shipped unexercised —
+      # which is how TI-77 (uncomputed mergeability reported as a conflict, sending you to
+      # rebase a clean branch) survived. Stub-driven, deterministic, no network, ~15s.
+      - name: Merge-gate self-test
+        run: bash ./scripts/test-merge-gate.sh
