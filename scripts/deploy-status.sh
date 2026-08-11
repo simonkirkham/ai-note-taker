@@ -39,10 +39,14 @@ fi
 # TI-81 adds the ONE exception to quiescence: an ORPHANED run record. Deploy #762
 # (2026-08-11) had all five jobs completed+success — deploy-production finished 14:25:21Z —
 # while the run's own status stayed `in_progress` with updated_at 14:24:22Z, 59 seconds
-# EARLIER than its last job completed. The record was not touched again until 15:38:55Z, so
-# quiescence held the merge gate red for every session on the machine for ~73 minutes on a
-# deploy that had already succeeded. Quiescence itself is unchanged and stays; the exception
-# is narrow, named, and always printed.
+# EARLIER than its last job completed. This gate was read at 15:16:19Z and still said
+# `IN PROGRESS (#762)`, blocking every session on the machine 51 minutes after that deploy
+# had succeeded. The record settled on its own before the next reading at 15:49:39Z. So the
+# failure is a false red lasting tens of minutes, not a permanent stall — which is worth
+# stating precisely, because "it will never settle" invites a very different remedy
+# (cancelling a run that succeeded) from "wait, or discount it safely".
+#
+# Quiescence itself is unchanged and stays; the exception is narrow, named, and always printed.
 #
 # The output is deliberately kept to ONE line: the caller (merge-gate.sh) relays this verdict
 # inline after "MAIN DEPLOY: ", and a second line arrives there stripped of that prefix. So a
@@ -95,9 +99,9 @@ PENDING = ("in_progress", "queued", "waiting", "requested", "pending")
 #   updated_at older than STALE_MINUTES. This is what closes the gap the other two cannot: a run
 #   that is going to create more jobs has, by definition, a MOVING updated_at. Ten minutes of
 #   total silence with every job finished is unambiguous where two minutes would not be. Chosen
-#   generous on purpose — #762 was 73 minutes stale, and the asymmetry is stark: waiting a few
-#   extra minutes on a genuinely slow run costs nothing, while discounting a live deploy means
-#   merging on top of one nobody has verified.
+#   generous on purpose: the #762 record was already 51 minutes stale when this gate was read,
+#   and the asymmetry is stark: waiting a few extra minutes on a genuinely slow run costs
+#   nothing, while discounting a live deploy means merging on top of one nobody has verified.
 STALE_MINUTES = 10
 
 # Not part of the safety decision — the allow-list above already blocks every one of these.
@@ -122,6 +126,13 @@ def gh_json(path):
         return None, "unparseable response"
 
 
+# Raw values are printed so the reader can go and look them up in the run being pointed at, so
+# they have to be spelled the way the API spells them. Python renders a JSON null as "None",
+# which matches nothing anyone can search for.
+def shown(v):
+    return "null" if v is None else str(v)
+
+
 def age_minutes(stamp):
     if not stamp:
         return None
@@ -144,7 +155,7 @@ def classify(r):
     """
     n = r.get("number")
     st = r.get("status")
-    raw = "#%s status=%s" % (n, st)
+    raw = "#%s status=%s" % (n, shown(st))
 
     rid = r.get("databaseId")
     if not rid:
@@ -160,15 +171,15 @@ def classify(r):
     unsafe = [j for j in jl
               if j.get("status") != "completed" or j.get("conclusion") != "success"]
     if unsafe:
-        shown = ", ".join("%s status=%s conclusion=%s"
-                          % (j.get("name"), j.get("status"), j.get("conclusion"))
-                          for j in unsafe[:3])
+        listed = ", ".join("%s status=%s conclusion=%s"
+                           % (shown(j.get("name")), shown(j.get("status")), shown(j.get("conclusion")))
+                           for j in unsafe[:3])
         failed = [j for j in unsafe if j.get("conclusion") in FAILED_CONCLUSIONS]
         if failed:
             return "jobfail", "%s: %d of %d jobs did not succeed (%s)" % (
-                raw, len(unsafe), len(jl), shown)
+                raw, len(unsafe), len(jl), listed)
         return "block", "%s: %d of %d jobs are not completed+success (%s)" % (
-            raw, len(unsafe), len(jl), shown)
+            raw, len(unsafe), len(jl), listed)
 
     pend, err = gh_json("repos/{owner}/{repo}/actions/runs/%s/pending_deployments" % rid)
     if err is not None:
