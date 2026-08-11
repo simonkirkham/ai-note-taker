@@ -129,6 +129,21 @@ grep -qE '^MAIN DEPLOY: *$' <<<"$g3" && g3bad="blank MAIN DEPLOY line"
 grep -q "could not query GitHub" <<<"$g3" || g3bad="$g3bad; reason not carried to the caller"
 report "gate 3 never blocks on a blank verdict" "$g3bad" "$g3"
 
+# The case above only proves deploy-status.sh's own guards: they make it print something, so
+# it passes with or without the caller's stand-in. This one exercises the stand-in itself —
+# a sibling that dies having printed nothing, which is any abort path the guards don't cover.
+SILENT="$(mktemp -d)"
+cp "$DIR/merge-gate.sh" "$SILENT/"
+printf '#!/usr/bin/env bash\nexit 3\n' >"$SILENT/deploy-status.sh"
+printf 'MERGEABLE CLEAN\n' >"$STUB/seq"; echo 0 >"$STUB/calls"
+g3s=$(GH_SEQ="$STUB/seq" GH_CALLS="$STUB/calls" GH_RUNS="$STUB/runs.json" \
+      PATH="$STUB:$PATH" bash "$SILENT/merge-gate.sh" 460 2>&1) || true
+rm -rf "$SILENT"
+g3sbad=""
+grep -qE '^MAIN DEPLOY: *$' <<<"$g3s" && g3sbad="blank MAIN DEPLOY line"
+grep -q "without printing a verdict" <<<"$g3s" || g3sbad="$g3sbad; no stand-in for the silent failure"
+report "a silent sibling failure still names itself" "$g3sbad" "$g3s"
+
 # scripts/ is committed 100644 (the Windows mount does not carry the exec bit), so a script
 # calling a sibling must go through `bash`. Executing it directly passes on the author's
 # drvfs mount, where every file reports executable, and dies with "Permission denied" on any
