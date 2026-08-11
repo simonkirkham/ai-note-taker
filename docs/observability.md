@@ -16,6 +16,7 @@ Region is **eu-west-2**; everything below is in the account the stack is deploye
 | Why is it slow? | X-Ray service map & traces; Lambda p50/p99 widget | 12-C, 12-D |
 | Are commands failing / conflicting? | Domain metrics on the dashboard + saved query | 12-B, 12-D |
 | Did the browser crash? | CloudWatch RUM console (`notetaker-rum`) | 12-F |
+| Why did a note's analysis fail? | RUM log group → the `analyseFailed` custom event | BUG-77 |
 | Did something breach a threshold? | SNS email (`notetaker-alarms`) | 12-E |
 
 ## Stack outputs (how to find the URLs)
@@ -87,6 +88,27 @@ To trace a request:
 **CloudWatch RUM → App monitors → `notetaker-rum`** (or use the `RumMonitorId` output). Tabs: **Errors** (JS errors with stack traces), **Performance** (Core Web Vitals), **Sessions**, **Browsers & Devices**. RUM also writes events to the log group `/aws/vendedlogs/RUMService_notetaker-rum<first-8-of-RumMonitorId>`, which the dashboard's combined error widget already queries. With X-Ray enabled on the monitor, a frontend error links to its backend trace via the propagated trace id (12-C).
 
 > The RUM web client loads from the **global** CDN `client.rum.us-east-1.amazonaws.com` (not regional); only the data plane is regional. If RUM shows "no data", first confirm the snippet is in the deployed `index.html` and `PutRumEvents` → `dataplane.rum.eu-west-2.amazonaws.com` returns 200. (See `docs/learnings/_archive.md` / BUG-6.)
+
+## Why did a note's analysis fail?
+
+Every failed analyse emits the `analyseFailed` custom event from the browser (BUG-77). It is the only record of the failure when the request never reaches the gateway, which is exactly the case that left the first live occurrence undiagnosable.
+
+```bash
+aws logs start-query --region eu-west-2 --profile prod \
+  --log-group-name "/aws/vendedlogs/RUMService_notetaker-rum5a2b155e" \
+  --start-time $(( $(date +%s) - 86400 )) --end-time $(date +%s) \
+  --query-string 'fields @timestamp, event_details.kind, event_details.status, event_details.sent, event_details.elapsedMs, event_details.trigger, event_details.noteId, event_details.detail, user_details.sessionId
+    | filter event_type = "analyseFailed" | sort @timestamp desc'
+```
+
+The payload lands **directly** under `event_details` — not `event_details.data`, despite the client being called with `{type, data}`. Read off a real record in this log group (`authStorageBlocked` → `"event_details":{"at":"signIn"}`), because a wrong field path returns empty columns and reads exactly like no failures.
+
+| Field | Reads |
+|---|---|
+| `kind` | `auth` / `forbidden` / `notFound` / `rateLimited` / `server` / `network` / `request` / `unknown` |
+| `sent` | `false` means the browser refused the request before dispatching it — nothing left the machine, so no gateway metric or Lambda log will ever mention it |
+| `elapsedMs` | Separates an instant refusal from a request that ran and gave up |
+| `trigger` | `auto` = the analyse that runs on its own after a recording; `manual` = the button |
 
 ## Did something breach a threshold?
 

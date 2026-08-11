@@ -16,7 +16,7 @@ Ordered by severity, then by id.
 
 | Item | Summary | Status | Depends on |
 |------|---------|--------|------------|
-| BUG-77 | You finish a recording, the note is never analysed, and the only thing you are told is "Analysis failed. Please try again." The message is often wrong about what actually went wrong. | Open | TI-67, BUG-33 |
+| BUG-77 | You finish a recording and the note is never analysed. You are now told what actually stopped it — an expired sign-in, an unreachable server, a missing note — instead of one catch-all sentence, but why it happens at all is still unknown. | Open | TI-67, TI-78, BUG-33 |
 | BUG-79 | Something you just created — an action item, or a note — can be missing after you reload, and stay missing. Rare, but this is the one guarantee the app is built to make. | Open | — |
 | BUG-70 | Clicking "+ New Note" while recording and then choosing to keep recording still leaves a blank, untitled note behind on your home list. | Open — held behind 51-C | BUG-54, 51-C |
 | BUG-73 | Signing out while an on-device transcript is still finishing can park you for up to an hour with no way to leave — a real problem on a shared machine. | Open | BUG-55 |
@@ -34,7 +34,17 @@ Further bugs will be appended as they are identified.
 
 **Severity:** High — a core action fails with an explanation that can be actively misleading, and nothing is recorded when it happens. **Status:** Open. **Hit live** 2026-08-10 ~14:50Z on the desktop app (`1.0.0-20260810.196`); the same note analysed fine 30 minutes later.
 
-**Confirmed defect — the mis-reporting.** `RecordControl.tsx:73` catches with a bare `catch {}` and discards the error, so a dead network, an expired sign-in, a refused request and a parse error all print one sentence that names the wrong subsystem and advises a retry that may be incapable of working. Compounded by [TI-67] (RUM `CustomEvents: DISABLED` in prod), so nothing client-side is recorded either. **This half is fixable now, independently of the trigger:** keep the status and message, and let an unauthenticated result say *sign in again* rather than blaming analysis.
+**Confirmed defect — the mis-reporting. Fixed, PR #TBD.** `RecordControl.tsx:73` caught with a bare `catch {}` and discarded the error, so a dead network, an expired sign-in, a refused request and a parse error all printed one sentence that named the wrong subsystem and advised a retry that may have been incapable of working. Compounded by [TI-67] (RUM `CustomEvents: DISABLED` in prod), so nothing client-side was recorded either.
+
+**What the fix changed:**
+
+| Now | Detail |
+|---|---|
+| The message names the real failure | Expired sign-in → *sign in again*; unreachable server → *check your connection*; server fault → *temporarily unavailable*; missing note → *no longer exists*, with the retry advice dropped where a retry cannot work |
+| Every failure emits `analyseFailed` to RUM | `kind`, `status`, `sent`, `elapsedMs`, `trigger` (the automatic post-recording analyse vs the button), `noteId`, `online`, truncated `detail`. Query in [observability.md](../observability.md#why-did-a-notes-analysis-fail) |
+| A request that never left the browser is distinguishable from one the server refused | `apiFetch`'s synthetic pre-flight 401 now carries `x-client-not-sent`, surfaced as `ApiError.notSent` → `sent: false`. Both are 401 and neither reaches the gateway, so nothing else could tell them apart |
+
+**The record can still be dropped, until [TI-78] lands.** The RUM client's default `sessionEventLimit` of 200 is not overridden, so custom events stop being sent late in a long session — which is exactly when a post-recording analyse happens. Treat an absent `analyseFailed` on a long session as unproven, not as evidence the failure did not occur.
 
 **Trigger — still open, and a previous diagnosis is retracted.** An earlier version of this row asserted the cause was a terminally expired sign-in. **That was wrong.** The reasoning was that `apiFetch` (`client.ts:112-118`) pre-flights every call and, if the JWT is expired and the silent refresh fails, returns a synthetic `new Response(null, {status:401})` **without sending** — which would produce exactly this silent, traceless failure — and the refresh endpoint was observed failing every time.
 
@@ -50,7 +60,7 @@ What killed it: the session was never invalid. `CompleteTranscription` succeeded
 | The analyse path is slow | The 15:19 success took ~15 s end to end, including a **4.4 s** ICS calendar fetch before Bedrock. Whether a client-side deadline interacts with that is untested |
 | The single `4xx` at 14:49Z cannot be attributed | Access logging is `None` on `$default`, and X-Ray's Lambda segments carry no HTTP URL |
 
-**Do instrumentation before any further theory** — widen the catch and land [TI-67]. A second occurrence is otherwise as blind as the first. [TI-63] and [BUG-58] are not ruled out as cleanly as first recorded: both would log *if the request arrived*, and arrival is exactly what is unestablished.
+**Do instrumentation before any further theory** — done: the catch is widened and [TI-67] has landed, so the channel is live. **No theory of the trigger has been advanced by this work and none should be inferred from it.** The next occurrence is the evidence; until one arrives with an `analyseFailed` record against it, the cause is unknown. [TI-63] and [BUG-58] are not ruled out as cleanly as first recorded: both would log *if the request arrived*, and arrival is exactly what is unestablished — `sent` on the new record is the field that settles it.
 
 **Process note:** two sessions in sequence stated a cause with more confidence than the evidence carried, and it reached the human as fact. The disconfirming datum — an authenticated call succeeding inside the same window — was present in the log being read at the time.
 
