@@ -27,7 +27,8 @@ import SignInPage from "./components/SignInPage";
 import { useToast } from "./components/toastContext";
 import { UNFILED_ID } from "./constants";
 import { findNode, findPath } from "./folderTree";
-import { RecordingSessionProvider, useRecordingNoteId } from "./hooks/recordingSession";
+import { RecordingSessionProvider } from "./hooks/recordingSession";
+import { useRecordingNoteId } from "./hooks/recordingSessionContext";
 import {
   useCreateFolder,
   useRenameFolder,

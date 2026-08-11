@@ -5,6 +5,7 @@ import App from '../App'
 import { AuthProvider } from '../auth/AuthContext'
 import { clearToken } from '../auth/tokenStore'
 import { ToastProvider } from '../components/ToastProvider'
+import type { NoteRecording } from '../hooks/recordingSessionContext'
 import type { TranscriptionStatus, UseTranscriptionResult } from '../hooks/useTranscription'
 import { render, screen, waitFor, within } from '../test/render'
 import { server } from '../test/setup'
@@ -66,11 +67,7 @@ vi.mock('../hooks/useTranscription', () => ({
 // Renders the live transcript so a test can see whether it survived, plus the two controls
 // and the single-recorder flag the real control uses to disable itself.
 vi.mock('../components/RecordControl', () => ({
-  default: ({
-    transcription,
-  }: {
-    transcription: UseTranscriptionResult & { otherNoteRecording?: boolean }
-  }) => (
+  default: ({ transcription }: { transcription: NoteRecording }) => (
     <>
       <button data-testid="mock-start-recording" onClick={() => transcription.startRecording(true, true)}>
         Start recording

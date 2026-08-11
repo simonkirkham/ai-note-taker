@@ -1,6 +1,11 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { recordRumEvent } from '../rum'
-import { useTranscription, type UseTranscriptionResult } from './useTranscription'
+import {
+  RecordingSessionContext,
+  type RecordingSessionValue,
+  type StartArgs,
+} from './recordingSessionContext'
+import { useTranscription } from './useTranscription'
 
 // 51-C: the recording session hoisted ABOVE the note screen.
 //
@@ -16,18 +21,9 @@ import { useTranscription, type UseTranscriptionResult } from './useTranscriptio
 //
 // The session is mounted inside WorkspaceProvider, so switching workspace still tears it
 // down — which is correct, and why that leave-prompt is one of the ones 51-C keeps.
-
-type StartArgs = Parameters<UseTranscriptionResult['startRecording']>
-
-interface RecordingSessionValue {
-  /** The note that owns the live session, or null when nothing is recording. */
-  recordingNoteId: string | null
-  session: UseTranscriptionResult
-  /** Claim the session for `noteId` and start it once the claim has landed. */
-  startIn: (noteId: string, ...args: StartArgs) => void
-}
-
-const RecordingSessionContext = createContext<RecordingSessionValue | null>(null)
+//
+// The context and its reader hooks live in recordingSessionContext.ts, so this file exports
+// only a component and Fast Refresh can hot-swap it.
 
 export function RecordingSessionProvider({ children }: { children: React.ReactNode }) {
   const [recordingNoteId, setRecordingNoteId] = useState<string | null>(null)
@@ -106,46 +102,4 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
   )
 
   return <RecordingSessionContext value={value}>{children}</RecordingSessionContext>
-}
-
-/** Which note is currently recording, for the tab bar. Null when nothing is. */
-export function useRecordingNoteId(): string | null {
-  return useContext(RecordingSessionContext)?.recordingNoteId ?? null
-}
-
-// What a note that does NOT own the session sees. Every field is the idle value, so a note
-// off the recording path renders exactly as it did before this slice.
-const IDLE: Omit<UseTranscriptionResult, 'startRecording'> = {
-  status: 'idle',
-  transcript: '',
-  elapsedSeconds: 0,
-  error: undefined,
-  recordingUpload: 'idle',
-  diarization: 'idle',
-  stopRecording: () => {},
-  awaitCommit: async () => {},
-  reset: () => {},
-}
-
-/**
- * The session as one note sees it. The owning note gets the live session; every other note
- * gets an idle view whose `startRecording` claims the session for itself — and is refused
- * while another note holds it, which is the single-recorder rule.
- */
-export function useNoteRecording(noteId: string): UseTranscriptionResult & { otherNoteRecording: boolean } {
-  const ctx = useContext(RecordingSessionContext)
-  const owns = ctx?.recordingNoteId === noteId
-  const otherNoteRecording = ctx != null && ctx.recordingNoteId !== null && !owns
-  const startIn = ctx?.startIn
-  const session = ctx?.session
-
-  const startRecording = useCallback<UseTranscriptionResult['startRecording']>(
-    (...args) => startIn?.(noteId, ...args),
-    [startIn, noteId],
-  )
-
-  return useMemo(
-    () => ({ ...(owns && session ? session : IDLE), startRecording, otherNoteRecording }),
-    [owns, session, startRecording, otherNoteRecording],
-  )
 }

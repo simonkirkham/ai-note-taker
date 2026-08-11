@@ -25,17 +25,31 @@ namespace Browser.E2E.Journeys;
 // `getDisplayMedia` needs a picker no headless browser has. The production path catches that and
 // falls back to mic-only, so leaving it on would still record — but it would make every run wait
 // out a rejection on the way, for a code path this slice does not touch.
+//
+// PRE-MERGE VALIDATION, AND ITS LIMIT (run 31497953996, branch dispatch of e2e.yml). The helper
+// was executed on its own branch before merging, per the "never let a new E2E helper reach main
+// unexecuted" guardrail. It proved the expensive half works in CI: the fake microphone was
+// accepted, the AudioContext and worklet started, `/transcription/credentials` returned, and the
+// capture went live — the whole StartRecordingAsync path passed in 27s, no crash and no hang.
+//
+// It then FAILED, correctly, on `leave-confirm-text` being visible with "Still recording — open
+// Rec B…" — the 49-A tab-switch prompt this slice deletes. `e2e.yml` runs the branch's TEST code
+// against the already-DEPLOYED test environment; it does not deploy the branch's frontend. So a
+// journey asserting new frontend behaviour cannot go green until the change ships, and this one's
+// first green is main's own deploy gate. Read a pre-merge red here as the journey discriminating
+// against the old build; read a red on `transcription-timer` (the thrown message below) as the
+// recording infrastructure genuinely breaking.
+//
+// DEPLOY-TIME COST: recurring, roughly +30s per deploy-gate run — one extra Chromium launch plus
+// a live Transcribe session. Stated rather than slipped in, per the deploy-time guardrail.
 [Collection("E2E Journeys")]
-public sealed class RecordingTabJourney : IAsyncLifetime
+public sealed class RecordingTabJourney(BrowserFixture browser) : IAsyncLifetime
 {
-    private readonly BrowserFixture _fixture;
     private IPlaywright _playwright = null!;
     private IBrowser _browser = null!;
     private IBrowserContext _context = null!;
     private AppPage _app = null!;
     private IPage _page = null!;
-
-    public RecordingTabJourney(BrowserFixture fixture) => _fixture = fixture;
 
     public async Task InitializeAsync()
     {
@@ -59,7 +73,7 @@ public sealed class RecordingTabJourney : IAsyncLifetime
         _page = await _context.NewPageAsync();
         _page.Console += (_, msg) => Console.WriteLine($"[browser {msg.Type}] {msg.Text}");
         _page.PageError += (_, err) => Console.WriteLine($"[browser error] {err}");
-        _app = new AppPage(_page, _fixture.FrontendUrl, _fixture.E2EAuthToken);
+        _app = new AppPage(_page, browser.FrontendUrl, browser.E2EAuthToken);
     }
 
     public async Task DisposeAsync()

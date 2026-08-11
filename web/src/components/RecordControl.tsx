@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { analyseNote } from "../api/notes";
-import type { UseTranscriptionResult } from "../hooks/useTranscription";
+import type { NoteRecording } from "../hooks/recordingSessionContext";
 import styles from "./RecordControl.module.css";
 
 function formatTime(seconds: number): string {
@@ -24,9 +24,8 @@ export default function RecordControl({
   hasInitialTranscript?: boolean;
   initialTranscript?: string | null;
   // 51-C: the session is app-scoped, so `transcription` may carry the single-recorder flag —
-  // true when ANOTHER note holds the live session. Optional so the many tests that pass a
-  // bare UseTranscriptionResult keep type-checking.
-  transcription: UseTranscriptionResult & { otherNoteRecording?: boolean };
+  // true when ANOTHER note holds the live session.
+  transcription: NoteRecording;
   onAnalysisComplete?: () => void;
 }) {
   const { status, transcript, elapsedSeconds, error, startRecording, stopRecording, reset } =
@@ -187,8 +186,9 @@ export default function RecordControl({
           data-testid="transcription-record-button"
           onClick={handleRecordClick}
           // 51-C: only one note records at a time. The session refuses a second claim anyway,
-          // so without this the button would look live and silently do nothing — the worst of
-          // the three options. The title says WHICH note holds it in plain terms.
+          // so without this the button would look live and silently do nothing. The tooltip
+          // says what to do about it; it deliberately does not name the holding note, which
+          // this component has no way to resolve — the bar's marker is where you look for that.
           disabled={otherNoteRecording}
           title={otherNoteRecording ? "Another note is recording — stop it first" : undefined}
         >

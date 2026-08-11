@@ -8,7 +8,7 @@ import { NoteDeletedError, StaleContentError, type NoteDetail } from "../api/not
 import { keys } from "../api/queryKeys";
 import { presignRecordingDownload } from "../api/recordings";
 import { completeTranscription, discardTranscriptionDraft } from "../api/transcription";
-import { useNoteRecording } from "../hooks/recordingSession";
+import { useNoteRecording } from "../hooks/recordingSessionContext";
 import { useActions } from "../hooks/useActions";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useCreateNoteFromNextOccurrence, useLinkNoteToCalendar, useUnlinkNoteFromCalendar } from "../hooks/useMeetingMutations";
