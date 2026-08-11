@@ -23,8 +23,13 @@ const SEPARATOR = '\u00A0';
 // then whitespace or end of line (`- ` on its own is a real, empty item).
 const LIST_ITEM = /^( *)([-*+]|\d{1,9}[.)])( +|$)/;
 
-// A fence opens/closes with at least three backticks or tildes, indented at most three spaces.
-const FENCE = /^ {0,3}(`{3,}|~{3,})/;
+// A fence opens/closes with at least three backticks or tildes. Matched against the line with
+// its indent stripped -- how far it may be indented is decided by the container, below.
+const FENCE_BODY = /^(`{3,}|~{3,})/;
+
+// Leading spaces. Deliberately not `trimStart()`, which also strips U+00A0 and would mis-measure
+// a BUG-40 separator line as unindented.
+const LEADING_SPACES = /^ */;
 
 // Blank means blank to markdown: spaces and tabs only. Deliberately not `line.trim() === ''`,
 // which also strips U+00A0 -- that would read BUG-40's separator paragraphs as blank lines and
@@ -37,23 +42,31 @@ const TASK_MARKER = /^\[[ xX]\]( |$)/;
 
 // `- - -` and `* * *` are thematic breaks, not list items -- CommonMark gives the break
 // precedence, and treating one as an item would wrap it in separators.
-const THEMATIC_BREAK = /^ {0,3}([-*_])(?: *\1){2,} *$/;
+const THEMATIC_BREAK_BODY = /^([-*_])(?: *\1){2,} *$/;
 
 // An indented code block starts four columns past the enclosing content column, and its
 // contents are literal -- a dash line inside one is text, not a list item.
+//
+// This single threshold governs EVERY block start, not just code. CommonMark measures a fence,
+// a thematic break and an HTML block from the enclosing container's content column too, each
+// allowed up to three columns of indent past it -- which is the same thing as "less than four".
+// Anchoring any of them at `^ {0,3}` is only correct at the top level: inside a list item it
+// makes the scanner miss the construct and then rewrite its literal contents. That was three
+// separate bugs (a code block in an item, a wide marker, a fence nested in an item) with one
+// cause, so the column is derived once, in `containerContentColumn`, and used everywhere.
 const CODE_INDENT = 4;
 
 // CommonMark HTML blocks. Types 1-5 run to a specific closer and are NOT ended by a blank line;
 // types 6-7 (an ordinary tag on its own) run to the next blank line. Both kinds are raw text,
 // so a dash line inside either is not a list item.
 const HTML_BLOCK_CLOSERS: readonly (readonly [RegExp, string])[] = [
-  [/^ {0,3}<(?:pre|script|style|textarea)(?:\s|>|$)/i, '</'],
-  [/^ {0,3}<!--/, '-->'],
-  [/^ {0,3}<\?/, '?>'],
-  [/^ {0,3}<!\[CDATA\[/, ']]>'],
-  [/^ {0,3}<![a-zA-Z]/, '>'],
+  [/^<(?:pre|script|style|textarea)(?:\s|>|$)/i, '</'],
+  [/^<!--/, '-->'],
+  [/^<\?/, '?>'],
+  [/^<!\[CDATA\[/, ']]>'],
+  [/^<![a-zA-Z]/, '>'],
 ];
-const HTML_BLOCK_BLANK_TERMINATED = /^ {0,3}<\/?[a-zA-Z]/;
+const HTML_BLOCK_BLANK_TERMINATED_BODY = /^<\/?[a-zA-Z]/;
 
 // A closer of `</` means any of the type-1 end tags; they all end the same block.
 const TYPE_1_CLOSER = /<\/(?:pre|script|style|textarea)>/i;
@@ -77,6 +90,20 @@ function isSameList(a: ListItemLine, b: ListItemLine): boolean {
   return a.indent === b.indent && a.kind === b.kind && a.marker === b.marker;
 }
 
+function indentOf(line: string): number {
+  return (LEADING_SPACES.exec(line) as RegExpExecArray)[0].length;
+}
+
+/**
+ * The column the innermost open container's content starts at. Every block start -- indented
+ * code, a fence, a thematic break, an HTML block, a nested list item -- is measured from here,
+ * never from column 0.
+ */
+function containerContentColumn(openLevels: readonly ListItemLine[]): number {
+  const innermost = openLevels[openLevels.length - 1];
+  return innermost ? innermost.contentIndent : 0;
+}
+
 /**
  * Reads a line as a list item, or returns null when CommonMark would not treat it as one.
  *
@@ -89,19 +116,17 @@ function isSameList(a: ListItemLine, b: ListItemLine): boolean {
  */
 function readListItem(
   line: string,
-  openLevels: readonly ListItemLine[],
+  codeColumn: number,
   paragraphOpen: boolean
 ): ListItemLine | null {
-  if (THEMATIC_BREAK.test(line)) return null;
   const match = LIST_ITEM.exec(line);
   if (!match) return null;
 
   const indent = match[1].length;
-  const innermost = openLevels[openLevels.length - 1];
-  // Outside a list, four columns of indent is code. Inside one, the threshold is four columns
-  // past the enclosing item's CONTENT column -- anything shallower is still list structure.
-  const codeIndent = innermost ? innermost.contentIndent + CODE_INDENT : CODE_INDENT;
-  if (indent >= codeIndent) return null;
+  if (indent >= codeColumn) return null;
+  // A thematic break wins over a list item, and may be indented up to three columns past the
+  // container -- which the caller has already established by computing `codeColumn`.
+  if (THEMATIC_BREAK_BODY.test(line.slice(indent))) return null;
 
   const marker = match[2];
   const isEmptyItem = match[3].length === 0 || BLANK.test(line.slice(match[0].length));
@@ -137,6 +162,8 @@ export function splitBlankLineSeparatedLists(src: string): string {
   const out: string[] = [];
   let blanks: string[] = [];
   let fence: string | null = null;
+  // The column the open fence itself sits at. Its closer may be indented up to three past it.
+  let fenceIndent = 0;
   // The closer that ends the HTML block currently open, or '' for a blank-line-terminated one.
   let htmlCloser: string | null = null;
   // The list levels currently open, outermost first. A blank run only separates two lists when
@@ -156,10 +183,12 @@ export function splitBlankLineSeparatedLists(src: string): string {
     blanks = [];
   };
 
-  const passThrough = (line: string): void => {
+  // A block start that is not a list item. It ends the list only when it sits at column 0 --
+  // indented, it is the innermost item's own content and the list stays open around it.
+  const passThrough = (line: string, indent: number): void => {
     flushBlanks();
     out.push(line);
-    openLevels = [];
+    if (indent === 0) openLevels = [];
     previousWasItem = false;
     paragraphOpen = false;
   };
@@ -168,8 +197,12 @@ export function splitBlankLineSeparatedLists(src: string): string {
     if (fence !== null) {
       flushBlanks();
       out.push(line);
-      const closing = FENCE.exec(line);
-      if (closing && closing[1][0] === fence[0] && closing[1].length >= fence.length) fence = null;
+      const indent = indentOf(line);
+      const closing = FENCE_BODY.exec(line.slice(indent));
+      const closerIndented = indent <= fenceIndent + CODE_INDENT - 1;
+      if (closing && closerIndented && closing[1][0] === fence[0] && closing[1].length >= fence.length) {
+        fence = null;
+      }
       continue;
     }
 
@@ -190,34 +223,44 @@ export function splitBlankLineSeparatedLists(src: string): string {
       continue;
     }
 
+    const indent = indentOf(line);
+    const codeColumn = containerContentColumn(openLevels) + CODE_INDENT;
+    const body = line.slice(indent);
+    // Four or more columns past the container is an indented code block: literal text, in which
+    // nothing is a block start and nothing may be rewritten.
+    const isLiteralCode = indent >= codeColumn;
+
     if (htmlCloser === '') {
-      passThrough(line);
+      passThrough(line, indent);
       continue;
     }
 
-    const htmlBlock = HTML_BLOCK_CLOSERS.find(([start]) => start.test(line));
-    if (htmlBlock) {
-      const [, closer] = htmlBlock;
-      passThrough(line);
-      const closed = closer === '</' ? TYPE_1_CLOSER.test(line) : line.includes(closer);
-      if (!closed) htmlCloser = closer;
-      continue;
+    if (!isLiteralCode) {
+      const htmlBlock = HTML_BLOCK_CLOSERS.find(([start]) => start.test(body));
+      if (htmlBlock) {
+        const [, closer] = htmlBlock;
+        passThrough(line, indent);
+        const closed = closer === '</' ? TYPE_1_CLOSER.test(line) : line.includes(closer);
+        if (!closed) htmlCloser = closer;
+        continue;
+      }
+
+      if (HTML_BLOCK_BLANK_TERMINATED_BODY.test(body)) {
+        passThrough(line, indent);
+        htmlCloser = '';
+        continue;
+      }
+
+      const opening = FENCE_BODY.exec(body);
+      if (opening) {
+        passThrough(line, indent);
+        fence = opening[1];
+        fenceIndent = indent;
+        continue;
+      }
     }
 
-    if (HTML_BLOCK_BLANK_TERMINATED.test(line)) {
-      passThrough(line);
-      htmlCloser = '';
-      continue;
-    }
-
-    const opening = FENCE.exec(line);
-    if (opening) {
-      passThrough(line);
-      fence = opening[1];
-      continue;
-    }
-
-    const item = readListItem(line, openLevels, paragraphOpen);
+    const item = isLiteralCode ? null : readListItem(line, codeColumn, paragraphOpen);
     const resumesOpenList =
       item !== null &&
       previousWasItem &&
@@ -243,9 +286,10 @@ export function splitBlankLineSeparatedLists(src: string): string {
       paragraphOpen = false;
     } else {
       previousWasItem = false;
-      paragraphOpen = true;
+      // Literal code inside an item is not a paragraph, so it cannot be interrupted.
+      paragraphOpen = !isLiteralCode;
       // Unindented content ends the list; indented content is an item's own continuation.
-      if (!line.startsWith(' ')) openLevels = [];
+      if (indent === 0) openLevels = [];
     }
   }
 

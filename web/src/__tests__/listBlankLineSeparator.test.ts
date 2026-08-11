@@ -320,6 +320,49 @@ describe('splitBlankLineSeparatedLists', () => {
   });
 });
 
+// Every CommonMark block start -- a fence, a thematic break, an HTML block, a nested item -- is
+// measured from the enclosing container's CONTENT column, never from column 0. Anchoring any of
+// them at `^ {0,3}` is correct only at the top level; inside a list item it makes the scanner
+// miss the construct and then rewrite its literal contents. This table is the regression net for
+// that whole family: `keep` means the rule must not touch the source, `fire` means it must
+// insert a separator.
+describe('block starts are measured from the container, not column 0', () => {
+  const cases: [name: string, expected: 'keep' | 'fire', markdown: string][] = [
+    // Containers nested inside a list item -- the anchor bug.
+    ['fence six columns deep', 'keep', '- Steps:\n  - Sub:\n\n      ```\n      - a\n\n      - b\n      ```'],
+    ['fence four columns deep', 'keep', '- Steps:\n\n    ```\n    - a\n\n    - b\n    ```'],
+    ['fence two columns deep', 'keep', '- Steps:\n\n  ```\n  - a\n\n  - b\n  ```'],
+    ['tilde fence in an item', 'keep', '- Steps:\n\n  ~~~\n  - a\n\n  - b\n  ~~~'],
+    ['thematic break in an item', 'keep', '- Steps:\n  - Sub:\n\n    - - -\n\n    - b'],
+    ['html block in an item', 'keep', '- Steps:\n  - Sub:\n\n    <div>\n    - a\n\n    - b\n    </div>'],
+    ['html comment in an item', 'keep', '- Steps:\n\n  <!--\n  - a\n\n  - b\n  -->'],
+    ['pre block in an item', 'keep', '- Steps:\n\n  <pre>\n  - a\n\n  - b\n  </pre>'],
+    // Top level must keep working.
+    ['fence at top level', 'keep', '```\n- a\n\n- b\n```'],
+    ['thematic break at top level', 'keep', '- a\n\n- - -\n\n- b'],
+    ['html comment at top level', 'keep', '<!--\n- a\n\n- b\n-->'],
+    // Everything that must still be fixed.
+    ['two bullet lists', 'fire', '- a\n- b\n\n- c'],
+    ['a nested sub-list', 'fire', '- Install:\n    - npm install\n\n    - npm test'],
+    ['a list resuming at the outer level', 'fire', '- a\n  - a1\n\n- b'],
+    ['ordered lists sharing a delimiter', 'fire', '1. a\n2. b\n\n3. c'],
+    ['a list after a fence closes', 'fire', '```\ncode\n```\n\n- a\n\n- b'],
+    ['a list after a nested fence closes', 'fire', '- Steps:\n\n  ```\n  code\n  ```\n\n  - a\n\n  - b'],
+    ['a list after an html block closes', 'fire', '<div>x</div>\n\n- a\n\n- b'],
+    ['a list after a heading', 'fire', '## Head\n\n- a\n\n- b'],
+    ['a list after a blockquote', 'fire', '> quote\n\n- a\n\n- b'],
+    ['a list after a table', 'fire', '| a |\n| - |\n\n- a\n\n- b'],
+  ];
+
+  it.each(cases)('%s (%s)', (_name, expected, markdown) => {
+    const out = splitBlankLineSeparatedLists(markdown);
+    if (expected === 'keep') expect(out).toBe(markdown);
+    else expect(out).not.toBe(markdown);
+    // Whatever it does, doing it again must change nothing.
+    expect(splitBlankLineSeparatedLists(out)).toBe(out);
+  });
+});
+
 describe('registerListSeparatorRule', () => {
   function fakeMarkdownIt(): { md: MarkdownItLike; registered: string[] } {
     const registered: string[] = [];
