@@ -23,11 +23,15 @@ export default function RecordControl({
   noteHasContent?: boolean;
   hasInitialTranscript?: boolean;
   initialTranscript?: string | null;
-  transcription: UseTranscriptionResult;
+  // 51-C: the session is app-scoped, so `transcription` may carry the single-recorder flag —
+  // true when ANOTHER note holds the live session. Optional so the many tests that pass a
+  // bare UseTranscriptionResult keep type-checking.
+  transcription: UseTranscriptionResult & { otherNoteRecording?: boolean };
   onAnalysisComplete?: () => void;
 }) {
   const { status, transcript, elapsedSeconds, error, startRecording, stopRecording, reset } =
     transcription;
+  const otherNoteRecording = transcription.otherNoteRecording ?? false;
 
   const [hasRecordedThisSession, setHasRecordedThisSession] = useState(false);
   const [isAnalysing, setIsAnalysing] = useState(false);
@@ -182,6 +186,11 @@ export default function RecordControl({
           className={styles.recordButton}
           data-testid="transcription-record-button"
           onClick={handleRecordClick}
+          // 51-C: only one note records at a time. The session refuses a second claim anyway,
+          // so without this the button would look live and silently do nothing — the worst of
+          // the three options. The title says WHICH note holds it in plain terms.
+          disabled={otherNoteRecording}
+          title={otherNoteRecording ? "Another note is recording — stop it first" : undefined}
         >
           <span className={styles.recordDot} aria-hidden="true" />
           Record

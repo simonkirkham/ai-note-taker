@@ -63,9 +63,14 @@ vi.mock('../hooks/useTranscription', () => ({
   },
 }))
 
-// Renders the live transcript so a test can see whether it survived, plus the two controls.
+// Renders the live transcript so a test can see whether it survived, plus the two controls
+// and the single-recorder flag the real control uses to disable itself.
 vi.mock('../components/RecordControl', () => ({
-  default: ({ transcription }: { transcription: UseTranscriptionResult }) => (
+  default: ({
+    transcription,
+  }: {
+    transcription: UseTranscriptionResult & { otherNoteRecording?: boolean }
+  }) => (
     <>
       <button data-testid="mock-start-recording" onClick={() => transcription.startRecording(true, true)}>
         Start recording
@@ -75,6 +80,7 @@ vi.mock('../components/RecordControl', () => ({
       </button>
       <div data-testid="mock-status">{transcription.status}</div>
       <div data-testid="mock-transcript">{transcription.transcript}</div>
+      <div data-testid="mock-other-recording">{String(transcription.otherNoteRecording ?? false)}</div>
     </>
   ),
 }))
@@ -172,6 +178,40 @@ describe('51-C — a recording keeps running while I read another note', () => {
 
     expect(screen.getByTestId('mock-transcript')).toHaveTextContent('live words')
     expect(screen.getByTestId('mock-status')).toHaveTextContent('recording')
+  })
+
+  it('the recording note is marked in the bar, from another note', async () => {
+    renderApp()
+    await openBothAndRecordInStandup()
+    await userEvent.click(within(tab('Client call')).getByTestId('open-note-tab-label'))
+    await waitFor(() => expect(window.location.pathname).toBe('/w/__default__/notes/note-2'))
+
+    // Readable while standing in the OTHER note — the marker's whole purpose is telling you
+    // which note is live when that note is not the one on screen.
+    const marker = within(tab('Standup')).getByTestId('open-note-tab-recording')
+    expect(marker).toBeInTheDocument()
+    expect(within(tab('Standup')).getByTestId('open-note-tab-label')).toHaveAccessibleName(
+      /recording/i,
+    )
+    expect(within(tab('Client call')).queryByTestId('open-note-tab-recording')).toBeNull()
+  })
+
+  it('a second note cannot start its own recording while one is live', async () => {
+    renderApp()
+    await openBothAndRecordInStandup()
+    await userEvent.click(within(tab('Client call')).getByTestId('open-note-tab-label'))
+    await waitFor(() => expect(window.location.pathname).toBe('/w/__default__/notes/note-2'))
+
+    // The other note sees an idle session, so its own control offers nothing to start.
+    expect(screen.getByTestId('mock-status')).toHaveTextContent('idle')
+    expect(screen.getByTestId('mock-other-recording')).toHaveTextContent('true')
+
+    await userEvent.click(screen.getByTestId('mock-start-recording'))
+
+    // Refused: the claim stays with Standup and Client call is still idle.
+    expect(screen.getByTestId('mock-status')).toHaveTextContent('idle')
+    expect(within(tab('Standup')).getByTestId('open-note-tab-recording')).toBeInTheDocument()
+    expect(within(tab('Client call')).queryByTestId('open-note-tab-recording')).toBeNull()
   })
 
   // The guard that must NOT be dropped. Closing the tab destroys the note that is capturing,

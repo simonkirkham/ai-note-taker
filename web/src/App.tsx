@@ -27,7 +27,7 @@ import SignInPage from "./components/SignInPage";
 import { useToast } from "./components/toastContext";
 import { UNFILED_ID } from "./constants";
 import { findNode, findPath } from "./folderTree";
-import { RecordingSessionProvider } from "./hooks/recordingSession";
+import { RecordingSessionProvider, useRecordingNoteId } from "./hooks/recordingSession";
 import {
   useCreateFolder,
   useRenameFolder,
@@ -186,6 +186,8 @@ function AppContent({ signOut }: { signOut: () => void }) {
   const noteMatch = useMatch("/w/:wsId/notes/:noteId");
   const activeNoteId = noteMatch?.params.noteId;
   const { tabs, openTab, closeTab } = useOpenNoteTabs(wsId);
+  // 51-C: which note is capturing, so the bar can mark it. Null unless something is.
+  const recordingNoteId = useRecordingNoteId();
   // Titles follow the note-cards list so a rename re-derives; the title captured at open
   // time covers a note too new to be in the list yet.
   //
@@ -530,6 +532,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
             activeNoteId={activeNoteId}
             homeIsCurrentPage={!activeNoteId && !activeFolderId}
             reconciled={cardsLoaded}
+            recordingNoteId={recordingNoteId}
             onSelect={handleSelectTab}
             onSelectHome={handleHome}
             onClose={handleCloseTab}

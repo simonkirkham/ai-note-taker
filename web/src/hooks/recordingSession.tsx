@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { recordRumEvent } from '../rum'
 import { useTranscription, type UseTranscriptionResult } from './useTranscription'
 
 // 51-C: the recording session hoisted ABOVE the note screen.
@@ -72,6 +73,32 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
       setRecordingNoteId(null)
     }
   }, [session.status, recordingNoteId])
+
+  // The slice's regression detector. If this provider ever unmounts while a capture is still
+  // live, the recording has been destroyed under the user and the transcript is gone — the
+  // exact failure 51-C exists to prevent, and one that is otherwise invisible until someone
+  // opens the note and finds it empty. Refs, because a cleanup closure must not re-run when
+  // the values change; the effect is mount-once by design.
+  //
+  // KNOWN INERT: recordRumEvent is a no-op in production today — custom events are DISABLED
+  // on the RUM monitor (TI-67). This is wired to the spec, but it cannot fire until that
+  // lands, so it is NOT yet evidence that the mechanism works.
+  const statusRef = useRef(session.status)
+  const noteIdRef = useRef(recordingNoteId)
+  // Mirrored in an effect, not during render: writing a ref while rendering is what
+  // react-hooks/refs forbids, and it is unsafe under a re-render React discards.
+  useEffect(() => {
+    statusRef.current = session.status
+    noteIdRef.current = recordingNoteId
+  }, [session.status, recordingNoteId])
+  useEffect(
+    () => () => {
+      if (statusRef.current === 'recording' || statusRef.current === 'requestingCredentials') {
+        recordRumEvent('recordingUnmountedWhileActive', { noteId: noteIdRef.current ?? '' })
+      }
+    },
+    [],
+  )
 
   const value = useMemo<RecordingSessionValue>(
     () => ({ recordingNoteId, session, startIn }),

@@ -21,6 +21,7 @@ export default function OpenNoteTabs({
   activeNoteId,
   homeIsCurrentPage,
   reconciled,
+  recordingNoteId,
   onSelect,
   onSelectHome,
   onClose,
@@ -45,6 +46,9 @@ export default function OpenNoteTabs({
   // 51-B: this now matters on every route, not just the note route — the set is provisional
   // on the notes list for exactly the same reason.
   reconciled: boolean;
+  // 51-C: the note currently recording, or undefined. Passed in rather than read from the
+  // session here so the bar stays a pure presentational component.
+  recordingNoteId?: string | null;
   onSelect: (noteId: string) => void;
   onSelectHome: () => void;
   onClose: (noteId: string) => void;
@@ -71,6 +75,7 @@ export default function OpenNoteTabs({
         </li>
         {tabs.map((tab) => {
           const isActive = tab.noteId === activeNoteId;
+          const isRecording = tab.noteId === recordingNoteId;
           return (
             <li
               key={tab.noteId}
@@ -86,7 +91,18 @@ export default function OpenNoteTabs({
                 title={tab.title}
                 onClick={() => onSelect(tab.noteId)}
               >
+                {/* 51-C: the dot is decorative — the fact it carries rides in the accessible
+                    name instead, so a screen reader hears "Standup, recording" rather than an
+                    unannounced colour change. Colour is never the only channel. */}
+                {isRecording && (
+                  <span
+                    data-testid="open-note-tab-recording"
+                    className={styles.recordingDot}
+                    aria-hidden="true"
+                  />
+                )}
                 {tab.title}
+                {isRecording && <span className={styles.srOnly}>, recording</span>}
               </button>
               <button
                 type="button"
