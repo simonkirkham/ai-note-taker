@@ -22,7 +22,6 @@ Ordered by severity, then by id.
 | BUG-70 | Clicking "+ New Note" while recording and then choosing to keep recording still leaves a blank, untitled note behind on your home list. | Open — held behind 51-C | BUG-54, 51-C |
 | BUG-73 | Signing out while an on-device transcript is still finishing can park you for up to an hour with no way to leave — a real problem on a shared machine. | Open | BUG-55 |
 | BUG-75 | Reopening a note while its on-device transcript is still finishing shows no transcript, and nothing appears until you navigate again or reload. | Open | BUG-72 |
-| BUG-76 | The "X / Y" agenda count on a note can disagree with the ticks you can actually see, and a topic that is counted but not shown cannot be ticked. | Open | 43-G, 43-H2 |
 | BUG-78 | A truncated or hand-edited sign-in link drops you at the sign-in screen and claims your browser is blocking storage — and the message comes back on every reload. | Open | BUG-71, BUG-60, BUG-15 |
 | BUG-80 | A topic you add from the agenda strip can land in an invisible checklist at the very top of the note — the header lists it, but you cannot find it in the note to edit it in place. | Open | BUG-76 |
 
@@ -152,22 +151,6 @@ It surfaced on the first run outside the deploy gate, which is also the first ti
 
 ---
 
-## BUG-76 — The agenda count can disagree with the ticks on screen
-
-**Severity:** Low — each case needs a specific note shape, though (a) is ordinary note-taking. **Status:** Open.
-
-**User impact:** the "X / Y" pill disagrees with the ticks visible in the note, and a topic that is counted but not shown cannot be ticked from the header.
-
-**Origin:** all three were found in [43-G](phase-43.md)'s review and carried on the 43-H2 checklist; 43-H2 shipped the removal without them, and with Phase 43 now Done they need their own row or they are lost inside a closed phase. Each is a mismatch between the server's parse of the note body and the editor's live read — and **since 43-H2 the body is the only source**, so a divergence is now the only way the two can disagree. It used to be masked by the legacy union.
-
-| # | Cause | Fix |
-|---|---|---|
-| (a) | `collectTaskItems` (`web/src/lib/agendaEditorApi.ts:62`) recurses only into `taskList` children, so a tick reachable through a NON-checklist list — `- Shopping` / `  - [ ] Milk`, or a bulleted child under a task item — is counted server-side but invisible in the header. **The only cause still live** — (b) and (c) are struck through below — and it is ordinary note-taking, since indenting a checklist under a plain bullet is how people write lists | Widen the recursion to a list-type set. Cannot reintroduce the blockquote exclusion — a blockquote is not a list |
-| (b) | ~~A paragraph holding only a non-text inline node reads as empty client-side and is skipped~~ — **mechanism retracted, symptom stands.** The divergence is real: `- [ ] ![shot](key)` is counted by `AgendaFromContent.Parse` and not by the header. But nothing is skipped, because nothing is there to skip — a note image is a BLOCK node, so the markdown parser hoists it clean out of the task item, leaving `taskList > taskItem > paragraph(empty)` and a sibling `image` | Not closable in the topic walk. Needs note images to become INLINE in the editor schema, which must also fix the same shape's destructive round-trip (re-serialising glues the next checklist line onto the image and loses it as a topic). Registered meanwhile as a KNOWN DIVERGENCE in `web/src/__tests__/fixtures/agenda-parity.json` |
-| (c) | ~~The [BUG-24] image-resolve calls `setContent` with `emitUpdate: false`, so the editor's live topic list is not republished for it~~ — **RETRACTED, not a defect.** The list IS republished: `editor.setEditable(true)`, on the very next line, emits `update` unconditionally (`@tiptap/core`: `setEditable(editable, emitUpdate = true)`). Disproved by running the proposed fix's test with the fix removed — it passed | None. Do NOT add a `publish()`; it is already covered. Pinned by `NoteEditor.test.tsx` "republishes the agenda after an image resolve", which goes red if that incidental `setEditable` is ever reordered or dropped |
-
----
-
 ## BUG-78 — A malformed sign-in link blocks session restore and loops a storage warning
 
 **Severity:** Low — needs a hand-edited or truncated address to reach. **Status:** Open. All found by review of [BUG-71]; all **pre-existing** and not regressed by it, which is why that PR keeps `has('code')` rather than folding a session-restore change into a gate-strand fix.
@@ -188,7 +171,7 @@ It surfaced on the first run outside the deploy gate, which is also the first ti
 
 ## BUG-80 — A topic added from the header can land in a checklist the note does not show
 
-**Severity:** Low — needs the note to already contain a checklist indented under a bullet. **Status:** Open. Found by review of [BUG-76](#bug-76--the-agenda-count-can-disagree-with-the-ticks-on-screen); **pre-existing**, and not a regression from it — placement was the same before that fix. Parity holds throughout: the header and the server agree on the count, so nothing is miscounted and no command touches the wrong line.
+**Severity:** Low — needs the note to already contain a checklist indented under a bullet. **Status:** Open. Found by review of [BUG-76](phase-bugs-archive.md#bug-76--the-agenda-count-disagreed-with-the-ticks-on-screen); **pre-existing**, and not a regression from it — placement was the same before that fix. Parity holds throughout: the header and the server agree on the count, so nothing is miscounted and no command touches the wrong line.
 
 **Symptom:** you type a topic into the agenda strip, it appears in the list, and it is nowhere in the note where you expect it. It has been written into an empty checklist sitting above the first line of the note, which renders as an empty checkbox rather than as the heading the other topics sit under. Editing it in the note means finding it there first.
 
