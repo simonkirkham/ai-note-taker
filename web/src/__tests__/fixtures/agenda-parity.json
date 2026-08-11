@@ -16,14 +16,19 @@
     "  divergence   why they differ and why it is not closed here; required whenever `header` is",
     "               present, so a real gap can never be hidden by quietly adding an override",
     "",
-    "The register covers bodies the EDITOR can produce. Two divergences are deliberately left OUT",
-    "of it — this is not a claim that no others exist, only that these two are excluded and why.",
-    "Both are PRE-EXISTING — neither is reached by widening the topic walk to nested",
-    "lists — only imported or hand-written markdown gets to them, and the first save normalises",
-    "both away. Verified against a real editor, and ASSERTED rather than left as prose — see",
-    "agendaParity.test.ts, 'the divergences left out of the register really are normalised by a",
-    "save'. A tiptap-markdown upgrade that stopped hoisting, or a serializer that stopped fencing,",
-    "turns those tests red instead of turning this paragraph silently false.",
+    "WHAT GETS REGISTERED: a case earns a row whenever a body a user can CURRENTLY be looking at",
+    "makes the header and the server disagree — whether or not a later save reconciles them. That",
+    "is the whole rule; `header` differing from `topics` is the mechanical test for it, and every",
+    "such row must carry a `divergence`.",
+    "",
+    "Two divergences are deliberately left OUT, and they predate the register. This is not a claim",
+    "that no others exist, only that these two are excluded and why. Both are PRE-EXISTING —",
+    "neither is reached by widening the topic walk to nested lists — only imported or hand-written",
+    "markdown gets to them, and the first save normalises both away. Verified against a real editor,",
+    "and ASSERTED rather than left as prose — see agendaParity.test.ts, 'the divergences justified",
+    "by \"a save fixes it\" really are fixed by a save'. A tiptap-markdown upgrade that stopped",
+    "hoisting, or a serializer that stopped fencing, turns those tests red instead of turning this",
+    "paragraph silently false.",
     "  `1. [ ] Numbered task` — the server's marker class is [-*+], so it reads no topic. The",
     "     client reads one, but NOT through the numbered list: the parser leaves the orderedList",
     "     item empty and hoists a sibling TOP-LEVEL taskList, which the walk has always read.",
@@ -134,7 +139,7 @@
       "markdown": "- [ ] Ship it :rocket:",
       "topics": [{ "text": "Ship it :rocket:", "checked": false }],
       "header": [{ "text": "Ship it 🚀", "checked": false }],
-      "divergence": "The header shows the emoji, the server shows the shortcode that produced it. The app loads note content through `emojifyMarkdown`, so `:rocket:` is already unicode before the parser sees it, while the server reads the stored line as written. Count, order and ticked state agree — only the label differs. SELF-HEALING, unlike the link and image cases: the editor now holds the unicode character, so the next save writes `- [ ] Ship it 🚀` and the two agree from then on. Asserted rather than described — see agendaParity.test.ts, 'the divergences left out of the register really are normalised by a save'. Registered anyway, because until that save happens it is a live divergence on real content, and the register is the contract."
+      "divergence": "The header shows the emoji, the server shows the shortcode that produced it. The app loads note content through `emojifyMarkdown`, so `:rocket:` is already unicode before the parser sees it, while the server reads the stored line as written. Count, order and ticked state agree — only the label differs. SELF-HEALING, unlike the link and image cases: the editor now holds the unicode character, so the next save writes `- [ ] Ship it 🚀` and the two agree from then on. Asserted rather than described — see agendaParity.test.ts, 'rewrites an emoji shortcode to the character the server then reads back'. Registered even so, because the membership rule is about what a user can be looking at NOW, and until that save happens this is a live divergence on real content."
     }
   ]
 }

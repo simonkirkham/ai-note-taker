@@ -65,7 +65,11 @@ afterAll(() => {
 // `emojifyMarkdown(stripImageKeys(value))`, so a shortcode is already unicode by the time the
 // parser sees it, and a fixture that skipped it would assert a document the app never builds.
 // `stripImageKeys` is deliberately NOT applied: it models only the transient pre-resolve mount,
-// while the image cases here are about the resolved document the user ends up looking at.
+// while the image cases here are about the resolved document the user ends up looking at — and
+// that mount-time reading is already pinned, in NoteEditor.test.tsx "publishes the topics of the
+// resolved document, not the stripped one". `keysToSrcs` is skipped for a different and weaker
+// reason: it rewrites the image `src` attribute only, so the parsed shape — and therefore every
+// topic — is identical whether the src is a bare key or a presigned URL.
 function makeEditor(markdown: string) {
   const editor = new Editor({
     extensions: [
@@ -106,6 +110,12 @@ describe('the header reads the same agenda the server does (BUG-76)', () => {
       'a topic containing a link (KNOWN DIVERGENCE, open)',
       'a topic containing an emoji shortcode (KNOWN DIVERGENCE, open)',
     ])
+  })
+
+  // Separate from the name pin on purpose. Both guards were in one `it`, and breaking both at once
+  // reported only the first — the second never ran, so it could have rotted unnoticed behind a
+  // failure that always fired first. Two `it`s means each is observed on its own.
+  it('every registered divergence carries a reason', () => {
     for (const c of fixture.cases) {
       if (c.header === undefined) continue
       expect(c.divergence ?? '').not.toHaveLength(0)
