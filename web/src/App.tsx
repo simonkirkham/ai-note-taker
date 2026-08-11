@@ -376,26 +376,28 @@ function AppContent({ signOut }: { signOut: () => void }) {
     void qc.invalidateQueries({ queryKey: keys.noteCards });
   }
 
-  // BUG-54: these three leave the note screen without being *about* the note, so each must
-  // ask before unmounting a recording.
+  // BUG-54 guarded these three because leaving the note screen unmounted the capture with it.
   //
-  // Source state vs destination state decides what waits. Closing the sidebar belongs to
-  // the CLICK (source) — on mobile it is an overlay whose scrim would dim and block the
-  // very "Still recording" confirm the guard just raised — so it happens immediately.
-  // Anything belonging to where you are GOING (the folder preview) waits for the leave.
+  // 51-C: unguarded. The session lives above the route now, so going to the notes list, a
+  // folder or Unfiled leaves the recording running — proven off-route in
+  // RecordingSurvivesTabSwitch, which returns and reads the transcript back. Asking anyway
+  // would be worse than noise: the tab bar is on these screens too (51-B) and would be
+  // showing the note as live while a dialog claimed the recording was about to be lost.
+  //
+  // What still guards: closing the recording tab, sign-out, workspace switch, moving the
+  // note, and leaving the browser (`beforeunload`, registered inside `useTranscription`, so
+  // it follows the session rather than whichever note happens to be mounted).
   function handleUnfiledSelect() {
     setSidebarOpen(false);
-    requestLeave(() => void navigate(w("/folders/unfiled")), "go to Unfiled");
+    void navigate(w("/folders/unfiled"));
   }
 
   function handleFolderSelect(folderId: string, folderPath: string[]) {
     setSidebarOpen(false);
     const folderName = folderPath[folderPath.length - 1] ?? "";
-    requestLeave(() => {
-      void navigate(w(`/folders/${folderId}`));
-      setPreviewFolderId(folderId);
-      setPreviewFolderName(folderName);
-    }, `go to ${destinationName(folderName, "that folder")}`);
+    void navigate(w(`/folders/${folderId}`));
+    setPreviewFolderId(folderId);
+    setPreviewFolderName(folderName);
   }
 
   function handleHome() {
@@ -404,7 +406,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
     // Filters live in the query string (CHANGE-23), so pathname alone is not "already here":
     // replacing a FILTERED home entry would destroy it and Back could never return to it.
     const alreadyHome = location.pathname === w("") && location.search === "";
-    requestLeave(() => void navigate(w(""), alreadyHome ? { replace: true } : undefined), "go to Home");
+    void navigate(w(""), alreadyHome ? { replace: true } : undefined);
   }
 
   function handleCreateFolder(name: string, parentFolderId?: string) {

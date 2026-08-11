@@ -158,15 +158,16 @@ Scenario: Only one note records at a time
   - Still required either way: audit every `NoteView` effect that assumes "mounted ⇒ visible/active" and gate it on active-ness.
 - **Classify every leave-guard site before removing any of them — this is where 51-C can silently re-open [BUG-54].** BUG-54 exists because leaving a recording note destroyed the transcript, and it wrapped ten `requestLeave` sites to prevent that. Keeping the recording mounted removes the *reason* for some of those prompts but not others, and the difference is whether the destination unmounts the recording:
 
-  | Site (`App.tsx` unless noted) | Under keep-mounted | Why |
+  | Site (`App.tsx` unless noted) | Outcome | Why |
   |---|---|---|
-  | Tab switch, `openNote` | **drop the prompt** | the whole point of the slice — recording stays mounted |
-  | Home / folder / Unfiled navigation | **drop the prompt**, IF the recording note stays mounted off-route | otherwise this is BUG-54 again; verify by test, not by reading |
-  | Close the recording tab | **keep** | unmounts the recording |
-  | Sign out (`awaitTranscript: true`) | **keep** | clears the token, unmounts everything |
-  | Workspace switch / create-and-switch (`WorkspaceSwitcher.tsx`, 2 sites) | **keep** | leaves the workspace the note lives in |
-  | Move note to another workspace | **keep** | the note survives the move, the transcript does not |
-  | `beforeunload` / `popstate` | **keep** | the browser is leaving regardless of mounting |
+  | Tab switch, `openNote` | **dropped** | the whole point of the slice — the session outlives the note |
+  | Home / folder / Unfiled navigation | **dropped** | the conditional resolved to yes. The session is hoisted above the route, so all three leave the capture running — proven by `RecordingSurvivesTabSwitch`, which leaves the note entirely, returns and reads the transcript back. Keeping them would also have contradicted the bar, which is on those screens (51-B) showing the note as live |
+  | Close the recording tab | **kept** | unmounts the recording |
+  | Sign out (`awaitTranscript: true`) | **kept** | clears the token, unmounts everything |
+  | Workspace switch / create-and-switch (`WorkspaceSwitcher.tsx`, 2 sites) | **kept** | leaves the workspace the note lives in |
+  | Move note to another workspace | **kept** | the note survives the move, the transcript does not |
+  | `beforeunload` | **kept**, and already correct | registered inside `useTranscription`, so hoisting moved it with the session — it follows the recording rather than whichever note is mounted |
+  | `popstate` (`NoteView.tsx`) | **kept as-is** | now redundant on most paths: browser-back within the workspace no longer destroys the capture, so this asks about a navigation that is safe. Left alone deliberately — narrowing BUG-34's trap is not this slice's call. Follow-up if the double-confirm annoys |
 
   Do not drop a prompt on the argument that the recording "should" survive — assert it survives first. The 49-A tab-switch confirm is the only one 51-C is *certain* to remove.
 - **[BUG-70] is open and overlaps.** "+ New Note" creates the note server-side *before* the guard runs, so a declined leave leaves an orphan. If 51-C drops the prompt on that path without fixing the ordering, the orphan stops being visible rather than stops happening. Read it before touching `handleNewNote`.

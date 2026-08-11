@@ -102,6 +102,7 @@ const card = (noteId: string, title: string) => ({
 
 const STANDUP = card('note-1', 'Standup')
 const CLIENT_CALL = card('note-2', 'Client call')
+const FOLDER = { folderId: 'folder-1', name: 'Clients', parentFolderId: null, children: [] }
 
 const renderApp = () =>
   render(
@@ -116,7 +117,7 @@ beforeEach(() => {
   window.history.replaceState({}, '', '/')
   server.use(
     http.get('/api/w/:wsId/notes/cards', () => HttpResponse.json({ cards: [STANDUP, CLIENT_CALL] })),
-    http.get('/api/w/:wsId/folders', () => HttpResponse.json({ folders: [] })),
+    http.get('/api/w/:wsId/folders', () => HttpResponse.json({ folders: [FOLDER] })),
     http.get('/api/w/:wsId/notes/:noteId', ({ params }) =>
       HttpResponse.json({
         noteId: params.noteId,
@@ -212,6 +213,35 @@ describe('51-C — a recording keeps running while I read another note', () => {
     expect(screen.getByTestId('mock-status')).toHaveTextContent('idle')
     expect(within(tab('Standup')).getByTestId('open-note-tab-recording')).toBeInTheDocument()
     expect(within(tab('Client call')).queryByTestId('open-note-tab-recording')).toBeNull()
+  })
+
+  // The three navigations the phase doc left conditional: drop the prompt ONLY IF the
+  // recording provably survives the route change. These are that proof — each one leaves the
+  // note entirely (no NoteView mounted at all), then comes back and reads the transcript. If
+  // the session were still owned by the note, every one of these would come back to ''.
+  //
+  // The marker assertion is the second half of the case: from a screen with no note on it,
+  // the tab bar is the ONLY thing telling you a recording is still running. Dropping the
+  // prompt without it would leave a capture live with nothing on screen saying so.
+  it.each([
+    ['my notes list', () => userEvent.click(screen.getByTestId('open-note-tab-home')), '/w/__default__'],
+    ['a folder', async () => { await userEvent.click(await screen.findByText('Clients')) }, '/w/__default__/folders/folder-1'],
+    ['Unfiled', () => userEvent.click(screen.getByTestId('unfiled-notes-button')), '/w/__default__/folders/unfiled'],
+  ])('going to %s does not ask, and the recording is still running when I come back', async (_where, go, path) => {
+    renderApp()
+    await openBothAndRecordInStandup()
+
+    await go()
+
+    expect(screen.queryByTestId('confirm-leave-button')).toBeNull()
+    await waitFor(() => expect(window.location.pathname).toBe(path))
+    // Still visibly recording, with no note on screen to say so.
+    expect(within(tab('Standup')).getByTestId('open-note-tab-recording')).toBeInTheDocument()
+
+    await userEvent.click(within(tab('Standup')).getByTestId('open-note-tab-label'))
+    await waitFor(() => expect(window.location.pathname).toBe('/w/__default__/notes/note-1'))
+    expect(screen.getByTestId('mock-transcript')).toHaveTextContent('live words')
+    expect(screen.getByTestId('mock-status')).toHaveTextContent('recording')
   })
 
   // The guard that must NOT be dropped. Closing the tab destroys the note that is capturing,

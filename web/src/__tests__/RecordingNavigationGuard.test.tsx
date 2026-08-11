@@ -13,6 +13,14 @@ import { server } from '../test/setup'
 // silently unmounts it and loses the transcript. The BUG-34 popstate trap only sees browser
 // Back; sidebar Home / a folder / Unfiled / a workspace switch all call `navigate` directly,
 // which pushes. 49-A closed this for tab switch/close and `openNote`; these are the rest.
+//
+// 51-C narrowed which exits are still dangerous. The session no longer belongs to the
+// mounted note, so a route change inside the workspace — the notes list, a folder, Unfiled,
+// another note — keeps the capture running and is no longer guarded; the proof that it
+// really survives (leave, come back, read the transcript) is RecordingSurvivesTabSwitch,
+// and it is not duplicated here. What remains below is the set that still DESTROYS a
+// capture: closing the recording tab, sign-out, a workspace switch, moving the note, and
+// leaving the browser.
 
 vi.mock('../components/LazyNoteEditor', () => ({
   default: ({ value, onChange, onBlur }: { value: string; onChange: (md: string) => void; onBlur: () => void }) => (
@@ -117,11 +125,14 @@ async function openNoteAndRecord(title = 'Standup') {
 const NOTE_PATH = '/w/__default__/notes/note-1'
 
 describe('BUG-54 — navigating away from a recording note asks first', () => {
-  it('clicking Home while recording asks before leaving', async () => {
+  // Closing the tab is the exit 51-C keeps and the one it is most tempting to lose, since it
+  // sits next to the tab SWITCH that the slice deliberately unguarded. It carries the
+  // decline/confirm coverage that used to hang off the Home button.
+  it('closing the recording tab asks before leaving', async () => {
     renderApp()
     await openNoteAndRecord()
 
-    await userEvent.click(within(screen.getByTestId('sidebar')).getByTestId('home-button'))
+    await userEvent.click(screen.getByTestId('open-note-tab-close'))
 
     expect(await screen.findByTestId('confirm-leave-button')).toBeInTheDocument()
     expect(window.location.pathname).toBe(NOTE_PATH)
@@ -130,7 +141,7 @@ describe('BUG-54 — navigating away from a recording note asks first', () => {
   it('declining keeps me on the note with the recording running', async () => {
     renderApp()
     await openNoteAndRecord()
-    await userEvent.click(within(screen.getByTestId('sidebar')).getByTestId('home-button'))
+    await userEvent.click(screen.getByTestId('open-note-tab-close'))
     await screen.findByTestId('confirm-leave-button')
 
     await userEvent.click(screen.getByTestId('cancel-leave-button'))
@@ -138,42 +149,19 @@ describe('BUG-54 — navigating away from a recording note asks first', () => {
     expect(screen.queryByTestId('confirm-leave-button')).toBeNull()
     expect(window.location.pathname).toBe(NOTE_PATH)
     expect(screen.getByTestId('note-title-input')).toBeInTheDocument()
+    // The tab is still open too — declining must undo the whole action, not just the navigate.
+    expect(screen.getByTestId('open-note-tab')).toBeInTheDocument()
   })
 
   it('confirming goes to the destination I actually clicked', async () => {
     renderApp()
     await openNoteAndRecord()
-    await userEvent.click(within(screen.getByTestId('sidebar')).getByTestId('home-button'))
+    await userEvent.click(screen.getByTestId('open-note-tab-close'))
 
     await userEvent.click(await screen.findByTestId('confirm-leave-button'))
 
+    // It was the only note open, so closing it lands on the notes list.
     await waitFor(() => expect(window.location.pathname).toBe('/w/__default__'))
-  })
-
-  it('clicking a folder while recording asks before leaving', async () => {
-    renderApp()
-    await openNoteAndRecord()
-
-    await userEvent.click(await screen.findByText('Clients'))
-
-    expect(await screen.findByTestId('confirm-leave-button')).toBeInTheDocument()
-    expect(window.location.pathname).toBe(NOTE_PATH)
-
-    await userEvent.click(screen.getByTestId('confirm-leave-button'))
-    await waitFor(() => expect(window.location.pathname).toBe('/w/__default__/folders/folder-1'))
-  })
-
-  it('clicking Unfiled while recording asks before leaving', async () => {
-    renderApp()
-    await openNoteAndRecord()
-
-    await userEvent.click(screen.getByTestId('unfiled-notes-button'))
-
-    expect(await screen.findByTestId('confirm-leave-button')).toBeInTheDocument()
-    expect(window.location.pathname).toBe(NOTE_PATH)
-
-    await userEvent.click(screen.getByTestId('confirm-leave-button'))
-    await waitFor(() => expect(window.location.pathname).toBe('/w/__default__/folders/unfiled'))
   })
 
   // The destination's side effects must wait for the leave too — declining has to leave
@@ -230,19 +218,10 @@ describe('BUG-54 — navigating away from a recording note asks first', () => {
     )
   })
 
-  it('declining a folder click does not open the folder preview panel', async () => {
-    renderApp()
-    await openNoteAndRecord()
-    await userEvent.click(await screen.findByText('Clients'))
-    await screen.findByTestId('confirm-leave-button')
-
-    await userEvent.click(screen.getByTestId('cancel-leave-button'))
-
-    // The panel element is always in the DOM (it slides open), so assert it never took the
-    // folder: its header title stays empty rather than showing "Clients".
-    expect(within(screen.getByTestId('folder-preview-panel')).queryByText('Clients')).toBeNull()
-    expect(window.location.pathname).toBe(NOTE_PATH)
-  })
+  // 51-C removed the folder-click confirm, so "declining a folder click leaves the preview
+  // panel closed" no longer describes anything — there is no decline on that path. The
+  // source/destination split it protected still holds for the exits that DO confirm; the
+  // workspace-switch case below is the surviving example (its popover must stay open).
 
   it('switching workspace while recording asks before leaving', async () => {
     server.use(
@@ -306,13 +285,13 @@ describe('BUG-54 — navigating away from a recording note asks first', () => {
   })
 
   // The guard must not fire when nothing is being recorded — every one of these is a
-  // plain navigation the rest of the time.
-  it('navigating away with no recording does not ask', async () => {
+  // plain action the rest of the time.
+  it('closing a tab with no recording does not ask', async () => {
     renderApp()
     await userEvent.click(await screen.findByTestId('note-card-title'))
     await screen.findByTestId('note-title-input')
 
-    await userEvent.click(within(screen.getByTestId('sidebar')).getByTestId('home-button'))
+    await userEvent.click(screen.getByTestId('open-note-tab-close'))
 
     await waitFor(() => expect(window.location.pathname).toBe('/w/__default__'))
     expect(screen.queryByTestId('confirm-leave-button')).toBeNull()
@@ -321,12 +300,12 @@ describe('BUG-54 — navigating away from a recording note asks first', () => {
   // The real teardown risk: a guard registered for a FINISHED recording. The case above
   // never registers one at all, so it passes either way — this one only passes if the
   // guard is actually unregistered when recording stops.
-  it('navigating away after a recording has stopped does not ask', async () => {
+  it('closing a tab after a recording has stopped does not ask', async () => {
     renderApp()
     await openNoteAndRecord()
     await userEvent.click(screen.getByTestId('mock-stop-recording'))
 
-    await userEvent.click(within(screen.getByTestId('sidebar')).getByTestId('home-button'))
+    await userEvent.click(screen.getByTestId('open-note-tab-close'))
 
     await waitFor(() => expect(window.location.pathname).toBe('/w/__default__'))
     expect(screen.queryByTestId('confirm-leave-button')).toBeNull()
@@ -337,7 +316,7 @@ describe('BUG-54 — navigating away from a recording note asks first', () => {
   it('stopping the recording while the confirm is showing completes the navigation', async () => {
     renderApp()
     await openNoteAndRecord()
-    await userEvent.click(within(screen.getByTestId('sidebar')).getByTestId('home-button'))
+    await userEvent.click(screen.getByTestId('open-note-tab-close'))
     await screen.findByTestId('confirm-leave-button')
 
     await userEvent.click(screen.getByTestId('mock-stop-recording'))
@@ -375,31 +354,17 @@ describe('CHANGE-33 — the leave confirm names where it is about to take you', 
     }),
   )
 
-  it('names Home when I click Home', async () => {
+  // 51-C dropped the Home / folder / Unfiled confirms, and with them their naming cases.
+  // Closing the tab took over as the everyday guarded exit, so it takes over the coverage.
+  it('names the tab close when I close the recording tab', async () => {
     renderApp()
     await openNoteAndRecord()
 
-    await userEvent.click(within(screen.getByTestId('sidebar')).getByTestId('home-button'))
+    await userEvent.click(screen.getByTestId('open-note-tab-close'))
 
-    await banner('go to Home')
-  })
-
-  it('names the folder when I click a folder', async () => {
-    renderApp()
-    await openNoteAndRecord()
-
-    await userEvent.click(await screen.findByText('Clients'))
-
-    await banner('go to Clients')
-  })
-
-  it('names Unfiled when I click Unfiled', async () => {
-    renderApp()
-    await openNoteAndRecord()
-
-    await userEvent.click(screen.getByTestId('unfiled-notes-button'))
-
-    await banner('go to Unfiled')
+    // Named for what the user asked for, not where it lands them (CHANGE-33): closing is the
+    // action; ending up on the notes list is a consequence they did not choose.
+    await banner('close this tab')
   })
 
   it('names the workspace when I switch workspace', async () => {
@@ -447,16 +412,18 @@ describe('CHANGE-33 — the leave confirm names where it is about to take you', 
   // The invisible half of CHANGE-33: a second guarded click replaces the pending
   // destination (last intent wins, which is right) — the banner has to show that it did.
   it('re-names itself when a second guarded click replaces the destination', async () => {
+    server.use(TWO_WORKSPACES)
     renderApp()
     await openNoteAndRecord()
-    await userEvent.click(within(screen.getByTestId('sidebar')).getByTestId('home-button'))
-    await banner('go to Home')
+    await userEvent.click(screen.getByTestId('open-note-tab-close'))
+    await banner('close this tab')
 
-    await userEvent.click(await screen.findByText('Clients'))
+    await userEvent.click(screen.getByTestId('workspace-switcher-trigger'))
+    await userEvent.click(await screen.findByTestId('workspace-option-ws-2'))
 
-    await banner('go to Clients')
+    await banner('switch to Work')
     await userEvent.click(screen.getByTestId('confirm-leave-button'))
-    await waitFor(() => expect(window.location.pathname).toBe('/w/__default__/folders/folder-1'))
+    await waitFor(() => expect(window.location.pathname).toBe('/w/ws-2'))
   })
 
   // The replacement happens while the dialog is ALREADY open, and nothing focuses it — so
@@ -465,7 +432,7 @@ describe('CHANGE-33 — the leave confirm names where it is about to take you', 
     renderApp()
     await openNoteAndRecord()
 
-    await userEvent.click(within(screen.getByTestId('sidebar')).getByTestId('home-button'))
+    await userEvent.click(screen.getByTestId('open-note-tab-close'))
 
     const dialog = await screen.findByRole('alertdialog')
     expect(dialog).toHaveAttribute('aria-live', 'assertive')
@@ -483,8 +450,8 @@ describe('CHANGE-33 — the leave confirm names where it is about to take you', 
   it('re-names to Home when browser Back supersedes a pending destination', async () => {
     renderApp()
     await openNoteAndRecord()
-    await userEvent.click(await screen.findByText('Clients'))
-    await banner('go to Clients')
+    await userEvent.click(screen.getByTestId('open-note-tab-close'))
+    await banner('close this tab')
 
     window.history.back()
 
@@ -518,18 +485,24 @@ describe('CHANGE-33 — the leave confirm names where it is about to take you', 
 
   // A name is user-supplied and uncapped, and the confirm shares a header row with its two
   // buttons — so it is clipped rather than allowed to crowd them out.
-  it('clips a very long folder name', async () => {
+  it('clips a very long workspace name', async () => {
     const longName = 'Client onboarding and account handover notes'
     server.use(
-      http.get('/api/w/:wsId/folders', () =>
-        HttpResponse.json({ folders: [{ ...FOLDER, name: longName }] }),
+      http.get('/api/workspaces', () =>
+        HttpResponse.json({
+          workspaces: [
+            { workspaceId: '__default__', name: 'Personal', isDefault: true },
+            { workspaceId: 'ws-2', name: longName, isDefault: false },
+          ],
+        }),
       ),
     )
     renderApp()
     await openNoteAndRecord()
 
-    await userEvent.click(await screen.findByText(longName))
+    await userEvent.click(screen.getByTestId('workspace-switcher-trigger'))
+    await userEvent.click(await screen.findByTestId('workspace-option-ws-2'))
 
-    await banner('go to Client onboarding and account handover…')
+    await banner('switch to Client onboarding and account handover…')
   })
 })
