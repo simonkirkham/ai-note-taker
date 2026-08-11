@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { analyseNote } from "../api/notes";
 import type { UseTranscriptionResult } from "../hooks/useTranscription";
+import { describeAnalyseFailure } from "../lib/analyseFailure";
+import { recordRumEvent } from "../rum";
 import styles from "./RecordControl.module.css";
 
 function formatTime(seconds: number): string {
@@ -64,18 +66,45 @@ export default function RecordControl({
   const showAnalyseControl = status === "idle" || status === "stopped";
   const analyseDisabled = !hasSomethingToAnalyse || isAnalysing;
 
-  const handleAnalyse = useCallback(async () => {
-    setIsAnalysing(true);
-    setAnalyseError(null);
-    try {
-      await analyseNote(noteId);
-      onAnalysisComplete?.();
-    } catch {
-      setAnalyseError("Analysis failed. Please try again.");
-    } finally {
-      setIsAnalysing(false);
-    }
-  }, [noteId, onAnalysisComplete]);
+  // BUG-77: this used to be a bare `catch {}` that discarded the error and printed one sentence —
+  // "Analysis failed. Please try again." — for a dead network, an expired sign-in, a refused
+  // request and a server fault alike, while recording nothing anywhere. The first live occurrence
+  // was therefore undiagnosable: no client-side record existed, and the message named the wrong
+  // subsystem. Keep what actually failed, say something true, and emit it.
+  const handleAnalyse = useCallback(
+    async (trigger: "manual" | "auto") => {
+      setIsAnalysing(true);
+      setAnalyseError(null);
+      const startedAt = Date.now();
+      try {
+        await analyseNote(noteId);
+        onAnalysisComplete?.();
+      } catch (err) {
+        const failure = describeAnalyseFailure(err);
+        setAnalyseError(failure.message);
+        recordRumEvent("analyseFailed", {
+          noteId,
+          // Which of the two entry points failed: the button, or the automatic analyse that runs
+          // after a recording stops. The reported occurrence was the automatic one, and only that
+          // path can fail without the user having asked for anything.
+          trigger,
+          kind: failure.kind,
+          status: failure.status,
+          sent: failure.sent,
+          // How long it took to fail separates an instant refusal from a request that ran and then
+          // gave up — the analyse path is slow (a calendar fetch precedes the model call), so a
+          // deadline interacting with it is an untested candidate for the original occurrence.
+          elapsedMs: Date.now() - startedAt,
+          online: navigator.onLine,
+          detail: failure.detail,
+        });
+        console.error(`Analyse failed for note ${noteId} (${failure.kind})`, err);
+      } finally {
+        setIsAnalysing(false);
+      }
+    },
+    [noteId, onAnalysisComplete],
+  );
 
   useEffect(() => {
     if (status === "recording") {
@@ -97,7 +126,7 @@ export default function RecordControl({
       transcription.diarization !== "timedOut"
     ) {
       autoAnalyseFiredRef.current = true;
-      void handleAnalyse();
+      void handleAnalyse("auto");
     }
   }, [status, autoAnalyse, hasRecordedThisSession, transcript, isAnalysing, transcription.diarization, handleAnalyse]);
 
@@ -157,7 +186,7 @@ export default function RecordControl({
           type="button"
           className={styles.analyseButton}
           data-testid="transcription-analyse-button"
-          onClick={() => void handleAnalyse()}
+          onClick={() => void handleAnalyse("manual")}
           disabled={analyseDisabled}
           title={hasSomethingToAnalyse ? undefined : "Add notes or record a transcript to analyse"}
         >
