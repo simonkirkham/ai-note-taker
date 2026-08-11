@@ -31,23 +31,41 @@ const BLANK = /^[ \t]*$/;
 // bulletList, so a blank line between the two kinds needs no separator and must not get one.
 const TASK_MARKER = /^\[[ xX]\]( |$)/;
 
+// `- - -` and `* * *` are thematic breaks, not list items -- CommonMark gives the break
+// precedence, and treating one as an item would wrap it in separators.
+const THEMATIC_BREAK = /^ {0,3}([-*_])(?: *\1){2,} *$/;
+
+// An HTML block runs to the next blank line, and its contents are raw -- a dash line inside one
+// is not a list item.
+const HTML_BLOCK_START = /^ {0,3}<\/?[a-zA-Z]/;
+
 type ListKind = 'bullet' | 'ordered' | 'task';
 
 interface ListItemLine {
   indent: number;
   kind: ListKind;
+  // The marker character (`-`, `*`, `+`, `.`, `)`). Changing it starts a NEW list in CommonMark:
+  // `- a` then `* b` is already two lists, as is `1. a` then `1) b`. Only a run markdown would
+  // otherwise fuse needs a separator, so the marker is part of what makes two items siblings.
+  marker: string;
+}
+
+function isSameList(a: ListItemLine, b: ListItemLine): boolean {
+  return a.indent === b.indent && a.kind === b.kind && a.marker === b.marker;
 }
 
 // Reads a line as a list item, or returns null. `listOpen` matters because four spaces of
 // indentation with no list open is an indented code block, whose contents are literal text.
 function readListItem(line: string, listOpen: boolean): ListItemLine | null {
+  if (THEMATIC_BREAK.test(line)) return null;
   const match = LIST_ITEM.exec(line);
   if (!match) return null;
   const indent = match[1].length;
   if (!listOpen && indent >= 4) return null;
-  if (/^\d/.test(match[2])) return { indent, kind: 'ordered' };
+  const marker = match[2];
+  if (/^\d/.test(marker)) return { indent, kind: 'ordered', marker: marker.slice(-1) };
   const rest = line.slice(match[0].length);
-  return { indent, kind: TASK_MARKER.test(rest) ? 'task' : 'bullet' };
+  return { indent, kind: TASK_MARKER.test(rest) ? 'task' : 'bullet', marker };
 }
 
 /**
@@ -61,6 +79,7 @@ export function splitBlankLineSeparatedLists(src: string): string {
   const out: string[] = [];
   let blanks: string[] = [];
   let fence: string | null = null;
+  let inHtmlBlock = false;
   // The list levels currently open, outermost first. A blank run only separates two lists when
   // the item after it re-enters a level that is already open -- an item at a deeper indent is
   // opening a sub-list, not resuming one.
@@ -84,7 +103,17 @@ export function splitBlankLineSeparatedLists(src: string): string {
     }
 
     if (BLANK.test(line)) {
+      inHtmlBlock = false;
       blanks.push(line);
+      continue;
+    }
+
+    if (inHtmlBlock || HTML_BLOCK_START.test(line)) {
+      inHtmlBlock = true;
+      flushBlanks();
+      out.push(line);
+      openLevels = [];
+      previousWasItem = false;
       continue;
     }
 
@@ -103,7 +132,7 @@ export function splitBlankLineSeparatedLists(src: string): string {
       item !== null &&
       previousWasItem &&
       blanks.length > 0 &&
-      openLevels.some((level) => level.indent === item.indent && level.kind === item.kind);
+      openLevels.some((level) => isSameList(level, item));
 
     if (item && resumesOpenList) {
       // The blank run is a list boundary: replace it with a paragraph markdown-it cannot absorb,

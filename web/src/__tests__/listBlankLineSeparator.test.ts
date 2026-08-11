@@ -153,6 +153,45 @@ describe('splitBlankLineSeparatedLists', () => {
     expect(splitBlankLineSeparatedLists('- a\n\n- [x] b')).toBe('- a\n\n- [x] b');
   });
 
+  it('leaves a thematic break between two lists alone', () => {
+    expect(splitBlankLineSeparatedLists('- a\n\n- - -\n\n- b')).toBe('- a\n\n- - -\n\n- b');
+    expect(splitBlankLineSeparatedLists('* a\n\n* * *\n\n* b')).toBe('* a\n\n* * *\n\n* b');
+  });
+
+  it('leaves lists with different bullet characters alone', () => {
+    // `- a` then `* b` is already two lists in CommonMark -- no separator needed.
+    expect(splitBlankLineSeparatedLists('- a\n\n* b')).toBe('- a\n\n* b');
+    expect(splitBlankLineSeparatedLists('+ a\n\n- b')).toBe('+ a\n\n- b');
+  });
+
+  it('leaves ordered lists with different delimiters alone', () => {
+    expect(splitBlankLineSeparatedLists('1. a\n\n1) b')).toBe('1. a\n\n1) b');
+  });
+
+  it('separates ordered lists sharing a delimiter', () => {
+    expect(splitBlankLineSeparatedLists('1. a\n\n5. b')).toBe(`1. a\n\n${NBSP}\n\n5. b`);
+  });
+
+  it('leaves list-looking lines inside an HTML block alone', () => {
+    const md = '<div>\n- a\n\n- b\n</div>';
+    expect(splitBlankLineSeparatedLists(md)).toBe(md);
+  });
+
+  it('leaves a lazy continuation line alone', () => {
+    const md = '- a\nlazy continuation\n\n- b';
+    expect(splitBlankLineSeparatedLists(md)).toBe(md);
+  });
+
+  it('leaves a blockquoted list alone', () => {
+    const md = '> - a\n>\n> - b';
+    expect(splitBlankLineSeparatedLists(md)).toBe(md);
+  });
+
+  it('handles empty and blank-only input', () => {
+    expect(splitBlankLineSeparatedLists('')).toBe('');
+    expect(splitBlankLineSeparatedLists('\n\n\n')).toBe('\n\n\n');
+  });
+
   it('does not read a U+00A0 separator line as blank', () => {
     const md = `- a\n\n${NBSP}\n\n${NBSP}\n\n- b`;
     expect(splitBlankLineSeparatedLists(md)).toBe(md);
