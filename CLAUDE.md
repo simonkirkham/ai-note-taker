@@ -21,6 +21,17 @@ Applies to every generated doc **and** to conversational output.
   - **Checkable test:** if the first clause names a file, function, log group, table, event, stream version, or status code instead of a symptom, it has failed — rewrite it. `Analysis silently never runs after a recording, and the only remedy offered is "try again"` passes. `No /analyse invocation in any prod log group` fails. The same facts survive the rewrite; they just stop being the opening.
   - **Why this is a hard rule:** the human reads these to decide *whether to care and what to do*. A write-up that opens on mechanism cannot answer either question, so it costs a round-trip every time — and the mechanism is usually the part they were never going to read.
 
+## Write for someone who just walked in
+
+Applies to **everything the human reads** — chat, the hand-back block, tracking-doc rows, PR bodies. The `## Writing style` rules above govern structure; this one governs vocabulary and assumed context.
+
+- **Never name a tool, technique or method as if it explains itself.** "Mutation testing", "coverage on changed files", "a standing spec-stage question" tell the reader nothing about what they get or what it costs. Say what it *does*: *"a report showing which lines of code no test ever runs"*. If the name matters, it goes in brackets after the plain description, never instead of it.
+- **Never refer back to something the reader is assumed to remember.** "The four bugs", "the one that lost recordings", "as I mentioned" — they read this hours later, in a different context, often on a phone. Re-state the thing in five words.
+- **Checkable test:** could a competent person who has read *none* of this session act on this sentence? If not, rewrite it. Same shape as the lead-with-the-symptom test above, and it fails the same way — by being obvious to the writer.
+- **This applies hardest to `DECISIONS FOR YOU`.** A decision written in vocabulary the human does not share is not a decision they can make; it is an interruption that costs them a round-trip to translate. On 2026-08-11 three options were put to the human as "standing questions / coverage / mutation testing" and the reply was *"Those 3 make no sense to me."* — correctly.
+
+**And the deeper rule that failure exposed: never ask the human to choose between engineering techniques.** That is the agent's job. The `### When NOT to hand back` test already covers it — a reversible option you would recommend is not a decision — but it is easiest to violate when the options *feel* weighty because they are unfamiliar to you. Unfamiliar to you is not the same as theirs to decide. Their decisions are about priorities, money, taste, and irreversible acts. Pick the technique, do it, and report what changed for them in one plain sentence.
+
 ## Handing back to the human
 
 Every hand-back ends with **one block**, and nothing follows it. It is the only thing the human has to read. Applies at session end **and** every time work is handed back mid-flight.
