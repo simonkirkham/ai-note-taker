@@ -52,3 +52,6 @@ Thumbs.db
 # scripts/extract-prod-fixtures.sh writes here; the dir also self-protects with its own .gitignore.
 eval-fixtures-real/
 __pycache__/
+
+# actionlint binary cached by scripts/lint-workflows.sh (pinned, checksummed, re-fetchable)
+.tools/

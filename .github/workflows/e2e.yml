@@ -213,7 +213,6 @@ jobs:
           API_URL: ${{ steps.outputs.outputs.api-url }}
           FRONTEND_URL: ${{ steps.outputs.outputs.frontend-url }}
           E2E_GOOGLE_ID_TOKEN: ${{ steps.token.outputs.id_token }}
-          TOKEN: ${{ steps.token.outputs.id_token }}
           # Needed by mint_token: a run long enough to outlive the ~1h id_token must be able
           # to exchange the refresh token again mid-loop.
           REFRESH_TOKEN: ${{ secrets.SMOKE_TEST_GOOGLE_REFRESH_TOKEN }}
@@ -242,7 +241,7 @@ jobs:
               return 1
             fi
             echo "::add-mask::$id"
-            TOKEN="$id"; export E2E_GOOGLE_ID_TOKEN="$id"
+            export E2E_GOOGLE_ID_TOKEN="$id"
             token_minted_at=$SECONDS
           }
 
