@@ -18,7 +18,6 @@ Ordered by severity, then by id.
 |------|---------|--------|------------|
 | BUG-77 | You finish a recording, the note is never analysed, and the only thing you are told is "Analysis failed. Please try again." The message is often wrong about what actually went wrong. | Open | TI-67, BUG-33 |
 | BUG-79 | Something you just created — an action item, or a note — can be missing after you reload, and stay missing. Rare, but this is the one guarantee the app is built to make. | Open | — |
-| BUG-68 | Opening and saving a note merges bullet lists that you had separated with blank lines, and the separation is gone for good. | Open — **line-scanner approach abandoned 2026-08-11** (PR #461 closed unmerged); read the detail before starting | — |
 | BUG-70 | Clicking "+ New Note" while recording and then choosing to keep recording still leaves a blank, untitled note behind on your home list. | Open — held behind 51-C | BUG-54, 51-C |
 | BUG-73 | Signing out while an on-device transcript is still finishing can park you for up to an hour with no way to leave — a real problem on a shared machine. | Open | BUG-55 |
 | BUG-75 | Reopening a note while its on-device transcript is still finishing shows no transcript, and nothing appears until you navigate again or reload. | Open | BUG-72 |
@@ -90,32 +89,6 @@ It surfaced on the first run outside the deploy gate, which is also the first ti
 **Diagnostic gap found alongside:** `AppPage.AssertActionVisibleAfterReloadAsync` swallows every `PlaywrightException` until the deadline, then lets the last one propagate bare — no page URL, no rendered state, no token value. That is the pattern [e2e-gate-hang-and-the-diagnostic-that-caused-it](../learnings/e2e-gate-hang-and-the-diagnostic-that-caused-it.md) says to replace with an evidence-carrying `throw`, and it is why this row cannot yet name the cause.
 
 **Reproduce:** `gh workflow run e2e.yml -f runs=10 -f filter=ActionReadYourWritesJourney` — possible for the first time, per [TI-69].
-
----
-
-## BUG-68 — Blank-line-separated bullet lists merge on first open-and-save
-
-**Severity:** Medium — permanent, unrequested reflow of a real note, one time per note. **Status:** Open. Found 2026-08-09 while verifying [43-H1]'s prepend against real prod notes.
-
-**Symptom:** a stored body of `- a\n- b\n\n \n\n- c` — two bullet lists with a [BUG-40] blank-line paragraph between them, which is what the editor itself writes — parses back as a **single** list `- a\n- b\n- c`. The blank-line paragraphs between list items are dropped and the lists merge. The next save persists the merged version, so the note is permanently reflowed. Round-trip is stable after that (the second pass is a no-op), so it is a one-time loss per note.
-
-**Confirmed on real prod data:** note `d591ed55` ("Acquire Teams Check in") has exactly this shape.
-
-**Pre-existing and independent of 43-H1** — the baseline body alone reproduces it with no migration involved. 43-H1's prepend neither causes it nor makes it worse; the prepended checklist stays its own `taskList`, pinned by a case in `taskListMarkdownRoundTrip.test.ts`.
-
-**Evidence is a vitest round-trip through the real `NoteEditor` extension set** (`StarterKit` + `BlankLineParagraph` + `Markdown` + `MarkdownTaskList` + `TaskItem`), not a click-through — reproduce in the running app before fixing.
-
-**Fix direction — the obvious one is a PROVEN DEAD END; read this before starting.** [BUG-40]'s `blankLineParagraph.ts` preserves a blank line between *blocks*; the gap here is a blank line between two *lists*. The attempt that follows from that — a line scanner that decides for itself which lines are list items and which are literal — was built, reviewed five times and **abandoned 2026-08-11** (PR #461, closed unmerged).
-
-**Why it was abandoned.** Five review rounds found **seven** defects of one class, all the same user harm and all worse than the bug being fixed: **a note gains invisible characters inside a code block on first open-and-save**, permanently, in the one construct markdown promises to leave literal. Two of the seven were *created by the previous round's fix* (#10 by round 3, #11 by round 4), so the class is generative, not merely incomplete. With all four remaining one-line repairs applied, **340 corrupting sources still survived** a 208,365-source differential corpus, and clearing those needs tab expansion and closing-fence info strings hand-implemented before the sweep could start looking for an eighth. Round 4 also silently regressed the original fix for **6,012** cases (an empty-level pop stopped it firing when a list's last item is empty) — invisible to an injected-defect check, which asks whether reverting turns specs red and never whether a fix costs benign fires.
-
-**The root cause of the root cause:** the scanner hand-implements CommonMark block structure with regexes — indented code, fenced code, HTML blocks 1-7, thematic breaks, three marker kinds, content-column clamping, paragraph interruption, lazy continuation — and every defect lived in re-deriving a threshold that CommonMark defines relative to the enclosing container.
-
-**Recommended direction if picked up again:** drive the rule off **markdown-it's own token stream**. It is already bundled and is already the oracle; a core rule can reach the app's *configured* instance via `state.md`, so there is no new dependency. Ask it which lines are `fence`/`code_block`/`html_block` and which are `list_item_open` at which level, and rewrite only blank-line boundaries between sibling items. Two constraints: the rule must stay a `string → string` transform of the source (52 of 76 existing assertions depend on that seam), and calling `state.md.parse()` inside the rule needs a re-entrancy guard.
-
-**What PR #461 leaves behind, and it is worth reusing:** a 208,365-source differential oracle comparing markdown-it's `fence`/`code_block`/`html_block`/`code_inline` token contents before and after the rewrite, validated by replaying three historical defects; a 21-row keep/fire table; and 4-of-52 tests coupled to the implementation, the rest behaviour-level. Those carry over unchanged as an acceptance gate for any replacement.
-
-**Do not ship a partial fix here.** The bug is cosmetic — two lists render as one. Every attempt so far traded it for permanent data corruption. Shipping nothing is the safer state.
 
 ---
 
