@@ -355,3 +355,4 @@ jobs:
             trace-run-*.zip
             **/trace*.zip
           if-no-files-found: ignore
+# (proof head: harmless comment — this file is the ONLY diff vs the base)
