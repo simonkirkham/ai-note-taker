@@ -8,7 +8,10 @@
 #   2. Every PR CI check is `pass` (none pending/fail/cancelled)
 #   3. main's latest deploy is GREEN with no deploy in progress (deploy-status.sh)
 #
-#   scripts/merge-gate.sh <pr-number>
+#   bash scripts/merge-gate.sh <pr-number>
+#
+# (invoked via `bash`: scripts/ is committed 100644, so a bare invocation fails on any
+# checkout that did not come off a mount which reports every file executable)
 #
 # Exit 0 = all gates green, safe to `gh pr merge --squash --delete-branch`.
 # Exit 1 = a gate failed; the offending line says which.
@@ -112,10 +115,14 @@ fi
 # file executable) and dies with "Permission denied" on any Linux checkout — gate 3 then
 # prints an empty verdict and blocks the merge for a reason that is not about the PR. Found
 # by the self-test's first CI run, which is the point of wiring it in.
-if deploy=$(bash "$DIR/deploy-status.sh"); then
+#
+# stderr is folded in and an empty verdict gets a stand-in, so this line can never be the
+# blank `MAIN DEPLOY:` that blocks a merge while pointing at a FAIL nobody printed.
+deploy=$(bash "$DIR/deploy-status.sh" 2>&1) && deploy_rc=0 || deploy_rc=$?
+if [[ "$deploy_rc" == 0 ]]; then
   echo "MAIN DEPLOY: $deploy"
 else
-  echo "MAIN DEPLOY: $deploy"
+  echo "MAIN DEPLOY: ${deploy:-FAIL — deploy-status.sh exited $deploy_rc without printing a verdict; run \`bash scripts/deploy-status.sh\` to see why}"
   fail=1
 fi
 

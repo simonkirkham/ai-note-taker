@@ -39,6 +39,10 @@ case "$1 $2" in
   "pr checks")
     printf 'backend\tpass\t1m\thttps://x\nfrontend\tpass\t1m\thttps://x\n' ;;
   "run list")
+    # `!FAIL <msg>` in the runs file makes the call exit non-zero, standing in for auth
+    # expiry / rate limit / no network on the deploy query.
+    read -r first <"${GH_RUNS:-/dev/null}" || true
+    if [ "${first%% *}" = "!FAIL" ]; then echo "${first#!FAIL }" >&2; exit 1; fi
     cat "${GH_RUNS:-/dev/null}" ;;
   *) echo "stub gh: unhandled: $*" >&2; exit 1 ;;
 esac
@@ -106,16 +110,46 @@ run_deploy "unknown conclusion names no cause" \
                                                                    '[{"number":9,"status":"completed","conclusion":"action_required"}]'
 run_deploy "no runs at all"      1 "no runs found" "Traceback"     '[]'
 
+# gate 3 must never print a blank verdict: an unreachable GitHub, a missing python3 or an
+# unreadable sibling all used to blank the line while still blocking the merge, telling you
+# to fix a FAIL that was not on screen.
+run_deploy "an unreachable GitHub is named, not blank" \
+                                 1 "could not query GitHub" -        '!FAIL gh: HTTP 401 Bad credentials'
+run_deploy "an unparseable run list is named, not blank" \
+                                 1 "could not read the run list" -   'not json at all'
+
+# Same failure seen through the caller: gate 3 must carry the reason, never an empty line.
+echo "merge-gate.sh — gate 3"
+printf 'MERGEABLE CLEAN\n' >"$STUB/seq"; echo 0 >"$STUB/calls"
+printf '!FAIL gh: HTTP 401 Bad credentials\n' >"$STUB/runs-fail.json"
+g3=$(GH_SEQ="$STUB/seq" GH_CALLS="$STUB/calls" GH_RUNS="$STUB/runs-fail.json" \
+     PATH="$STUB:$PATH" bash "$DIR/merge-gate.sh" 460 2>&1) || true
+g3bad=""
+grep -qE '^MAIN DEPLOY: *$' <<<"$g3" && g3bad="blank MAIN DEPLOY line"
+grep -q "could not query GitHub" <<<"$g3" || g3bad="$g3bad; reason not carried to the caller"
+report "gate 3 never blocks on a blank verdict" "$g3bad" "$g3"
+
 # scripts/ is committed 100644 (the Windows mount does not carry the exec bit), so a script
 # calling a sibling must go through `bash`. Executing it directly passes on the author's
 # drvfs mount, where every file reports executable, and dies with "Permission denied" on any
-# Linux checkout — so the cases above cannot see it locally. This grep can.
-echo "portability"
-if grep -qE '\$\(\s*"\$DIR/[^"]*\.sh"' "$DIR/merge-gate.sh"; then
-  echo "FAIL  sibling script invoked without bash — dies on any checkout without the exec bit"
-  fails=1
+# Linux checkout — which the cases above cannot see locally, because they run on that mount.
+#
+# Reproduce the checkout rather than pattern-matching the source: copy both scripts somewhere
+# with the exec bit genuinely cleared and run one through. That catches every spelling of a
+# direct invocation, in either file, instead of the one spelling a regex happens to know.
+echo "portability (scripts committed 100644)"
+NOEXEC="$(mktemp -d)"
+cp "$DIR/merge-gate.sh" "$DIR/deploy-status.sh" "$NOEXEC/"
+chmod 644 "$NOEXEC"/*.sh
+printf 'MERGEABLE CLEAN\n' >"$STUB/seq"; echo 0 >"$STUB/calls"
+noexec_out=$(GH_SEQ="$STUB/seq" GH_CALLS="$STUB/calls" GH_RUNS="$STUB/runs.json" \
+             PATH="$STUB:$PATH" bash "$NOEXEC/merge-gate.sh" 460 2>&1) || true
+rm -rf "$NOEXEC"
+if grep -qi "permission denied" <<<"$noexec_out"; then
+  echo "FAIL  a sibling script is invoked directly — dies on any checkout without the exec bit"
+  sed 's/^/        /' <<<"$noexec_out"; fails=1
 else
-  echo "PASS  sibling scripts invoked via bash"
+  echo "PASS  runs with the exec bit cleared"
 fi
 
 echo "---"
