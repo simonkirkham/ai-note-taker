@@ -32,6 +32,10 @@ on:
       - "docs/roadmap.md"
       - "scripts/check-doc-ids.sh"
       - "scripts/lint-workflows.sh"
+      # Subsumed by ".github/workflows/**" below. Kept anyway: PR #463 is in flight against
+      # this same list and uses this line as diff context, so removing it turns a trivial
+      # merge into a conflict for whichever of us lands second.
+      - ".github/workflows/docs-check.yml"
       - ".github/workflows/**"
       - ".github/actions/**"
 
