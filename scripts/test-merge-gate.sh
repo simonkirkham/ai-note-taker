@@ -106,6 +106,18 @@ run_deploy "unknown conclusion names no cause" \
                                                                    '[{"number":9,"status":"completed","conclusion":"action_required"}]'
 run_deploy "no runs at all"      1 "no runs found" "Traceback"     '[]'
 
+# scripts/ is committed 100644 (the Windows mount does not carry the exec bit), so a script
+# calling a sibling must go through `bash`. Executing it directly passes on the author's
+# drvfs mount, where every file reports executable, and dies with "Permission denied" on any
+# Linux checkout — so the cases above cannot see it locally. This grep can.
+echo "portability"
+if grep -qE '\$\(\s*"\$DIR/[^"]*\.sh"' "$DIR/merge-gate.sh"; then
+  echo "FAIL  sibling script invoked without bash — dies on any checkout without the exec bit"
+  fails=1
+else
+  echo "PASS  sibling scripts invoked via bash"
+fi
+
 echo "---"
 if [[ "$fails" == 0 ]]; then echo "MERGE-GATE SELF-TEST: GREEN"; else echo "MERGE-GATE SELF-TEST: FAILED"; fi
 exit "$fails"

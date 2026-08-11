@@ -105,7 +105,14 @@ else
 fi
 
 # 3. Main deploy.
-if deploy=$("$DIR/deploy-status.sh"); then
+#
+# Invoked via `bash` deliberately, for the reason docs-check.yml already documents: this repo
+# lives on a Windows/WSL mount where the executable bit does not survive, so scripts/ is
+# committed 100644. Executing it directly works on the author's mount (drvfs reports every
+# file executable) and dies with "Permission denied" on any Linux checkout — gate 3 then
+# prints an empty verdict and blocks the merge for a reason that is not about the PR. Found
+# by the self-test's first CI run, which is the point of wiring it in.
+if deploy=$(bash "$DIR/deploy-status.sh"); then
   echo "MAIN DEPLOY: $deploy"
 else
   echo "MAIN DEPLOY: $deploy"
