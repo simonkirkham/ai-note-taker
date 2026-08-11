@@ -15,6 +15,21 @@ import { defineConfig } from 'vitest/config'
 // CI is unaffected — it runs the forks pool at full parallelism.
 const LOCAL_MAX_THREADS = Math.max(1, Math.min(2, availableParallelism() - 1))
 
+// TI-61. Local-only per-test budget. The default 5000 ms is not a hang detector on
+// this box — it is an assertion about machine speed, and the machine varies.
+// Measured under deliberate contention (32 CPU spinners, no other suites),
+// `Routing.test.tsx > Back returns to the home screen` runs to 5780 ms with a median
+// of 3966 ms — i.e. it exceeds the default ceiling on its own, and sits at 79% of it
+// even when it passes. Same test, unloaded and alone: 293 ms.
+// 12000 = worst observed (5780) x2, rounded up. Not chosen for comfort: the runs that
+// produced these figures were taken while the pre-commit hook still ran full suites on
+// every commit across parallel sessions, so ambient load here was higher than it will
+// be from now on. That makes this generous rather than tight, which is the right
+// direction for a budget whose only job is to catch a genuine hang.
+// CI keeps the 5000 ms default deliberately — it runs the frontend job alone on native
+// Linux, so a real hang still fails there on the tighter budget.
+const LOCAL_TEST_TIMEOUT_MS = 12_000
+
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -47,6 +62,8 @@ export default defineConfig({
     // Top-level `maxWorkers` — NOT `poolOptions.vmThreads.maxThreads`, which
     // Vitest 4 removed. It is accepted silently as a deprecated no-op, so the
     // cap would look configured and never apply. CI keeps full parallelism.
-    ...(process.env.CI ? {} : { maxWorkers: LOCAL_MAX_THREADS }),
+    ...(process.env.CI
+      ? {}
+      : { maxWorkers: LOCAL_MAX_THREADS, testTimeout: LOCAL_TEST_TIMEOUT_MS }),
   },
 })
