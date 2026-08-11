@@ -197,6 +197,17 @@ run_deploy "  ...and it says which job is still running" \
                                  1 "deploy-test status=in_progress" "discounted" \
   "[{\"number\":770,\"databaseId\":770,\"status\":\"in_progress\",\"conclusion\":null,\"updatedAt\":\"$FRESH\"}]"
 
+# The case above is held by the FRESHNESS clause, not the job clause — which makes it a weak
+# test of the job clause, and it took an injected defect to notice: neutering the job check
+# left it passing. This one removes that cover. A SLOW deploy, still executing, whose record
+# has gone stale between job transitions: only the job clause can block it, and it must. A
+# deploy running longer than the staleness threshold is ordinary, not exceptional.
+jobs_fixture 779 detect-changes:completed:success deploy-test:in_progress:null
+pending_fixture 779 '[]'
+run_deploy "a slow run still executing is not orphaned, however stale its record" \
+                                 1 "deploy-test status=in_progress" "orphaned" \
+  "[{\"number\":779,\"databaseId\":779,\"status\":\"in_progress\",\"conclusion\":null,\"updatedAt\":\"$STALE\"}]"
+
 # Clause 3's own red test: identical to #762 in every way except a fresh record.
 five_green 771
 pending_fixture 771 '[]'
