@@ -78,7 +78,7 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 | TI-58 | Desktop specs run in the PR gate (headless + Electron under xvfb) | ✅ **Done** — this slice. Nothing ran `desktop/tests/` before: `pr.yml` had no desktop job and `publish-desktop.yml` packages without testing. BUG-52/53/56 all reached a user's machine as a result. |
 | TI-59 | Windows desktop CI job — packaging + a REAL whisper-server smoke test | 🔲 **Open** — raised 2026-08-07 ([BUG-56]). Un-gate `whisperServer.integration.spec.ts` on `windows-latest` with a cached `base.en` + a fixed WAV, resolving the binary through the production resolver (`whisperServerBinPath()`, added by [BUG-56] / #426) exactly as production does. This is the tier that proves the live engine actually transcribes. |
 | TI-60 | Packaged-installer journey with injected audio | 🔲 **Open** — raised 2026-08-07 ([BUG-56]). Drive the *packaged* app end to end with a known WAV pushed through a test seam (not a virtual-audio driver) and assert live transcript text appears within a latency budget. The only tier that would catch a live-latency regression. |
-| TI-61 | `Routing.test.tsx > Forward reopens the note` fails under CPU contention during a local full-suite run | 🔲 **Open** — raised 2026-08-06 (49-B verification). **Second observation of the same failure with the same cause**, previously seen on 34-C (`docs/token-log.md:166`) and never filed. Both times a `dotnet build` ran concurrently with `vitest run`; the test passes in isolation and on a clean full-suite run, so it is load-induced, not a regression. Mechanism: the assertion after `window.history.forward()` is `findByTestId('note-title-input')`, whose default 1000 ms timeout is short relative to this file's ~1.8 s under contention — the `waitFor` on `window.location.pathname` before it already succeeded, so it is the *render* that misses the window, not the navigation. It is **not** a deploy-gate flake (CI runs the frontend job alone), so it costs only local verification time — but it costs it every time, and re-deriving "not a regression" from scratch is the expensive part. Fix options: raise this file's async timeout explicitly, or await the route transition rather than racing the default. Low urgency; the cheap win is that this row exists so the next person does not re-investigate. |
+| TI-61 | **A routing test fails on a busy machine even though nothing is wrong with it**, wasting a CI run or a local suite run and, worse, costing someone a fresh investigation to re-establish that it is not a regression | 🔧 **In Progress** — fix in PR. The deadline is the defect, not the test: `Back returns to the home screen` runs to **5780 ms against vitest's 5000 ms per-test ceiling** under contention, median 3966 ms — 79% of budget before anything goes wrong — where unloaded and alone it is 293 ms. Local-only budgets raised to 12000/4000, sized from that measurement; CI keeps 5000/1000. See [TI-61](#ti-61-a-routing-test-fails-on-a-busy-machine) |
 | TI-62 | `deploy.yml` still carries its own inline copy of the projector warm/drain bash | 🔲 **Open** — raised 2026-08-07 (alongside the on-demand E2E workflow). The warm-and-drain logic now lives in `scripts/warm-projector.sh`, used by `.github/workflows/e2e.yml`; `deploy.yml`'s `Warm the API + projector before E2E` step is a byte-for-byte duplicate of it. Deliberately NOT switched over in the same change: the merge queue was mid-flight through that exact workflow and a broken `deploy.yml` reds the shared gate for every slice and session. Two copies of a guardrail-critical step will drift — the drain is precisely what stops a cold projector red-gating the suite. Fix: replace the inline step with `bash scripts/warm-projector.sh` (same `API_URL`/`TOKEN` env), and verify on the next deploy that the step still logs `projector caught up to head`. Low risk, but do it on a quiet gate. |
 | TI-63 | Move note analysis off the synchronous request path | 🔲 **Open** — raised 2026-08-07 (BUG-58). Analysis runs inside the **29s** Command Lambda: 90d of prod data shows command-hosted Converse calls at median 2.6s but 17.9 / 21.5 / 23.6 / 26.4s in the tail, with a further **3.0-5.9s** of sequential post-Bedrock appends (`TagNote` per tag, `AddActionItem` per action, each re-reading an 89KB stream). Four invocations hit exactly 29.0s in 14 days — killed. BUG-58's 23s client deadline converts those kills into a visible 503, but it cannot create budget that isn't there: **any analysis needing >23s+tail simply cannot complete synchronously**, and a kill part-way through the appends leaves a note with a new summary and tags but no action items, with no event marking it incomplete. Fix: run analysis asynchronously (job + poll, or a dedicated Lambda off a queue with a longer timeout, mirroring the TranscribeCompletion path that already has 60s), so duration stops being bounded by the API request. Medium urgency — the deadline makes the failure visible and retriable, so this is about the ~12-19% of analyses that are near or over budget, not about data loss. |
 | TI-65 | **An action list, folder tree or workspace list can still snap back to an older copy moments after the user changes it** | 🟡 **Partly done** — raised 2026-08-08 (Hawk, PR #436 / [BUG-48]). The home note list shipped 2026-08-11 (PR #459); `getActions`, `getFolders` and `getWorkspaces` remain. Detail in [TI-65](#ti-65-the-other-three-gatedread-callers-can-still-store-a-stale-body-over-good-data) below. |
@@ -494,3 +494,69 @@ So `until ! pgrep -f "bin/eslint"; do sleep 15; done` never exits, whatever esli
 1. A TI-69-shaped defect **inside a composite action's `run:` block** is not caught. actionlint validates a local action's metadata (YAML parse, `runs.using`) via the workflow that `uses:` it, but never lints the shell inside it — measured, exit 0 on both an unused variable and an unquoted expansion.
 2. An action referenced by **no** workflow is never looked at.
 4. **The gate never runs on a push to `main`.** `docs-check.yml` is `pull_request`-only, so a workflow file changed by a **direct commit to `main`** — which `CLAUDE.md` explicitly routes doc edits through — is linted by nothing in CI. **There is now no defence at all for that path.** The last one was `.githooks/pre-commit`, which needed per-clone `core.hooksPath` and so protected nobody by default — and it was removed entirely on 2026-08-11 when the build/test gate moved to CI. So a workflow file edited by a direct commit to `main` is linted by nothing, anywhere. That widens this row rather than closing it: the fix has to be a `push:` trigger on `main`, not a local hook. Tracked as [TI-80].
+
+---
+
+## TI-61. A routing test fails on a busy machine
+
+**What it costs.** A CI run or a deliberate local suite run is thrown away on a test nobody
+touched. The expensive part is not the run — it is that the next person has to re-derive from
+scratch that it is not a regression. That has now happened at least twice.
+
+**The measurement that settles it.** Under deliberate contention (32 CPU spinners, no other
+suites, `ratio1` 1.97 rising to 2.91):
+
+| Test | median | max | ceiling |
+| --- | --- | --- | --- |
+| `Back returns to the home screen` | 3966 ms | **5780 ms** | 5000 ms |
+| `opening a note pushes a /notes/:id URL` | 2334 ms | 3379 ms | 5000 ms |
+| `Forward reopens the note` | 1840 ms | 2949 ms | 5000 ms |
+
+The binding test exceeds the ceiling on its own, and sits at 79% of it even when it passes.
+Unloaded and alone it is 293 ms — the box's effective speed varies by 10-56x, and a fixed
+wall-clock deadline cannot tell "slow machine" from "hung test" across that range. A per-test
+timeout exists to catch hangs, not to assert machine speed.
+
+**Fix.** `testTimeout` 12000 (= worst observed 5780 x2) and `asyncUtilTimeout` 4000
+(= longest succeeding wait 1735 x2), **local only**, mirroring the existing `LOCAL_MAX_THREADS`
+precedent. CI keeps 5000/1000 — it runs the frontend job alone on native Linux, so a genuine
+hang still fails there. `testBudgets.test.ts` asserts the split in both directions, so CI is its
+own positive control against the raised budget leaking into it.
+
+### Corrections to the original row — it was wrong on every specific
+
+The row as filed on 2026-08-06 said the failing assertion was `findByTestId('note-title-input')`
+after `window.history.forward()`, missing its 1000 ms budget because the *render* was slow.
+Measured, none of it holds:
+
+| The row said | Measured |
+| --- | --- |
+| `Forward reopens the note` | Every reproduction failed in **`Back returns to the home screen`** |
+| `findByTestId(...)`, 1000 ms budget | `Test timed out in 5000ms` — the **per-test** budget, a different ceiling |
+| the render misses the window | The render is fine. `<h1>{heading}</h1>` has no data gate; one pass of the role query costs **15 ms** under load |
+| "second observation of the same failure" (34-C) | **Unverified, and now withdrawn.** The cited `token-log.md` entry names no test at all — only "the one flake (Routing.test)". It was an inference presented as an observation |
+
+The row's own arithmetic was the tell: the steps *before* the failing assertion ran 2.65x their
+unloaded time while the assertion blew a >9x anomaly. A uniformly slower box cannot produce that.
+
+### Withdrawn: the poll-vs-mutation theory, and the 48-site claim built on it
+
+An intermediate diagnosis held that `waitFor` on a non-DOM value (`window.location.pathname`) is
+structurally worse under starvation, because RTL's MutationObserver cannot see a non-DOM value
+and only the 50 ms poll remains. **Measured head to head, it is backwards:** poll `backWait`
+165 ms against mutation `backWait` 199 ms. The 1735 ms figure that made the theory look
+overwhelming came from a run carrying three other sessions' suites; alone on the box the same
+step is 165 ms. It was contention, not the wake mechanism.
+
+Consequently **the count of 48 `waitFor(pathname)` sites across 9 files is a scope measurement,
+not 48 defects**, and `OpenNoteTabs.test.tsx` (23 of them) is *not* predicted to be the next
+casualty on that basis. If the mechanism is a fixed deadline against variable machine speed,
+exposure scales with **total test duration**, not with the number of pathname waits.
+
+### Read the load figures as period-specific
+
+Every figure here was gathered while the pre-commit hook still ran full suites on every commit
+across parallel sessions. That hook was removed the same night (`dba8fce8`), so ambient load on
+this box will be materially lower from now on. The numbers are real, but nobody should read
+`ratio1` 2.28 as this machine's resting state — which makes 12000 ms more conservative than it
+looks, and that is the right direction for a budget whose only job is to catch a genuine hang.
