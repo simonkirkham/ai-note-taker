@@ -32,11 +32,10 @@ on:
       - "docs/roadmap.md"
       - "scripts/check-doc-ids.sh"
       - "scripts/lint-workflows.sh"
-      # Subsumed by ".github/workflows/**" below. Kept anyway: PR #463 is in flight against
-      # this same list and uses this line as diff context, so removing it turns a trivial
-      # merge into a conflict for whichever of us lands second.
-      - ".github/workflows/docs-check.yml"
       - ".github/workflows/**"
+      # Metadata only — actionlint validates a local action's YAML and `runs.using` via the
+      # workflow that `uses:` it, but NOT the shell inside its own `run:` block. Listed anyway
+      # so the metadata check runs when one changes. See scripts/lint-workflows.sh's header.
       - ".github/actions/**"
 
 concurrency:
