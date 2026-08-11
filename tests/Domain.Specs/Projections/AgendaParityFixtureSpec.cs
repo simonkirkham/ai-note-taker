@@ -45,7 +45,7 @@ public sealed class AgendaParityFixtureSpec
         // Both sides iterate whatever `cases` holds, so DELETING a case silently deletes coverage
         // from this spec and from agendaParity.test.ts at once. The count is pinned in both places;
         // it has to be raised deliberately, in the same commit as the case that raises it.
-        Assert.Equal(13, Cases.Value.Cases.Length);
+        Assert.Equal(14, Cases.Value.Cases.Length);
     }
 
     [Theory]

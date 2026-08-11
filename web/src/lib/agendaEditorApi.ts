@@ -96,10 +96,18 @@ function countableTaskItems(editor: Editor): CountedTopic[] {
   return items;
 }
 
-// The first checklist the walk above actually reads, in document order — which since BUG-76 may be
-// one nested inside another list. A blockquoted checklist is still never returned: the walk does
-// not enter a blockquote, so a topic added there would land somewhere the agenda never reads and
-// would silently never appear.
+// The first checklist the walk above REACHES, in document order — which since BUG-76 may be one
+// nested inside another list. A blockquoted checklist is still never returned: the walk does not
+// enter a blockquote, so a topic added there would land somewhere the agenda never reads and would
+// silently never appear.
+//
+// KNOWN WRONG in one case — filed as BUG-80. "Reaches" is not "reads a topic from", and the two
+// come apart when tiptap-markdown parses a stray EMPTY top-level taskList ahead of the real
+// content, as it does for `- Shopping` / `  - [ ] Milk` / `- [ ] Bread`. This returns that empty
+// list, so a topic added from the header lands in an invisible checklist at the top of the note.
+// Parity is unaffected — the header and the server still agree on the count, and no command
+// addresses the wrong line — which is why it is filed rather than fixed here. The fix is to prefer
+// a taskList that yields a countable topic, falling back to the first only when none does.
 function firstReadableTaskList(editor: Editor): { pos: number; size: number } | null {
   const found: { pos: number; size: number }[] = [];
   const visit = (node: ProseMirrorNode, base: number): void => {

@@ -8,6 +8,7 @@ import { Markdown } from 'tiptap-markdown'
 import { ImageWithResize } from '../components/imageWithResize'
 import { createAgendaEditorApi } from '../lib/agendaEditorApi'
 import { BlankLineParagraph } from '../lib/blankLineParagraph'
+import { emojifyMarkdown } from '../lib/emoji'
 import { MarkdownTaskList } from '../lib/markdownTaskList'
 
 // BUG-76 — the "X / Y" pill and the ticks the user can see must come from the same reading of the
@@ -59,6 +60,12 @@ afterAll(() => {
 // never produces; without Link a linked topic does, and both are divergences the fixture records —
 // they would be untestable, or worse, test a document shape no user can create.
 // `link: false` on StarterKit then a separate Link mirrors NoteEditor, which configures its own.
+//
+// The content goes through `emojifyMarkdown` because NoteEditor's does — the app loads
+// `emojifyMarkdown(stripImageKeys(value))`, so a shortcode is already unicode by the time the
+// parser sees it, and a fixture that skipped it would assert a document the app never builds.
+// `stripImageKeys` is deliberately NOT applied: it models only the transient pre-resolve mount,
+// while the image cases here are about the resolved document the user ends up looking at.
 function makeEditor(markdown: string) {
   const editor = new Editor({
     extensions: [
@@ -70,7 +77,7 @@ function makeEditor(markdown: string) {
       ImageWithResize,
       Link.configure({ protocols: ['http', 'https', 'mailto'] }),
     ],
-    content: markdown,
+    content: emojifyMarkdown(markdown),
   })
   createdEditors.push(editor)
   return editor
@@ -83,8 +90,8 @@ describe('the header reads the same agenda the server does (BUG-76)', () => {
     })
   }
 
-  it('the register of known divergences is exactly the three that were signed off', () => {
-    // Named, not counted: "at least one divergence exists" would let a fourth in behind a rename
+  it('the register of known divergences is exactly the four that were signed off', () => {
+    // Named, not counted: "at least one divergence exists" would let a fifth in behind a rename
     // and a one-word excuse, with both suites still green. Adding a row here is a deliberate act
     // a reviewer sees in the diff. Sorted, so reordering the fixture is not a failure — only the
     // SET is the contract.
@@ -97,6 +104,7 @@ describe('the header reads the same agenda the server does (BUG-76)', () => {
       'a checklist line holding an image and text (KNOWN DIVERGENCE, open)',
       'a checklist line holding only an image (KNOWN DIVERGENCE, open)',
       'a topic containing a link (KNOWN DIVERGENCE, open)',
+      'a topic containing an emoji shortcode (KNOWN DIVERGENCE, open)',
     ])
     for (const c of fixture.cases) {
       if (c.header === undefined) continue
@@ -108,16 +116,17 @@ describe('the header reads the same agenda the server does (BUG-76)', () => {
     // Both sides iterate whatever `cases` holds, so DELETING a case silently deletes coverage from
     // this suite and from AgendaParityFixtureSpec at once. The count is pinned in both places; it
     // has to be raised deliberately, in the same commit as the case that raises it.
-    expect(fixture.cases).toHaveLength(13)
+    expect(fixture.cases).toHaveLength(14)
   })
 })
 
-// The fixture's header comment keeps two divergences OUT of the register on one ground: the first
-// save normalises them away. That claim is the whole justification, and prose in a JSON blob goes
-// silently false the day a dependency changes — a tiptap-markdown that stops hoisting, or a
-// serializer that stops fencing, would re-open a real count divergence with nothing going red.
-// So the claim is asserted, not written down.
-describe('the divergences left out of the register really are normalised by a save (BUG-76)', () => {
+// Three divergences are justified by the same claim — the first save normalises them away. Two are
+// kept out of the register on that basis (the fixture's header comment), and the emoji one is
+// registered but carries it too. Prose in a JSON blob goes silently false the day a dependency
+// changes: a tiptap-markdown that stops hoisting, a serializer that stops fencing, or a load path
+// that stops emojifying would each re-open a real divergence with nothing going red. So the claim
+// is asserted rather than written down.
+describe('the divergences justified by "a save fixes it" really are fixed by a save (BUG-76)', () => {
   const md = (e: Editor) => e.storage.markdown.getMarkdown()
 
   it('rewrites a numbered task marker to a bullet the server counts', () => {
@@ -140,9 +149,20 @@ describe('the divergences left out of the register really are normalised by a sa
 
     expect(createAgendaEditorApi(e).readTopics().map((t) => t.text)).toEqual(['Real topic'])
     // AgendaFromContent's only code rule is a ``` / ~~~ fence — it has no indented-code rule — so
-    // the fence is exactly what stops it counting the line inside.
-    expect(md(e).indexOf('```')).toBeGreaterThanOrEqual(0)
-    expect(md(e).indexOf('```')).toBeLessThan(md(e).indexOf('- [ ] Indented code task'))
+    // what protects the line is being ENCLOSED by a fence, not merely preceded by one. An opening
+    // fence with no closing fence would swallow the rest of the note instead, so assert both.
+    expect(md(e)).toMatch(/```[a-z]*\n- \[ ] Indented code task\n```/)
+  })
+
+  it('rewrites an emoji shortcode to the character the server then reads back', () => {
+    const e = makeEditor('- [ ] Ship it :rocket:')
+
+    // Loaded through emojifyMarkdown, so the header already shows the emoji while the stored line
+    // still says `:rocket:` — the divergence the fixture registers.
+    expect(createAgendaEditorApi(e).readTopics().map((t) => t.text)).toEqual(['Ship it 🚀'])
+    // The save writes the character, so the server reads the same text from then on.
+    expect(md(e)).toContain('- [ ] Ship it 🚀')
+    expect(md(e)).not.toContain(':rocket:')
   })
 })
 
