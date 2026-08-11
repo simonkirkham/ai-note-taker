@@ -263,6 +263,33 @@ describe('splitBlankLineSeparatedLists', () => {
     expect(splitBlankLineSeparatedLists(md)).toBe(md);
   });
 
+  it('leaves a code block inside a wide-marker item untouched (Hawk round 2)', () => {
+    // CommonMark clamps the content column when the marker is followed by 5+ spaces: the item's
+    // content already IS code, so the threshold must not follow the text out to column 6.
+    const md = '-     services:\n\n        - api\n\n        - worker';
+    expect(splitBlankLineSeparatedLists(md)).toBe(md);
+  });
+
+  it('clamps the content column for every wide-marker form', () => {
+    for (const md of [
+      '-      alpha\n\n         - a\n\n         - b',
+      '*     alpha\n\n        - a\n\n        - b',
+      '1.     step\n\n         - a\n\n         - b',
+    ]) {
+      expect(splitBlankLineSeparatedLists(md)).toBe(md);
+    }
+  });
+
+  it('still separates at the four-space boundary, which is a nested list not code', () => {
+    // Four spaces after the marker is the last width that is NOT code, so these must still fire.
+    expect(splitBlankLineSeparatedLists('-    alpha\n     - a\n\n     - b')).toBe(
+      `-    alpha\n     - a\n\n     ${NBSP}\n\n     - b`
+    );
+    expect(splitBlankLineSeparatedLists('1.    step\n      - a\n\n      - b')).toBe(
+      `1.    step\n      - a\n\n      ${NBSP}\n\n      - b`
+    );
+  });
+
   it('does not read a U+00A0 separator line as blank', () => {
     const md = `- a\n\n${NBSP}\n\n${NBSP}\n\n- b`;
     expect(splitBlankLineSeparatedLists(md)).toBe(md);

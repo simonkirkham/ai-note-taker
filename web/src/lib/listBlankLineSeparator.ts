@@ -107,7 +107,16 @@ function readListItem(
   const isEmptyItem = match[3].length === 0 || BLANK.test(line.slice(match[0].length));
   if (paragraphOpen && isEmptyItem) return null;
 
-  const contentIndent = match[0].length;
+  // CommonMark clamps the content column: when the marker is followed by five or more spaces
+  // the item's content already IS an indented code block, so content starts at marker + 1
+  // rather than where the text happens to sit. Taking the text's column instead pushes the code
+  // threshold out by the same amount and reopens the hole it exists to close. An empty item
+  // (`-` at end of line) clamps the same way.
+  const spacesAfterMarker = match[3].length;
+  const contentIndent =
+    spacesAfterMarker > CODE_INDENT || spacesAfterMarker === 0
+      ? indent + marker.length + 1
+      : match[0].length;
   if (/^\d/.test(marker)) {
     // Only a list starting at 1 can interrupt a paragraph.
     if (paragraphOpen && marker.slice(0, -1) !== '1') return null;
