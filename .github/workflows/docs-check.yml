@@ -17,10 +17,15 @@ name: Repo Checks
 # registered, and 162 pushes over three days each got a zero-job red run named by file
 # path with no failing check and no annotation anywhere. Its PR was green.
 #
-# Deliberately narrow: it does not build, test, or deploy anything. Grep + one Go
-# binary, well under a minute. Both jobs run whenever any listed path changes — a
-# docs-only PR pays ~10s of actionlint and a workflow-only PR pays ~2s of grep, which
-# is cheaper than the machinery needed to scope each job to its own paths.
+# The merge-gate self-test (TI-77) is here for the third variant of the same reason:
+# pr.yml paths-ignores scripts/**, so every past edit to the merge gate shipped
+# unexercised.
+#
+# Deliberately narrow: it does not build, test, or deploy anything. Grep + a stubbed
+# shell test + one Go binary, well under a minute. Both jobs run whenever any listed
+# path changes — a docs-only PR also pays ~6s of actionlint and a workflow-only PR also
+# pays the grep and the self-test, which is cheaper than the machinery needed to scope
+# each job to its own paths.
 
 on:
   pull_request:
@@ -31,7 +36,14 @@ on:
       - "docs/technical-improvements.md"
       - "docs/roadmap.md"
       - "scripts/check-doc-ids.sh"
+      # TI-77's merge-gate self-test (PR #463)
+      - "scripts/merge-gate.sh"
+      - "scripts/deploy-status.sh"
+      - "scripts/test-merge-gate.sh"
+      # TI-70's workflow lint (PR #464). ".github/workflows/**" subsumes the explicit
+      # docs-check.yml entry above it; both kept so neither side of the merge lost a line.
       - "scripts/lint-workflows.sh"
+      - ".github/workflows/docs-check.yml"
       - ".github/workflows/**"
       # Metadata only — actionlint validates a local action's YAML and `runs.using` via the
       # workflow that `uses:` it, but NOT the shell inside its own `run:` block. Listed anyway
@@ -62,6 +74,13 @@ jobs:
         # executable bit does not survive, so most of scripts/ is committed 100644. The bit is
         # set on this script too, but `bash` means a future script losing it cannot break the gate.
         run: bash ./scripts/check-doc-ids.sh
+
+      # The merge gate and the deploy-status check are reachable by no other workflow:
+      # pr.yml paths-ignores scripts/**, so every past edit to them shipped unexercised —
+      # which is how TI-77 (uncomputed mergeability reported as a conflict, sending you to
+      # rebase a clean branch) survived. Stub-driven, deterministic, no network, ~15s.
+      - name: Merge-gate self-test
+        run: bash ./scripts/test-merge-gate.sh
 
   workflows:
     runs-on: ubuntu-latest
