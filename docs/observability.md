@@ -91,9 +91,16 @@ To trace a request:
 
 ## Why did a note's analysis fail?
 
-Every failed analyse — all three ways of asking for one — emits the `analyseFailed` custom event from the browser (BUG-77). It is the only record of the failure when the request never reaches the gateway, which is exactly the case that left the first live occurrence undiagnosable.
+**Establish WHICH of the two analysers ran first** — they fail into different places, and only one is covered by the browser event.
 
-**Two things stop this being conclusive, and both are open.** The event has never yet been seen arriving in prod (the channel itself was proven by [TI-67], with a different event). And until [TI-78] lands, the RUM client's default 200-event session cap drops custom events late in a long session — which is exactly when a post-recording analyse happens. So an absent record is not evidence the failure did not occur.
+| Who ran it | Where its failure shows |
+|---|---|
+| The browser — the *Analyse note* button, the *Generate final notes* button, or the analyse that runs on its own after a recording stops | The `analyseFailed` custom event, below. All three route through `reportAnalyseFailure`; there is no fourth caller of `analyseNote` in `web/src` |
+| The server — the transcript-completion Lambda re-analyses when auto-analyse was on and a speaker-separation job was in play, and in that case the browser **deliberately does not analyse at all** | `Analysis failed for note {NoteId}` in the Lambda logs. **No `analyseFailed` event exists for this path**, by construction — nothing failed in the browser |
+
+For a browser-side failure, `analyseFailed` is the only record when the request never reaches the gateway — exactly the case that left the first live occurrence undiagnosable (BUG-77).
+
+**Two things stop the browser event being conclusive, and both are open.** It has never yet been seen arriving in prod (the channel itself was proven by [TI-67], with a different event). And until [TI-78] lands, the RUM client's default 200-event session cap drops custom events late in a long session — which is exactly when a post-recording analyse happens. So an absent record is not evidence the failure did not occur.
 
 ```bash
 aws logs filter-log-events --region eu-west-2 --profile prod \
