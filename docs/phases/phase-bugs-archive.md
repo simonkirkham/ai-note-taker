@@ -368,3 +368,46 @@ parser hoists out of the task item) and cause (c) retracted outright (the republ
 happens; `setEditable(true)` emits `update` unconditionally). [BUG-80] was filed for the
 remaining placement defect.
 
+## BUG-68 — Blank-line-separated bullet lists merge on first open-and-save
+
+⛔ **CLOSED 2026-08-11 — ABANDONED, not fixed. The symptom is still live for users.**
+
+**What you still hit:** a note where you separated two bullet lists with a blank line comes
+back as one list the first time it is opened and saved, and the separation is gone for good.
+Confirmed on real prod data (note `d591ed55`). We are choosing to live with it.
+
+**Why we stopped.** The fix — a line scanner deciding which lines are list items and which
+are literal — was built and reviewed five times (PR #461, closed unmerged). Those rounds found
+**seven** defects of one class, every one a worse harm than the bug being fixed: **a note gains
+invisible characters inside a code block on first open-and-save**, permanently, in the one
+construct markdown promises to leave literal. Two of the seven were *created by the previous
+round's fix*, so the class is generative rather than incomplete.
+
+**The number that settled it:** with all four remaining one-line repairs applied, **340
+corrupting sources still survived** a 208,365-source differential corpus — and clearing those
+needs tab expansion and closing-fence info strings hand-implemented before the sweep could
+start looking for an eighth instance. Round 4 also silently regressed the original fix for
+**6,012** cases, invisible to an injected-defect check because that check asks whether
+reverting turns specs red, never whether a fix costs benign fires.
+
+**Root cause of the root cause:** the scanner hand-implements CommonMark block structure in
+regexes — indented code, fenced code, HTML blocks 1-7, thematic breaks, three marker kinds,
+content-column clamping, paragraph interruption, lazy continuation — and every defect was a
+threshold re-derived from the wrong reference.
+
+**If it is ever reopened, do not start from a line scanner.** Drive the rule off
+**markdown-it's own token stream**: it is already bundled and already the oracle, and a core
+rule reaches the app's *configured* instance via `state.md`, so there is no new dependency.
+Two constraints: keep the rule a `string → string` transform of the source (52 of 76 existing
+assertions depend on that seam), and guard re-entrancy, since calling `state.md.parse()`
+inside the rule re-runs the core chain including itself.
+
+**Reusable evidence on the closed PR #461** — worth starting from rather than rebuilding: a
+208,365-source differential oracle comparing markdown-it's `fence`/`code_block`/`html_block`/
+`code_inline` token contents before and after the rewrite, validated by replaying three
+historical defects; a 21-row keep/fire table; and an audit showing only 4 of 52 tests are
+implementation-coupled.
+
+**The judgement:** the bug is cosmetic, every attempt to fix it traded it for permanent data
+corruption, and shipping nothing is the safer state.
+

@@ -18,7 +18,6 @@ Ordered by severity, then by id.
 |------|---------|--------|------------|
 | BUG-77 | You finish a recording, the note is never analysed, and the only thing you are told is "Analysis failed. Please try again." The message is often wrong about what actually went wrong. | Open | TI-67, BUG-33 |
 | BUG-79 | Something you just created — an action item, or a note — can be missing after you reload, and stay missing. Rare, but this is the one guarantee the app is built to make. | Open | — |
-| BUG-68 | Opening and saving a note merges bullet lists that you had separated with blank lines, and the separation is gone for good. | Open | — |
 | BUG-70 | Clicking "+ New Note" while recording and then choosing to keep recording still leaves a blank, untitled note behind on your home list. | Open — held behind 51-C | BUG-54, 51-C |
 | BUG-73 | Signing out while an on-device transcript is still finishing can park you for up to an hour with no way to leave — a real problem on a shared machine. | Open | BUG-55 |
 | BUG-75 | Reopening a note while its on-device transcript is still finishing shows no transcript, and nothing appears until you navigate again or reload. | Open | BUG-72 |
@@ -90,22 +89,6 @@ It surfaced on the first run outside the deploy gate, which is also the first ti
 **Diagnostic gap found alongside:** `AppPage.AssertActionVisibleAfterReloadAsync` swallows every `PlaywrightException` until the deadline, then lets the last one propagate bare — no page URL, no rendered state, no token value. That is the pattern [e2e-gate-hang-and-the-diagnostic-that-caused-it](../learnings/e2e-gate-hang-and-the-diagnostic-that-caused-it.md) says to replace with an evidence-carrying `throw`, and it is why this row cannot yet name the cause.
 
 **Reproduce:** `gh workflow run e2e.yml -f runs=10 -f filter=ActionReadYourWritesJourney` — possible for the first time, per [TI-69].
-
----
-
-## BUG-68 — Blank-line-separated bullet lists merge on first open-and-save
-
-**Severity:** Medium — permanent, unrequested reflow of a real note, one time per note. **Status:** Open. Found 2026-08-09 while verifying [43-H1]'s prepend against real prod notes.
-
-**Symptom:** a stored body of `- a\n- b\n\n \n\n- c` — two bullet lists with a [BUG-40] blank-line paragraph between them, which is what the editor itself writes — parses back as a **single** list `- a\n- b\n- c`. The blank-line paragraphs between list items are dropped and the lists merge. The next save persists the merged version, so the note is permanently reflowed. Round-trip is stable after that (the second pass is a no-op), so it is a one-time loss per note.
-
-**Confirmed on real prod data:** note `d591ed55` ("Acquire Teams Check in") has exactly this shape.
-
-**Pre-existing and independent of 43-H1** — the baseline body alone reproduces it with no migration involved. 43-H1's prepend neither causes it nor makes it worse; the prepended checklist stays its own `taskList`, pinned by a case in `taskListMarkdownRoundTrip.test.ts`.
-
-**Evidence is a vitest round-trip through the real `NoteEditor` extension set** (`StarterKit` + `BlankLineParagraph` + `Markdown` + `MarkdownTaskList` + `TaskItem`), not a click-through — reproduce in the running app before fixing.
-
-**Fix direction:** [BUG-40]'s `blankLineParagraph.ts` preserves a blank line between *blocks*; the gap here is a blank line between two *lists*, where markdown-it's list continuation rules swallow it. Likely needs the serializer to emit a separator markdown-it cannot absorb — an empty HTML comment, or alternating bullet markers. Check what the parse actually does before choosing.
 
 ---
 

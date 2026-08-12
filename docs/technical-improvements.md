@@ -78,7 +78,7 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 | TI-58 | Desktop specs run in the PR gate (headless + Electron under xvfb) | ✅ **Done** — this slice. Nothing ran `desktop/tests/` before: `pr.yml` had no desktop job and `publish-desktop.yml` packages without testing. BUG-52/53/56 all reached a user's machine as a result. |
 | TI-59 | Windows desktop CI job — packaging + a REAL whisper-server smoke test | 🔲 **Open** — raised 2026-08-07 ([BUG-56]). Un-gate `whisperServer.integration.spec.ts` on `windows-latest` with a cached `base.en` + a fixed WAV, resolving the binary through the production resolver (`whisperServerBinPath()`, added by [BUG-56] / #426) exactly as production does. This is the tier that proves the live engine actually transcribes. |
 | TI-60 | Packaged-installer journey with injected audio | 🔲 **Open** — raised 2026-08-07 ([BUG-56]). Drive the *packaged* app end to end with a known WAV pushed through a test seam (not a virtual-audio driver) and assert live transcript text appears within a latency budget. The only tier that would catch a live-latency regression. |
-| TI-61 | `Routing.test.tsx > Forward reopens the note` fails under CPU contention during a local full-suite run | 🔲 **Open** — raised 2026-08-06 (49-B verification). **Second observation of the same failure with the same cause**, previously seen on 34-C (`docs/token-log.md:166`) and never filed. Both times a `dotnet build` ran concurrently with `vitest run`; the test passes in isolation and on a clean full-suite run, so it is load-induced, not a regression. Mechanism: the assertion after `window.history.forward()` is `findByTestId('note-title-input')`, whose default 1000 ms timeout is short relative to this file's ~1.8 s under contention — the `waitFor` on `window.location.pathname` before it already succeeded, so it is the *render* that misses the window, not the navigation. It is **not** a deploy-gate flake (CI runs the frontend job alone), so it costs only local verification time — but it costs it every time, and re-deriving "not a regression" from scratch is the expensive part. Fix options: raise this file's async timeout explicitly, or await the route transition rather than racing the default. Low urgency; the cheap win is that this row exists so the next person does not re-investigate. |
+| TI-61 | **A routing test fails on a busy machine even though nothing is wrong with it**, costing a thrown-away run and — the expensive part — a fresh investigation to re-establish that it is not a regression | 🟡 **In Progress** — mitigated, not closed. PR #470 raised the local-only budgets; the test ran to **5780 ms against a 5000 ms ceiling** under contention where unloaded it is 293 ms. **Stays open because two other files are predicted to exceed the new budget** — see [TI-61](#ti-61-a-routing-test-fails-on-a-busy-machine) |
 | TI-62 | `deploy.yml` still carries its own inline copy of the projector warm/drain bash | 🔲 **Open** — raised 2026-08-07 (alongside the on-demand E2E workflow). The warm-and-drain logic now lives in `scripts/warm-projector.sh`, used by `.github/workflows/e2e.yml`; `deploy.yml`'s `Warm the API + projector before E2E` step is a byte-for-byte duplicate of it. Deliberately NOT switched over in the same change: the merge queue was mid-flight through that exact workflow and a broken `deploy.yml` reds the shared gate for every slice and session. Two copies of a guardrail-critical step will drift — the drain is precisely what stops a cold projector red-gating the suite. Fix: replace the inline step with `bash scripts/warm-projector.sh` (same `API_URL`/`TOKEN` env), and verify on the next deploy that the step still logs `projector caught up to head`. Low risk, but do it on a quiet gate. |
 | TI-63 | Move note analysis off the synchronous request path | 🔲 **Open** — raised 2026-08-07 (BUG-58). Analysis runs inside the **29s** Command Lambda: 90d of prod data shows command-hosted Converse calls at median 2.6s but 17.9 / 21.5 / 23.6 / 26.4s in the tail, with a further **3.0-5.9s** of sequential post-Bedrock appends (`TagNote` per tag, `AddActionItem` per action, each re-reading an 89KB stream). Four invocations hit exactly 29.0s in 14 days — killed. BUG-58's 23s client deadline converts those kills into a visible 503, but it cannot create budget that isn't there: **any analysis needing >23s+tail simply cannot complete synchronously**, and a kill part-way through the appends leaves a note with a new summary and tags but no action items, with no event marking it incomplete. Fix: run analysis asynchronously (job + poll, or a dedicated Lambda off a queue with a longer timeout, mirroring the TranscribeCompletion path that already has 60s), so duration stops being bounded by the API request. Medium urgency — the deadline makes the failure visible and retriable, so this is about the ~12-19% of analyses that are near or over budget, not about data loss. |
 | TI-65 | **An action list, folder tree or workspace list can still snap back to an older copy moments after the user changes it** | 🟡 **Partly done** — raised 2026-08-08 (Hawk, PR #436 / [BUG-48]). The home note list shipped 2026-08-11 (PR #459); `getActions`, `getFolders` and `getWorkspaces` remain. Detail in [TI-65](#ti-65-the-other-three-gatedread-callers-can-still-store-a-stale-body-over-good-data) below. |
@@ -89,8 +89,11 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 | TI-72 | **An API deployed by hand is measurably slower to answer its first request than the identical code shipped by CI, and nothing says so** | 🔲 **Open** — raised 2026-08-10 (Hawk, PR #457 / [TI-64]). Every documented by-hand publish — `README.md`, `CLAUDE.md` `## How to run` — omits `-r linux-x64 --self-contained false`, the flag pair `pr.yml:62` and `deploy.yml:168,523` use to ReadyToRun-precompile the API Lambda. TI-35 shipped R2R precisely to cut first-request JIT; a manual `cdk deploy` from a clone silently undoes it and leaves prod that way until the next CI deploy. **Fix:** make the documented publish match CI's flags exactly, and prefer a single `scripts/publish-lambdas.sh` the docs, the hook and the workflows all call, so the flags exist once. |
 | TI-74 | **Move the same note twice while the sync is stuck and the second move snaps back — the first move used up that note's protection** | 🔲 **Open** — raised 2026-08-11 (Hawk, PR #459 / [TI-65]). Detail in [TI-74](#ti-74-the-stale-list-guards-budget-is-keyed-by-note-not-by-write) below. |
 | TI-75 | **Switch workspace at the wrong moment and the app can show one workspace's notes under the other's name** | 🔲 **Open** — raised 2026-08-11 (Hawk, PR #459). Detail in [TI-75](#ti-75-gatedreads-retries-re-resolve-the-workspace-url-mid-gate) below. |
-| TI-80 | **A broken workflow committed straight to `main` still reaches everyone unchecked — the new lint only ever runs on pull requests** | 🔲 **Open** — raised 2026-08-11 (reviewer, PR #464 / [TI-70]). [TI-70] closes the PR route; this is the other one. `docs-check.yml` declares `on: pull_request` only, and `CLAUDE.md` routes doc edits directly to `main`, so a workflow file changed by a direct push is linted by nothing — the same 162-red-X outcome [TI-69] produced. **Fix:** add `push: branches: [ main ]` with the same `paths:` list. ~6s per qualifying push, runs parallel to `doc-ids`, never gates a deploy (`docs-check.yml` is not in the deploy path). It also makes [TI-70] row 7 self-checking forever rather than once. **Verify with:** push the `${{ fromJSON(inputs.runs) * 4 + 15 }}` line straight to a branch that mimics `main` and watch the check go red. |
+| TI-80 | **A broken workflow committed straight to `main` still reaches everyone unchecked — the new lint only ever runs on pull requests** | ⏳ **In Progress** — raised 2026-08-11 (reviewer, PR #464 / [TI-70]); fix awaiting merge at PR [#471](https://github.com/simonkirkham/ai-note-taker/pull/471), head `e1db3dc3`, all six checks green, Hawk **Approved with minor comments** (round 1, no must-fix; its one should-fix filed as [TI-83] rather than taken as a second round). [TI-70] closes the PR route; this is the other one. `docs-check.yml` declared `on: pull_request` only, and `CLAUDE.md` routes doc edits directly to `main`, so a workflow file changed by a direct push was linted by nothing — the same 162-red-X outcome [TI-69] produced. The prescribed fix held: `push: branches: [ main ]` with the same `paths:` list, both jobs, one file changed. **One thing the row did not predict** — the `concurrency` group had to change too; detail in [TI-80](#ti-80-the-push-trigger-needed-a-concurrency-change-the-row-did-not-predict) below. **Verified, not asserted:** six pushes on `proof/ti80-push` produced no run when the branch was outside the filter, green when clean, **red on TI-69's actual line** (`parser did not reach end of input ... "*", "INTEGER"`, run 31542276296), green again with the guard's exit code deliberately swallowed while `doc-ids` stayed unchanged, and red again on revert. Full evidence, and what remains unproven about `main` specifically, in the PR comment. |
 | TI-79 | **An agent waiting for a build or a test run to finish can hang forever without saying so, and stops answering anyone trying to reach it** | 🔲 **Open** — raised 2026-08-11 ([TI-70] session). Detail in [TI-79](#ti-79-a-wait-loop-that-scans-process-cmdlines-can-never-exit) below. |
+| TI-84 | **A momentary GitHub outage now paints a red X on a `main` commit that did nothing wrong — the exact false-red-X symptom this whole line of work exists to remove** | 🔲 **Open** — raised 2026-08-12 (Hawk, PR #471 / [TI-80], should-fix). `scripts/lint-workflows.sh:104` fetches actionlint with `curl -sSfL --max-time 120` and **no `--retry`**, and `docs-check.yml` has **no `actions/cache` on `.tools/`** — both verified. Every CI run therefore re-downloads the binary from GitHub releases, and one transient failure exits 1: the script's own `unavailable "download failed"` path. **Why it is worse after [TI-80]:** that risk was confined to pull requests, where a red X sits on a PR and someone re-runs it. It now lands on **`main` commits**, where a red X is unattributable and is exactly the signal [TI-69] taught everyone to stop reading — a guard against false red X's acquiring a false-red-X failure mode of its own. **Fix:** `--retry 3 --retry-connrefused` on the curl, and/or `actions/cache` keyed on the pinned version (which also removes a ~1s download from every run). The checksum verification is unaffected and must stay. |
+| TI-83 | **A path added to `docs-check.yml`'s PR trigger but not its push trigger is guarded on pull requests and silently unguarded on direct commits to `main`, which is the route that has no other check** | 🔲 **Open** — raised 2026-08-11 (Hawk, PR #471 / [TI-80], classified should-fix). GitHub Actions has no YAML anchors, so the `paths:` list is necessarily typed twice; the two are in sync today (checked by hand at merge) and nothing but a comment keeps them so. The asymmetry is what makes it worth a check rather than a note: drift on the PR side is loud (a check stops appearing on PRs), drift on the push side is silent, and the push side is the one covering the route with no other guard. **A second reviewer found the better fix — subtraction, not a checker.** Drop `paths:` from the **push** trigger entirely. `actionlint` lints the whole tree regardless of which files changed, so the list never scoped the lint — it only gated whether the job ran at all. Removing it deletes the drift class rather than policing it, and costs ~25s of parallel runner time per push to `main`. **It also closes a live gap, filed here rather than separately because one fix closes both:** `scripts/check-doc-ids.sh` reads `docs/phases/phase-bugs-archive.md` for two of its checks (duplicate `## BUG-N` entries; a bug living in *both* the live doc and the archive), and that file is in **neither** `paths:` list — verified 2026-08-11. So a commit touching only the archive skips the check, and archiving is a **Scribe** step that commits straight to `main`, which is the route with no other guard. **Alternative if `paths:` is kept:** assert `push.paths ⊇ pull_request.paths` (modulo the self-referencing `docs-check.yml` entry) in a sibling of `scripts/test-merge-gate.sh`, on the [TI-77] precedent — plus add the archive path to both lists. **Raised by:** Hawk on PR #471, two independent reviews, findings 2 and 3. |
+| TI-82 | **247 merged branches sit on the remote because the documented merge step silently fails to delete them, and the docs said that failure was harmless** | 🔲 **Open** — raised 2026-08-11 ([TI-80] session, from the coordinator's measurement). Detail in [TI-82](#ti-82-the-documented-merge-step-deletes-neither-branch) below. |
 | TI-78 | **A browser fault that happens late in a long session still goes unreported, and nothing says so** | 🔲 **Open** — raised 2026-08-11 ([TI-67] review). The injected RUM snippet in `.github/workflows/deploy.yml` never sets `sessionEventLimit`, so the client default of **200** applies: `canRecord()` is `session.record && !isLimitExceeded()`, and `isLimitExceeded()` is `session.eventCount >= 200`. With `telemetries: ["errors","performance","http"]` at `sessionSampleRate: 1`, HTTP and performance events alone can exhaust that inside one 30-minute session — after which **every** custom event is dropped silently (`sessionLimitExceeded++`, nothing logged). This lands hardest on exactly the signals [TI-67] just enabled, because faults tend to happen *after* someone has been working a while, and it is the same self-concealing shape TI-67 existed to fix. **Fix:** set `sessionEventLimit` explicitly in the snippet (0 = unlimited), and confirm by reading an event back late in a session rather than by reading the config. |
 | TI-81 | **Nobody can merge for the best part of an hour — the merge gate reports a deploy in progress that actually finished successfully 51 minutes earlier** | 🔲 **Open** — raised 2026-08-11, hit live on deploy #762. Detail in [TI-81](#ti-81-an-orphaned-run-record-blocks-the-merge-gate-for-tens-of-minutes) below. |
 
@@ -538,6 +541,55 @@ Everything else blocks and prints the raw values it saw. A **genuinely failed** 
 **Three of those injections exist because review found guards that were shipping untested**, and the pattern is worth more than the guards themselves: the newest-run sort (failure mode: `GREEN` on a window whose newest run had **failed**), a `JOBFAIL` message still accusing main for a run that was not main's latest, and a null `completed_at` whose obvious tidy-up turns a run that never reported a completion into `GREEN`. **In each round the defects were in code the PREVIOUS round had just added** — and one round's reword silently de-fanged a test the round before had written, leaving an injection that was quoted as biting while actually inert. So: re-run every injection after every change, and never carry one forward as evidence.
 
 **`filter=latest` is load-bearing, checked against real re-runs.** It is the API default, but `filter=all` returns every *attempt*: on real re-runs #719/#717 that is `total_count` 10 against 5. Dropping it would make the new completeness guard report "did not succeed" on a re-run that passed — the guard turning into the false red it exists to remove.
+## TI-82. The documented merge step deletes neither branch
+
+**What it costs:** the remote carries **247** `slice/`+`proof/` branches (measured 2026-08-11, after three were removed). Every `git fetch`, every branch autocomplete, every "is this still in flight?" question is paid against that list, and a genuinely-live branch is indistinguishable from 240 dead ones. `scripts/next-doc-id.sh` scans 305 remote refs to answer one question.
+
+**Why it went unnoticed for so long: the doc said the failure was harmless.** `CLAUDE.md` → `## Workflow` step 11 stated that `gh pr merge --squash --delete-branch` deletes the *remote* branch and only its *local* cleanup fails (`'main' is already used by worktree`) — "this is harmless". It is not. When the local step errors, `gh` aborts the whole cleanup and **the remote branch survives silently**. Nobody checked, because the doc had already answered the question.
+
+**The measurement (coordinator, 2026-08-11, five merges):**
+
+| Branch | Remote after merge |
+| --- | --- |
+| `slice/ti-67-rum-custom-events` | still on remote |
+| `slice/ti-65-gated-read-stale` | still on remote |
+| `slice/ti-77-merge-gate-unknown` | still on remote |
+| `slice/ti-70-actionlint` | gone — deleted by hand |
+| `slice/ti-61-routing-flake` | gone — deleted by hand |
+
+Three of five survived, and the two that did not are exactly the two deleted explicitly. **Done 2026-08-11:** `CLAUDE.md` steps 11 and 13 corrected (both deletes are now explicit, and step 11 no longer calls the failure harmless), and the three branches above deleted after confirming each was safe.
+
+**Confirming a squash-merged branch is safe to delete — `git branch -r --merged` is the wrong test.** A squash merge never makes the branch tip an ancestor of `main`, so `--merged` lists none of these and `--is-ancestor` returns NO for all three; read naively that says "unmerged, do not delete". Two checks settle it instead:
+
+1. `gh pr list --state all --head <branch>` → the PR is `MERGED` and names its squash commit; `git merge-base --is-ancestor <squash-sha> origin/main` confirms that commit is on `main`.
+2. For the files the branch actually touched — `git diff --name-only $(git merge-base origin/main <tip>) <tip>` — check none still differs: `git diff --name-only origin/main <tip> -- <those files>`. A residual here is not automatically unmerged work; on both branches that showed one, the file had been changed by a *later* commit on `main` (#470, #464), which `git log <squash-sha>..origin/main -- <file>` shows in one line.
+
+**Remaining work:** the other 247 are historical and were deliberately not swept. A sweep needs the two checks above run per branch — worth scripting (`scripts/prune-merged-branches.sh`, dry-run by default) rather than doing by hand, since the naive `--merged` filter is wrong for every squash-merged branch in the list and would report almost all 247 as unmerged.
+
+**Raised in:** [TI-80] session, 2026-08-11, from the coordinator's measurement.
+**Depends on:** —
+
+---
+
+## TI-80. The push trigger needed a concurrency change the row did not predict
+
+**What it would have cost:** a broken workflow file reaching `main` unlinted **anyway**, with a run list that looks fine. The row's prescribed fix — `push: branches: [ main ]` with the same `paths:` list — is correct and is what shipped. But `docs-check.yml` keys its concurrency group `docs-check-${{ github.head_ref || github.ref }}` with `cancel-in-progress: true`. On a pull request `head_ref` is the branch, so runs are keyed per-PR. On a **push** `head_ref` is empty, so every push to `main` falls into **one** group — and the second merge landing a minute after the first **cancels the first's lint**. A cancelled run is not a failing run. Merges land minutes apart here routinely.
+
+**Fix:** `docs-check-${{ github.head_ref || github.sha }}`. Pull-request behaviour is byte-identical (`head_ref` is non-empty there, so that operand never changes); each pushed commit gets its own group, so no push can cancel another and every commit reaching `main` is linted exactly once.
+
+**Watched working, not argued.** Two commits pushed 5s apart on `proof/ti80-push`:
+
+```
+run 31542444491 failure created=22:26:50Z  workflows:failure 22:26:53->22:27:00
+run 31542450478 success created=22:26:55Z  workflows:success 22:26:58->22:27:07
+```
+
+They overlapped and **both completed**. Under the old key the first — the one carrying the red — would have been cancelled at 22:26:55.
+
+**The generalisable bit:** adding a trigger to an existing workflow inherits every workflow-level setting, and `concurrency` is the one that can silently convert a new red into no red at all. Check the concurrency key against the *new* event's contexts, not the old one's — `github.head_ref` is empty on a push, which turns a per-branch key into a global one without changing a character of it.
+
+**Raised in:** [TI-80] implementation, 2026-08-11. **Fix:** PR [#471](https://github.com/simonkirkham/ai-note-taker/pull/471).
+**Depends on:** —
 
 ---
 
@@ -570,9 +622,9 @@ So `until ! pgrep -f "bin/eslint"; do sleep 15; done` never exits, whatever esli
 
 ## TI-70. What must be true before TI-70 is archived
 
-**Merged 2026-08-11** — PR [#464](https://github.com/simonkirkham/ai-note-taker/pull/464), squash `a43574e6`, deploy #763. **Still open**: row 7 below is unproven, and it is the only row that tests the merged state. This section exists because the item's own subject is checks nobody watched run, so its own closing conditions must live somewhere durable rather than in a merged PR description nobody re-reads.
+**Merged 2026-08-11** — PR [#464](https://github.com/simonkirkham/ai-note-taker/pull/464), squash `a43574e6`, deploy #763. **All seven rows ticked as of 2026-08-11**; row 7, the last and the only one testing the merged state, is recorded below. This section exists because the item's own subject is checks nobody watched run, so its own closing conditions must live somewhere durable rather than in a merged PR description nobody re-reads.
 
-**Who ticks row 7, and when:** the next session that opens a PR touching only `.github/workflows/**` — for any reason, this item does not need its own PR. [TI-80] is the natural candidate, since its fix edits `docs-check.yml` and nothing else. **How:** `gh pr checks <n>` on that PR must list a check named `workflows`. Do not infer it from a green PR — `pr.yml` also runs on `.github/**`, so green proves nothing here; look for the check *by name*. If it is absent, the `paths:` widening did not take and TI-70 is not fixed.
+**Row 7 was ticked on 2026-08-11 by [TI-80]'s PR [#471](https://github.com/simonkirkham/ai-note-taker/pull/471)**, which was the predicted candidate — its diff is `docs-check.yml` and nothing else. The check was read *by name* out of `gh pr checks 471`, not inferred from a green PR (`pr.yml` also runs on `.github/**`, so green proves nothing here).
 
 | # | Check | State |
 | --- | --- | --- |
@@ -582,12 +634,115 @@ So `until ! pgrep -f "bin/eslint"; do sleep 15; done` never exits, whatever esli
 | 4 | **Injected defect** — disable the failure path and confirm the red case passes | ✅ `"$bin" -color \|\| true` → exit 0 with the defect still present; reverted |
 | 5 | A PR whose diff is **only** `.github/workflows/**` gets a `workflows` run | ✅ PR #467 (base `proof/ti70-base`, head `proof/ti70-head`) — changed files = `[.github/workflows/e2e.yml]`, `workflows` pass. (The proof branch was cut before [TI-77] merged, so its `paths:` list is a **subset** of the shipped one — but it contains `.github/workflows/**`, the entry under test, and path filters are OR'd, so a superset cannot stop a glob matching.) |
 | 6 | A workflow-only PR got **no** `Docs Check` run before this change | ✅ PR #466 — `gh run list` returns only `PR Checks` |
-| 7 | **After merge:** the first real PR touching only `.github/workflows/**` shows a `Repo Checks / workflows` run | 🔲 **Outstanding** — merged 2026-08-11 (PR [#464](https://github.com/simonkirkham/ai-note-taker/pull/464), squash `a43574e6`, deploy #763), so the widened filter is now live on `main` and this is the only unproven row |
+| 7 | **After merge:** the first real PR touching only `.github/workflows/**` shows a `Repo Checks / workflows` run | ✅ **2026-08-11, [TI-80]'s PR [#471](https://github.com/simonkirkham/ai-note-taker/pull/471)** — `gh pr view 471 --json files` = `[.github/workflows/docs-check.yml]`, one path, nothing else. `gh pr checks 471` lists the check **by name**: `workflows  pass  6s`, run [31541957717](https://github.com/simonkirkham/ai-note-taker/actions/runs/31541957717) (`event: pull_request`), alongside `doc-ids  pass  20s`. Not inferred from a green PR. Verified by the TI-80 session |
 
-**Do not archive TI-70 until row 7 is ticked.** Rows 1-6 were all demonstrated on a branch; row 7 is the only one that tests the merged `paths:` filter on `main`, which is the half that TI-69 actually fell through. A green PR is not evidence for it — check for the run by name.
+**All seven rows are now ticked — TI-70 can be archived**, on the usual terms (condense to one entry in [technical-improvements-archive.md](technical-improvements-archive.md), keep the `## TI-70` heading so inbound anchors resolve, delete the row and this section). Its known limit 4 below is superseded by [TI-80], which is in review at PR #471 — archive TI-70 after TI-80 merges, so the archive entry can state the final coverage rather than a limit that is about to close.
+
+Rows 1-6 were all demonstrated on a branch; row 7 was the only one that tested the merged `paths:` filter on `main`, which is the half TI-69 actually fell through.
 
 **Known limits, so nobody assumes coverage that is not there:**
 
 1. A TI-69-shaped defect **inside a composite action's `run:` block** is not caught. actionlint validates a local action's metadata (YAML parse, `runs.using`) via the workflow that `uses:` it, but never lints the shell inside it — measured, exit 0 on both an unused variable and an unquoted expansion.
 2. An action referenced by **no** workflow is never looked at.
+3. **`docs-check.yml` is the one workflow the gate cannot protect.** Broken, it does not load, so it cannot run the lint that would have caught it — the check is hosted by the file it would need to check. True on both the pull-request and the push route, so [TI-80] does not change it. Nothing in the repo covers this file; the only defence is that a change to it is small, deliberate, and made by someone who has just read this line. Raised by Hawk on PR #471.
 4. **The gate never runs on a push to `main`.** `docs-check.yml` is `pull_request`-only, so a workflow file changed by a **direct commit to `main`** — which `CLAUDE.md` explicitly routes doc edits through — is linted by nothing in CI. **There is now no defence at all for that path.** The last one was `.githooks/pre-commit`, which needed per-clone `core.hooksPath` and so protected nobody by default — and it was removed entirely on 2026-08-11 when the build/test gate moved to CI. So a workflow file edited by a direct commit to `main` is linted by nothing, anywhere. That widens this row rather than closing it: the fix has to be a `push:` trigger on `main`, not a local hook. Tracked as [TI-80].
+
+---
+
+## TI-61. A routing test fails on a busy machine
+
+**What it costs.** A CI run or a deliberate local suite run is thrown away on a test nobody
+touched. The expensive part is not the run — it is that the next person has to re-derive from
+scratch that it is not a regression. That has now happened at least twice.
+
+**The measurement that settles it.** Under deliberate contention (32 CPU spinners, no other
+suites, `ratio1` 1.97 rising to 2.91):
+
+| Test | median | max | ceiling |
+| --- | --- | --- | --- |
+| `Back returns to the home screen` | 3966 ms | **5780 ms** | 5000 ms |
+| `opening a note pushes a /notes/:id URL` | 2334 ms | 3379 ms | 5000 ms |
+| `Forward reopens the note` | 1840 ms | 2949 ms | 5000 ms |
+
+The binding test exceeds the ceiling on its own, and sits at 79% of it even when it passes.
+Unloaded and alone it is 293 ms — the box's effective speed varies by 10-56x, and a fixed
+wall-clock deadline cannot tell "slow machine" from "hung test" across that range. A per-test
+timeout exists to catch hangs, not to assert machine speed.
+
+### Still open: two files are predicted to exceed the new budget
+
+This is why the row is 🟡 and not ✅. Ranking every test file by its slowest test (full suite,
+unloaded — relative durations rank the same without contention):
+
+| slowest test | file | |
+| --- | --- | --- |
+| 2455 ms | `staleDetailRefetch.test.tsx` | work-bound |
+| 2437 ms | `staleCardsRefetch.test.tsx` | work-bound |
+| 1125 ms | `Routing.test.tsx` | work-bound — the file that has actually been failing |
+| 1039 ms | `HomeSearch.test.tsx` | **discount** — 4 real `setTimeout` sleeps, which do not inflate under CPU starvation |
+
+`Routing` inflated 1125 -> 5780 ms (~5.1x) under deliberate contention. **The same multiple on
+2455 ms is ~12500 ms, which exceeds the 12000 ms budget PR #470 sets.** Both files are genuinely
+work-bound — no fake timers, no sleeps — so they should inflate the same way.
+
+**Remedy, when one of them fails — do this, not something else:**
+
+1. Reproduce it under deliberate contention and record the *measured* worst duration.
+2. Raise `LOCAL_TEST_TIMEOUT_MS` in `web/vite.config.ts` to **that file's worst x2**.
+3. **Do not raise it pre-emptively.** ~12500 ms is an extrapolation; neither file has been measured
+   under contention. Sizing a budget off an unmeasured multiple is the error this investigation
+   refused three times (a role-query theory that measured 15 ms, an underpowered 2/10-vs-0/10 A/B,
+   and a reviewer's suggested 25000 ms). A measured number is checkable six months later; a guess
+   is indistinguishable from a measurement, including in whether it was already too small.
+
+**Post-merge observation owed, and by whom.** Nothing about this fix is verifiable from a green
+deploy — the change only takes effect on a *locally contended* run, which CI never performs. The
+observation that would prove it is a local full-suite run under load that previously failed and now
+passes; that was taken before merge (control red at 5000 ms, candidate 0 failures / 60 under
+identical contention). **No further observation is owed, and no future session should record this
+as Done on the strength of a deploy** — the row closes only when the two files above have been
+measured, or when they have gone long enough without failing that the exposure is judged closed.
+
+**Fix.** `testTimeout` 12000 (= worst observed 5780 x2) and `asyncUtilTimeout` 4000
+(= longest succeeding wait 1735 x2), **local only**, mirroring the existing `LOCAL_MAX_THREADS`
+precedent. CI keeps 5000/1000 — it runs the frontend job alone on native Linux, so a genuine
+hang still fails there. `testBudgets.test.ts` asserts the split in both directions, so CI is its
+own positive control against the raised budget leaking into it.
+
+### Corrections to the original row — it was wrong on every specific
+
+The row as filed on 2026-08-06 said the failing assertion was `findByTestId('note-title-input')`
+after `window.history.forward()`, missing its 1000 ms budget because the *render* was slow.
+Measured, none of it holds:
+
+| The row said | Measured |
+| --- | --- |
+| `Forward reopens the note` | Every reproduction failed in **`Back returns to the home screen`** |
+| `findByTestId(...)`, 1000 ms budget | `Test timed out in 5000ms` — the **per-test** budget, a different ceiling |
+| the render misses the window | The render is fine. `<h1>{heading}</h1>` has no data gate; one pass of the role query costs **15 ms** under load |
+| "second observation of the same failure" (34-C) | **Unverified, and now withdrawn.** The cited `token-log.md` entry names no test at all — only "the one flake (Routing.test)". It was an inference presented as an observation |
+
+The row's own arithmetic was the tell: the steps *before* the failing assertion ran 2.65x their
+unloaded time while the assertion blew a >9x anomaly. A uniformly slower box cannot produce that.
+
+### Withdrawn: the poll-vs-mutation theory, and the 48-site claim built on it
+
+An intermediate diagnosis held that `waitFor` on a non-DOM value (`window.location.pathname`) is
+structurally worse under starvation, because RTL's MutationObserver cannot see a non-DOM value
+and only the 50 ms poll remains. **Measured head to head, it is backwards:** poll `backWait`
+165 ms against mutation `backWait` 199 ms. The 1735 ms figure that made the theory look
+overwhelming came from a run carrying three other sessions' suites; alone on the box the same
+step is 165 ms. It was contention, not the wake mechanism.
+
+Consequently **the count of 48 `waitFor(pathname)` sites across 9 files is a scope measurement,
+not 48 defects**, and `OpenNoteTabs.test.tsx` (23 of them) is *not* predicted to be the next
+casualty on that basis. If the mechanism is a fixed deadline against variable machine speed,
+exposure scales with **total test duration**, not with the number of pathname waits.
+
+### Read the load figures as period-specific
+
+Every figure here was gathered while the pre-commit hook still ran full suites on every commit
+across parallel sessions. That hook was removed the same night (`dba8fce8`), so ambient load on
+this box will be materially lower from now on. The numbers are real, but nobody should read
+`ratio1` 2.28 as this machine's resting state — which makes 12000 ms more conservative than it
+looks, and that is the right direction for a budget whose only job is to catch a genuine hang.
