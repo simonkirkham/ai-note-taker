@@ -39,6 +39,10 @@ case "$1 $2" in
   "pr checks")
     printf 'backend\tpass\t1m\thttps://x\nfrontend\tpass\t1m\thttps://x\n' ;;
   "run list")
+    # The full argv is recorded so a case can assert HOW the query was scoped, not merely what
+    # it returned. Every other arm here ignores gh's arguments, which is exactly why a dropped
+    # --workflow filter would be invisible to the whole suite.
+    [ -n "${GH_ARGV:-}" ] && printf '%s\n' "$*" >>"$GH_ARGV"
     # `!FAIL <msg>` in the runs file makes the call exit non-zero, standing in for auth
     # expiry / rate limit / no network on the deploy query.
     read -r first <"${GH_RUNS:-/dev/null}" || true
@@ -505,6 +509,32 @@ report "a silent success is not a green main" "$g3zbad" "$g3z"
 # times in a comment ("#762's record", "deploy.yml's 5 jobs"). The suite does catch it, but as
 # 20 identical cryptic failures rather than one legible one, and the next person to add a
 # sentence of prose will hit it again. Name the offending line instead.
+# The verdict is only about deploys if the QUERY is scoped to deploys. Since [TI-80] added a
+# push-triggered lint, a push to `main` produces a `Repo Checks` run, so the newest run on main
+# is frequently not a deploy at all — an unscoped query would happily report a docs lint as
+# "main's last deploy". The scoping lives in one `gh run list` argument, and until now nothing
+# asserted it: the stub ignores gh's arguments everywhere else, so deleting `--workflow` left
+# all 52 cases green. This asserts the argv, not the answer.
+echo "query scoping"
+: >"$STUB/argv"
+GH_RUNS="$STUB/runs.json" GH_API_DIR="$API" GH_ARGV="$STUB/argv" PATH="$STUB:$PATH" \
+  bash "$DIR/deploy-status.sh" >/dev/null 2>&1
+argv=$(cat "$STUB/argv")
+scope_bad=""
+grep -q -- "--workflow deploy.yml" <<<"$argv" || scope_bad="the run query is not scoped to a workflow; saw: $argv"
+grep -q -- "--branch main" <<<"$argv" || scope_bad="$scope_bad; the run query is not scoped to main; saw: $argv"
+report "the run query is scoped to main's deploy workflow" "$scope_bad" "$argv"
+
+# And the workflow argument must be the one the caller passed, not a hardcoded default that
+# happens to match it.
+: >"$STUB/argv"
+GH_RUNS="$STUB/runs.json" GH_API_DIR="$API" GH_ARGV="$STUB/argv" PATH="$STUB:$PATH" \
+  bash "$DIR/deploy-status.sh" some-other.yml >/dev/null 2>&1
+argv2=$(cat "$STUB/argv")
+arg_bad=""
+grep -q -- "--workflow some-other.yml" <<<"$argv2" || arg_bad="the workflow argument is ignored; saw: $argv2"
+report "the workflow argument is honoured, not hardcoded" "$arg_bad" "$argv2"
+
 echo "python block quoting"
 py_bad=""
 py_start=$(grep -n "python3 -c '" "$DIR/deploy-status.sh" | head -1 | cut -d: -f1)
