@@ -40,6 +40,12 @@ public sealed class AppPage
     // BUG-79: the latest ACTION-write token, for the probe's self-check to seed deterministically.
     private volatile string? latestActionToken;
 
+    // BUG-79: each self-check arm's evidence, captured WHEN THAT ARM RAN. The next arm clears the
+    // probe, so a dump taken at assert time describes only the last arm — which is how the first
+    // version of this journey produced a failure message that could not explain its own failure.
+    private readonly List<string> observations = new();
+    private string? lastObservation;
+
     // BUG-79: the gated-vs-ungated discriminator. The response header alone cannot tell a gated
     // read that came back fresh from a read that carried no token at all, because the server sets
     // `X-Consistency` only when STALE — so both look identical. The probe records the request's
@@ -824,13 +830,14 @@ public sealed class AppPage
             }
 
             await page.ReloadAsync();
-            await page.GetByTestId("actions-pill").ClickAsync(new() { Timeout = 15000 });
 
-            // Wait for a read to have been RECORDED, not merely for the popover to open: the
-            // recording happens in the route, which fires independently of the DOM.
+            // Wait for the FIRST read to have been RECORDED, before touching the DOM. The recording
+            // happens in the route, which fires independently of the popover — and opening the
+            // popover triggers a SECOND, ungated refetch, so sampling after the click was what made
+            // this observation a coin flip.
             var deadline = DateTime.UtcNow.AddSeconds(15);
             string? outbound;
-            while ((outbound = Probe.LastOutboundFor("/actions")) is null && DateTime.UtcNow < deadline)
+            while ((outbound = Probe.FirstOutboundFor("/actions")) is null && DateTime.UtcNow < deadline)
                 await page.WaitForTimeoutAsync(100);
 
             // Observing NOTHING must be a failure here, never a value the caller can compare.
@@ -843,6 +850,13 @@ public sealed class AppPage
                     $"no actions read was recorded within 15s, so the probe observed nothing and " +
                     $"this run proves nothing. page.Url={page.Url} | {Probe.Describe()}");
             }
+
+            // Snapshot THIS arm's evidence now. The next arm calls Clear(), so a dump taken at
+            // assert time describes only the arm that ran last — which is why the first version of
+            // this journey failed with a message that could not explain its own failure.
+            lastObservation = $"[{(dropPersistedTokens ? "ungated arm" : "gated arm")}] " +
+                              $"reads={Probe.CountReadsFor("/actions")} first={outbound} | {Probe.Describe()}";
+            observations.Add(lastObservation);
 
             return outbound;
         }
@@ -883,7 +897,12 @@ public sealed class AppPage
             new[] { key, token });
     }
 
-    public string DescribeProbe() => Probe.Describe();
+    // Both arms' evidence, each captured as it ran. Prefer this over Probe.Describe() in any
+    // assertion message spanning more than one arm.
+    public string DescribeProbe() =>
+        observations.Count > 0 ? string.Join("  ||  ", observations) : Probe.Describe();
+
+    public string? LastObservation => lastObservation;
 
     // Hang-proof failure diagnostics for the actions list. Reads already-resolved page state plus
     // the probe's request log — never a response body.

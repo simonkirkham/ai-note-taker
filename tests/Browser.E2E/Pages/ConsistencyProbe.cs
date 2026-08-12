@@ -188,23 +188,35 @@ public sealed class ConsistencyProbe
     public string Describe(int take = 12) =>
         $"{Summary()} | " + string.Join(" ;; ", Lines(take));
 
-    // Self-check support: the outbound token recorded for the most recent GET matching `urlPart`,
-    // or null when no such read was recorded — the caller must treat null as a failure, never as a
-    // reportable value, or a probe that observed nothing is indistinguishable from one that
-    // discriminated. GET only: a POST to the same path (adding an action) matches the URL too, and
-    // would otherwise be reported as the read's gating.
-    public string? LastOutboundFor(string urlPart)
+    // Self-check support: the outbound token on the FIRST GET matching `urlPart`, or null when no
+    // such read was recorded — the caller must treat null as a failure, never as a reportable
+    // value, or a probe that observed nothing is indistinguishable from one that discriminated.
+    //
+    // FIRST, not last, and the distinction cost a 4-in-10 flake. A reload produces MORE THAN ONE
+    // actions read: the note screen mounts and reads (carrying the persisted token, which the
+    // server answers non-stale, so `gatedRead` then CLEARS it), and opening the popover refetches —
+    // ungated, because the token it would have used has just been consumed. Reporting the last read
+    // therefore reported the app's second, ungated refetch and called the gating absent. The read
+    // whose gating is under test is the first one after the reload.
+    //
+    // GET only: the POST that adds an action matches the same URL and would otherwise be reported
+    // as the read's gating.
+    public string? FirstOutboundFor(string urlPart)
     {
         lock (gate)
         {
-            for (var i = entries.Count - 1; i >= 0; i--)
-            {
-                var e = entries[i];
+            foreach (var e in entries)
                 if (e.Method == "GET" && e.Url.Contains(urlPart, StringComparison.OrdinalIgnoreCase))
                     return e.Outbound;
-            }
             return null;
         }
+    }
+
+    public int CountReadsFor(string urlPart)
+    {
+        lock (gate)
+            return entries.Count(e =>
+                e.Method == "GET" && e.Url.Contains(urlPart, StringComparison.OrdinalIgnoreCase));
     }
 
     public void Clear()
