@@ -413,8 +413,8 @@ export default function NoteView({
     // BUG-77: this is the app's OTHER way to ask for an analysis, and it had the same bare
     // `catch {}` — one sentence for every cause and nothing recorded. Two entry points reporting
     // failure two different ways is how the first occurrence stayed undiagnosable; both now go
-    // through the same reporter, so "every failed analyse leaves a record" is true of both.
-    const startedAt = Date.now();
+    // through the same reporter.
+    let startedAt = Date.now();
     try {
       // BUG-32: persist any just-typed note edit (e.g. a `/ai` instruction) and WAIT for it
       // to land before analysing, so the server reads the latest content. handleSaveContent
@@ -422,6 +422,10 @@ export default function NoteView({
       // from the editor blur that the button click triggered.
       handleSaveContent();
       if (pendingContentSaveRef.current) await pendingContentSaveRef.current;
+      // Re-stamp AFTER the save: `elapsedMs` has to mean the same thing on every trigger, and the
+      // content-save round trip above belongs to none of the others. (A failed save cannot be
+      // misreported as a failed analysis — that promise carries its own catch and resolves.)
+      startedAt = Date.now();
       await analyseM.mutateAsync();
     } catch (err) {
       showError(reportAnalyseFailure(err, { noteId, trigger: "finalNotes", startedAt }).message);

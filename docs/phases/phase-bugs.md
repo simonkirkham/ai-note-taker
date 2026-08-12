@@ -23,6 +23,7 @@ Ordered by severity, then by id.
 | BUG-75 | Reopening a note while its on-device transcript is still finishing shows no transcript, and nothing appears until you navigate again or reload. | Open | BUG-72 |
 | BUG-78 | A truncated or hand-edited sign-in link drops you at the sign-in screen and claims your browser is blocking storage — and the message comes back on every reload. | Open | BUG-71, BUG-60, BUG-15 |
 | BUG-80 | A topic you add from the agenda strip can land in an invisible checklist at the very top of the note — the header lists it, but you cannot find it in the note to edit it in place. | Open | BUG-76 |
+| BUG-82 | After a recording with speaker separation, the note can end up never analysed with nothing said on screen and nothing recorded as an error — the same silent outcome BUG-77 is about, on the half BUG-77's fix cannot reach. | Open | BUG-77 |
 
 Further bugs will be appended as they are identified.
 
@@ -47,7 +48,7 @@ Further bugs will be appended as they are identified.
 
 **The auth and forbidden arms are a fallback the user will not normally see** — any 401 whose refresh fails, and any 403, trips `triggerUnauthorized`/`triggerForbidden` first, and `App.tsx` replaces the whole screen with the session-expired banner. Verified by reading the chain (`client.ts` → `AuthContext` → `App.tsx:80`), not measured. The record still lands, which is the part that matters here.
 
-**The server-side re-analysis is NOT covered, by construction.** When auto-analyse is on and a speaker-separation job is in play, the browser deliberately defers and the transcript-completion Lambda analyses instead — nothing fails in the browser, so no `analyseFailed` can exist. That path fails into `Analysis failed for note {NoteId}` in the Lambda logs. **Do not read an absent event as "the analysis never ran"** — establish which analyser ran first; [observability.md](../observability.md#why-did-a-notes-analysis-fail) opens with that split. Stated as a coverage boundary only; it is **not** offered as a theory of the trigger.
+**The server-side re-analysis is NOT covered, by construction.** When auto-analyse is on and a speaker-separation job is in play, the browser deliberately defers and the transcript-completion Lambda analyses instead — nothing fails in the browser, so no `analyseFailed` can exist. That path fails into the **TranscribeCompletion** Lambda's log group — and its common failure is logged at *Information* as `transcribe: re-analysed note {Note} → ServiceUnavailable`, which reads like a success. **Do not read an absent event as "the analysis never ran"** — establish which analyser ran first; [observability.md](../observability.md#why-did-a-notes-analysis-fail) opens with that split and with which log lines mean what. Stated as a coverage boundary only; it is **not** offered as a theory of the trigger.
 
 **Two further reasons the browser record is not yet conclusive.** No `analyseFailed` has ever been observed arriving in prod — [TI-67] proved the channel with a different event, and this one is unwatched until it fires. And until [TI-78] lands, the RUM client's default `sessionEventLimit` of 200 drops custom events late in a long session, which is exactly when a post-recording analyse happens. Treat an absent record as unproven, not as evidence the failure did not occur.
 
@@ -178,3 +179,24 @@ It surfaced on the first run outside the deploy gate, which is also the first ti
 Reproduced against a real editor: adding `Renewals` to that body yields `- [ ] \n- [ ] Renewals\n\n- Shopping\n  - [ ] Milk\n\n- [ ] Bread` and a topic list of `Renewals, Milk, Bread`. When there is no stray list — `- Shopping` / `  - [ ] Milk` — placement is already correct and the item joins the nested checklist.
 
 **Fix direction:** choose the target list from a `taskList` that actually yields a countable topic, falling back to the first one only when none does. That makes the function's name true and puts the new topic with the ones on screen. The blockquote exclusion must survive: a quoted checklist is never a target, because the walk never reads it.
+
+---
+
+## BUG-82 — A server-side re-analysis can fail silently, with a log line that reads like success
+
+**Severity:** Medium — same user-visible outcome as [BUG-77] (a recording that never gets analysed, no explanation), on the path BUG-77's fix cannot cover. **Status:** Open. Found by review of [BUG-77] (PR #472); **pre-existing**, not a regression from it.
+
+**Symptom:** you finish a recording with speaker separation on and auto-analyse on. The note is never analysed. Nothing appears on screen — no error, no retry prompt — because the browser deliberately handed the analysis to the server and has nothing to report.
+
+**Why nothing surfaces it:**
+
+| Layer | What happens |
+|---|---|
+| Browser | `RecordControl` defers the on-Stop analyse while diarization is `refining`/`timedOut` (33-B2, correct — the server re-analyses on the winning transcript). No request, so BUG-77's `analyseFailed` event cannot exist here, by construction |
+| Server | `MaybeAnalyseAsync` (`src/TranscribeCompletion/TranscribeCompletionFunction.cs:164`) logs `transcribe: re-analysed note {Note} → {Outcome}` at **Information** — including when the outcome is `ServiceUnavailable`. Success-sounding wording for a failure |
+| Server, error path | The outer `catch` at `:168` (`transcribe: re-analysis failed…`, Error) never fires for the common case: `NoteAnalysisService` catches Bedrock/`InvalidOperationException`/`TimeoutException` and **returns** `ServiceUnavailable` rather than throwing (`src/Api/Services/NoteAnalysisService.cs:66-72`) |
+| Alarms | The shared service does emit `AnalysisFailed` and an Error log in the completion Lambda's group, so the signal is not absent — but nothing ties it back to the user, and nothing tells them |
+
+**Fix direction:** treat a non-`Analysed` outcome in `MaybeAnalyseAsync` as a failure — log it at Warning/Error naming the outcome, and give the user a way to find out (the note has no summary and no explanation). Consider whether the note should carry a "not analysed" state the UI can show, rather than looking identical to a note nobody asked to analyse.
+
+**Not a theory of [BUG-77]'s trigger.** This was found by reading the code while documenting what BUG-77's browser-side record does *not* cover. Whether the 2026-08-10 occurrence came through this path is unknown and unevidenced — the two share a symptom, nothing more.

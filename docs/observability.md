@@ -96,7 +96,17 @@ To trace a request:
 | Who ran it | Where its failure shows |
 |---|---|
 | The browser — the *Analyse note* button, the *Generate final notes* button, or the analyse that runs on its own after a recording stops | The `analyseFailed` custom event, below. All three route through `reportAnalyseFailure`; there is no fourth caller of `analyseNote` in `web/src` |
-| The server — the transcript-completion Lambda re-analyses when auto-analyse was on and a speaker-separation job was in play, and in that case the browser **deliberately does not analyse at all** | `Analysis failed for note {NoteId}` in the Lambda logs. **No `analyseFailed` event exists for this path**, by construction — nothing failed in the browser |
+| The server — the transcript-completion Lambda re-analyses when auto-analyse was on and a speaker-separation job was in play, and in that case the browser **deliberately does not analyse at all** | The **TranscribeCompletion** Lambda's log group. **No `analyseFailed` event exists for this path**, by construction — nothing failed in the browser |
+
+**The log group is the discriminator, never the message.** `Analysis failed for note {NoteId}` comes from the shared analysis service, so it appears in whichever Lambda ran the analysis — the Api Lambda's group for a browser-initiated analyse, the TranscribeCompletion group for a server-side one. The string alone cannot tell you which analyser ran.
+
+In the TranscribeCompletion group, read the outcome line, not just the error level:
+
+| Line | Level | Means |
+|---|---|---|
+| `transcribe: re-analysed note {Note} → ServiceUnavailable` | **Information** | The common failure. Bedrock or the deadline failed, the service returned rather than threw, and the wording reads like a success. `Analysis failed for note {NoteId}` sits alongside it at Error, from the shared service |
+| `transcribe: re-analysis failed for note {Note} (transcript already updated)` | Error | An *unexpected* fault only — the outer catch. Absent for the common case above |
+| `transcribe: re-analysed note {Note} → Analysed` | Information | Genuinely succeeded |
 
 For a browser-side failure, `analyseFailed` is the only record when the request never reaches the gateway — exactly the case that left the first live occurrence undiagnosable (BUG-77).
 
