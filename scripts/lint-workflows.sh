@@ -101,7 +101,35 @@ else
     tmp=$(mktemp -d) || unavailable "could not create a temp dir"
     trap 'rm -rf "$tmp"' EXIT
     echo "  ↓ fetching actionlint $VERSION ($arch)..."
-    curl -sSfL --max-time 120 -o "$tmp/$tgz" "$url" || unavailable "download failed: $url"
+    # Retried, because this download sits on the critical path of a check that now runs on
+    # every push to main (TI-80), and one blip used to paint a red X on a commit that broke
+    # nothing — the exact signal TI-69 taught this repo to stop reading. A guard against
+    # false red X's must not have one of its own. (TI-84)
+    #
+    # --retry on its own only covers curl's "transient" set: timeouts and HTTP 408/429/5xx.
+    # An outage arrives just as often as a reset connection, a TLS handshake failure or a
+    # DNS miss, and none of those are in it. --retry-all-errors covers them, and is safe
+    # here ONLY because the checksum two lines below is what decides whether the bytes are
+    # trusted — no number of retries can turn a bad download into an accepted one. Its one
+    # cost is that a genuinely absent release (a mistyped VERSION) now fails after 4 quick
+    # attempts instead of 1, which is ~6s on a case that fails either way. It landed in
+    # curl 7.71 (2020), and an older curl rejects the whole command line rather than the
+    # single flag, so probe for it rather than assume it. Probed via a variable, not a
+    # pipe: `curl ... | grep -q` can leave curl on SIGPIPE, and `pipefail` would then read
+    # the successful match as a failure.
+    #
+    # Measured, not assumed: --max-time is applied PER ATTEMPT under --retry, not across
+    # the set — a server stalling the first two of three requests under
+    # `--max-time 3 --retry 2 --retry-delay 1` returned exit 0 after 8s of wall clock. So
+    # the worst case here is 4 x 45s + 3 x 2s = 186s, which fits inside the 5-minute
+    # timeout-minutes on the job that runs this. Raising --max-time means redoing that sum;
+    # 45s is already a 45 KB/s floor on a 2 MB file, and failing an attempt fast is what
+    # lets the retry help at all.
+    retry_flags=(--retry 3 --retry-delay 2 --retry-connrefused)
+    curl_help=$(curl --help all 2>/dev/null) || curl_help=""
+    case "$curl_help" in *--retry-all-errors*) retry_flags+=(--retry-all-errors) ;; esac
+    curl -sSfL --connect-timeout 10 --max-time 45 "${retry_flags[@]}" -o "$tmp/$tgz" "$url" \
+      || unavailable "download failed after 4 attempts: $url"
     echo "$tgz_sha  $tmp/$tgz" | sha256sum -c - >/dev/null 2>&1 \
       || tampered "checksum mismatch on $tgz"
     tar -xzf "$tmp/$tgz" -C "$tmp" actionlint || unavailable "could not extract $tgz"
