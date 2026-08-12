@@ -19,11 +19,14 @@ Ordered by severity, then by id.
 | BUG-77 | You finish a recording, the note is never analysed, and the only thing you are told is "Analysis failed. Please try again." The message is often wrong about what actually went wrong. | Open | TI-67, BUG-33 |
 | BUG-79 | An action item you add in the first second or two after making a note is silently thrown away for good, and while that happens everything else you do for the next half minute stops updating. | Open | — |
 | BUG-81 | Typing a title on a brand-new note and clicking Save can delete the note instead — the button changes from Save to Cancel under your cursor, and Cancel throws a new note away. | Open | — |
+| BUG-77 | You finish a recording and the note is never analysed. You are now told what actually stopped it — an unreachable server, a note that has gone, a service that is briefly down — instead of one catch-all sentence, and the failure is recorded so a repeat can be diagnosed. Why it happens at all is still unknown. | Open | TI-67, TI-78, BUG-33 |
+| BUG-79 | Something you just created — an action item, or a note — can be missing after you reload, and stay missing. Rare, but this is the one guarantee the app is built to make. | Open | — |
 | BUG-70 | Clicking "+ New Note" while recording and then choosing to keep recording still leaves a blank, untitled note behind on your home list. | Open — held behind 51-C | BUG-54, 51-C |
 | BUG-73 | Signing out while an on-device transcript is still finishing can park you for up to an hour with no way to leave — a real problem on a shared machine. | Open | BUG-55 |
 | BUG-75 | Reopening a note while its on-device transcript is still finishing shows no transcript, and nothing appears until you navigate again or reload. | Open | BUG-72 |
 | BUG-78 | A truncated or hand-edited sign-in link drops you at the sign-in screen and claims your browser is blocking storage — and the message comes back on every reload. | Open | BUG-71, BUG-60, BUG-15 |
 | BUG-80 | A topic you add from the agenda strip can land in an invisible checklist at the very top of the note — the header lists it, but you cannot find it in the note to edit it in place. | Open | BUG-76 |
+| BUG-82 | After a recording with speaker separation, the note can end up never analysed with nothing said on screen and nothing recorded as an error — the same silent outcome BUG-77 is about, on the half BUG-77's fix cannot reach. | Open | BUG-77 |
 
 Further bugs will be appended as they are identified.
 
@@ -35,7 +38,22 @@ Further bugs will be appended as they are identified.
 
 **Severity:** High — a core action fails with an explanation that can be actively misleading, and nothing is recorded when it happens. **Status:** Open. **Hit live** 2026-08-10 ~14:50Z on the desktop app (`1.0.0-20260810.196`); the same note analysed fine 30 minutes later.
 
-**Confirmed defect — the mis-reporting.** `RecordControl.tsx:73` catches with a bare `catch {}` and discards the error, so a dead network, an expired sign-in, a refused request and a parse error all print one sentence that names the wrong subsystem and advises a retry that may be incapable of working. Compounded by [TI-67] (RUM `CustomEvents: DISABLED` in prod), so nothing client-side is recorded either. **This half is fixable now, independently of the trigger:** keep the status and message, and let an unauthenticated result say *sign in again* rather than blaming analysis.
+**Confirmed defect — the mis-reporting. Fixed, PR #472.** `RecordControl.tsx:73` caught with a bare `catch {}` and discarded the error, so a dead network, an expired sign-in, a refused request and a parse error all printed one sentence that named the wrong subsystem and advised a retry that may have been incapable of working. `NoteView.handleGenerateFinalNotes` — the app's *second* way of asking for an analysis — had the same bare catch and its own catch-all sentence. Compounded by [TI-67] (RUM `CustomEvents: DISABLED` in prod), so nothing client-side was recorded either.
+
+**What the fix changed:**
+
+| Now | Detail |
+|---|---|
+| The message names the real failure | Unreachable server → *check your connection*; server fault → *temporarily unavailable*; missing note → *no longer exists*, with the retry advice dropped where a retry cannot work |
+| Both entry points report the same way | `RecordControl` (button + the automatic post-recording analyse) and `NoteView`'s *Generate final notes* both route through `reportAnalyseFailure`. Two paths reporting two different ways is how this stayed invisible |
+| Every **browser-side** failure emits `analyseFailed` to RUM | `kind`, `status`, `sent`, `elapsedMs`, `trigger`, `noteId`, `online`, truncated `detail`. Query in [observability.md](../observability.md#why-did-a-notes-analysis-fail) |
+| A request that never left the browser is distinguishable from one the server refused | `apiFetch`'s synthetic pre-flight 401 is tagged by identity (a module-private `WeakSet`), surfaced as `ApiError.notSent` → `sent: false`. Both are 401 and neither reaches the gateway, so nothing else could tell them apart |
+
+**The auth and forbidden arms are a fallback the user will not normally see** — any 401 whose refresh fails, and any 403, trips `triggerUnauthorized`/`triggerForbidden` first, and `App.tsx` replaces the whole screen with the session-expired banner. Verified by reading the chain (`client.ts` → `AuthContext` → `App.tsx:80`), not measured. The record still lands, which is the part that matters here.
+
+**The server-side re-analysis is NOT covered, by construction.** When auto-analyse is on and a speaker-separation job is in play, the browser deliberately defers and the transcript-completion Lambda analyses instead — nothing fails in the browser, so no `analyseFailed` can exist. That path fails into the **TranscribeCompletion** Lambda's log group — and its common failure is logged at *Information* as `transcribe: re-analysed note {Note} → ServiceUnavailable`, which reads like a success. **Do not read an absent event as "the analysis never ran"** — establish which analyser ran first; [observability.md](../observability.md#why-did-a-notes-analysis-fail) opens with that split and with which log lines mean what. Stated as a coverage boundary only; it is **not** offered as a theory of the trigger.
+
+**Two further reasons the browser record is not yet conclusive.** No `analyseFailed` has ever been observed arriving in prod — [TI-67] proved the channel with a different event, and this one is unwatched until it fires. And until [TI-78] lands, the RUM client's default `sessionEventLimit` of 200 drops custom events late in a long session, which is exactly when a post-recording analyse happens. Treat an absent record as unproven, not as evidence the failure did not occur.
 
 **Trigger — still open, and a previous diagnosis is retracted.** An earlier version of this row asserted the cause was a terminally expired sign-in. **That was wrong.** The reasoning was that `apiFetch` (`client.ts:112-118`) pre-flights every call and, if the JWT is expired and the silent refresh fails, returns a synthetic `new Response(null, {status:401})` **without sending** — which would produce exactly this silent, traceless failure — and the refresh endpoint was observed failing every time.
 
@@ -51,7 +69,7 @@ What killed it: the session was never invalid. `CompleteTranscription` succeeded
 | The analyse path is slow | The 15:19 success took ~15 s end to end, including a **4.4 s** ICS calendar fetch before Bedrock. Whether a client-side deadline interacts with that is untested |
 | The single `4xx` at 14:49Z cannot be attributed | Access logging is `None` on `$default`, and X-Ray's Lambda segments carry no HTTP URL |
 
-**Do instrumentation before any further theory** — widen the catch and land [TI-67]. A second occurrence is otherwise as blind as the first. [TI-63] and [BUG-58] are not ruled out as cleanly as first recorded: both would log *if the request arrived*, and arrival is exactly what is unestablished.
+**Do instrumentation before any further theory** — done: the catch is widened and [TI-67] has landed, so the channel is live. **No theory of the trigger has been advanced by this work and none should be inferred from it.** The next occurrence is the evidence; until one arrives with an `analyseFailed` record against it, the cause is unknown. [TI-63] and [BUG-58] are not ruled out as cleanly as first recorded: both would log *if the request arrived*, and arrival is exactly what is unestablished — `sent` on the new record is the field that settles it.
 
 **Process note:** two sessions in sequence stated a cause with more confidence than the evidence carried, and it reached the human as fact. The disconfirming datum — an authenticated call succeeding inside the same window — was present in the log being read at the time.
 
@@ -202,3 +220,24 @@ Worth keeping for two reasons. The failure was the same shape as the bug — som
 Reproduced against a real editor: adding `Renewals` to that body yields `- [ ] \n- [ ] Renewals\n\n- Shopping\n  - [ ] Milk\n\n- [ ] Bread` and a topic list of `Renewals, Milk, Bread`. When there is no stray list — `- Shopping` / `  - [ ] Milk` — placement is already correct and the item joins the nested checklist.
 
 **Fix direction:** choose the target list from a `taskList` that actually yields a countable topic, falling back to the first one only when none does. That makes the function's name true and puts the new topic with the ones on screen. The blockquote exclusion must survive: a quoted checklist is never a target, because the walk never reads it.
+
+---
+
+## BUG-82 — A server-side re-analysis can fail silently, with a log line that reads like success
+
+**Severity:** Medium — same user-visible outcome as [BUG-77] (a recording that never gets analysed, no explanation), on the path BUG-77's fix cannot cover. **Status:** Open. Found by review of [BUG-77] (PR #472); **pre-existing**, not a regression from it.
+
+**Symptom:** you finish a recording with speaker separation on and auto-analyse on. The note is never analysed. Nothing appears on screen — no error, no retry prompt — because the browser deliberately handed the analysis to the server and has nothing to report.
+
+**Why nothing surfaces it:**
+
+| Layer | What happens |
+|---|---|
+| Browser | `RecordControl` defers the on-Stop analyse while diarization is `refining`/`timedOut` (33-B2, correct — the server re-analyses on the winning transcript). No request, so BUG-77's `analyseFailed` event cannot exist here, by construction |
+| Server | `MaybeAnalyseAsync` (`src/TranscribeCompletion/TranscribeCompletionFunction.cs:164`) logs `transcribe: re-analysed note {Note} → {Outcome}` at **Information** — including when the outcome is `ServiceUnavailable`. Success-sounding wording for a failure |
+| Server, error path | The outer `catch` at `:168` (`transcribe: re-analysis failed…`, Error) never fires for the common case: `NoteAnalysisService` catches Bedrock/`InvalidOperationException`/`TimeoutException` and **returns** `ServiceUnavailable` rather than throwing (`src/Api/Services/NoteAnalysisService.cs:66-72`) |
+| Alarms | The shared service does emit `AnalysisFailed` and an Error log in the completion Lambda's group, so the signal is not absent — but nothing ties it back to the user, and nothing tells them |
+
+**Fix direction:** treat a non-`Analysed` outcome in `MaybeAnalyseAsync` as a failure — log it at Warning/Error naming the outcome, and give the user a way to find out (the note has no summary and no explanation). Consider whether the note should carry a "not analysed" state the UI can show, rather than looking identical to a note nobody asked to analyse.
+
+**Not a theory of [BUG-77]'s trigger.** This was found by reading the code while documenting what BUG-77's browser-side record does *not* cover. Whether the 2026-08-10 occurrence came through this path is unknown and unevidenced — the two share a symptom, nothing more.

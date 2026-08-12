@@ -23,6 +23,13 @@ name: Repo Checks
 # pr.yml paths-ignores scripts/**, so every past edit to the merge gate shipped
 # unexercised.
 #
+# The `push:` trigger (TI-80) closes the other half of all three. A pull request is not
+# the only way into `main`: CLAUDE.md routes doc edits straight there, and every one of
+# the paths below is reachable by a direct commit. Until this trigger existed, a workflow
+# file pushed to `main` was linted by nothing anywhere — `.githooks/pre-commit` had been
+# the last (opt-in, per-clone) defence and it was deleted on 2026-08-11. That is the exact
+# route TI-69 shipped through, so the two triggers carry the same `paths:` list.
+#
 # Deliberately narrow: it does not build, test, or deploy anything. Grep + a stubbed
 # shell test + one Go binary, well under a minute. Both jobs run whenever any listed
 # path changes — a docs-only PR also pays ~6s of actionlint and a workflow-only PR also
@@ -52,8 +59,40 @@ on:
       # so the metadata check runs when one changes. See scripts/lint-workflows.sh's header.
       - ".github/actions/**"
 
+  # TI-80. The same set of paths, deliberately re-typed: GitHub Actions does not support
+  # YAML anchors, so there is no way to share one list between two triggers. The only
+  # difference is that the pull_request list's ".github/workflows/docs-check.yml" entry is
+  # not repeated — ".github/workflows/**" already matches it; it survives above only
+  # because neither side of a merge wanted to drop a line. Keep these in step: a path
+  # added to one and not the other is guarded on the PR route and unguarded on the push
+  # route, which is the failure this trigger exists to remove.
+  push:
+    branches: [ main ]
+    paths:
+      - "docs/phases/phase-bugs.md"
+      - "docs/phases/phase-minor-changes.md"
+      - "docs/technical-improvements.md"
+      - "docs/roadmap.md"
+      - "scripts/check-doc-ids.sh"
+      - "scripts/merge-gate.sh"
+      - "scripts/deploy-status.sh"
+      - "scripts/test-merge-gate.sh"
+      - "scripts/lint-workflows.sh"
+      - ".github/workflows/**"
+      - ".github/actions/**"
+
+# Keyed by head branch on a pull request, so a newer commit cancels the superseded run —
+# only the latest commit's checks matter there.
+#
+# On a push there is no head_ref, and keying by `github.ref` would put every push to
+# `main` in ONE group with cancel-in-progress — so a second merge landing a minute after
+# the first would CANCEL the first's lint, and a cancelled run is not a failing run. The
+# broken workflow would reach `main` unlinted, which is precisely TI-80's hole reopened.
+# Merges land minutes apart here routinely. Keying by `github.sha` gives each pushed
+# commit its own group: no push can cancel another, and every commit that reaches `main`
+# is linted exactly once.
 concurrency:
-  group: docs-check-${{ github.head_ref || github.ref }}
+  group: docs-check-${{ github.head_ref || github.sha }}
   cancel-in-progress: true
 
 permissions:
