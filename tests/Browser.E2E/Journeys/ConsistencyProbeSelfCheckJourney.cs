@@ -46,14 +46,16 @@ public sealed class ConsistencyProbeSelfCheckJourney(BrowserFixture browser) : I
         await _app.GotoAsync();
         await _app.ClickNewNoteAsync();
 
-        // A write leaves a consistency token behind; the helper seeds it back before reloading so
-        // the gated arm does not have to win a race with the app's own refetch to exist.
-        await _app.AddActionItemAsync($"probe gated {Guid.NewGuid():N}"[..24]);
-        var gated = await _app.ObserveActionsReadTokenAsync();
-
-        // Re-seed a token, then delete it — the same reload, one manipulation apart.
+        // UNGATED ARM FIRST, and the order is load-bearing. The gated arm seeds its token with an
+        // init script, and Playwright cannot remove an init script once added — so it must run
+        // second, or it would re-seed the control's reload and there would be no control left.
         await _app.AddActionItemAsync($"probe ungated {Guid.NewGuid():N}"[..24]);
         var ungated = await _app.ObserveActionsReadTokenAsync(dropPersistedTokens: true);
+
+        // GATED ARM. One manipulation apart from the arm above: the token the app itself issued is
+        // present for this reload and absent for that one.
+        await _app.AddActionItemAsync($"probe gated {Guid.NewGuid():N}"[..24]);
+        var gated = await _app.ObserveActionsReadTokenAsync();
 
         // Reaching here means both arms observed a real request: ObserveActionsReadTokenAsync
         // THROWS when it recorded no read, rather than returning a sentinel the comparisons below

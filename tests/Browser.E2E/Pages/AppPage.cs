@@ -812,6 +812,14 @@ public sealed class AppPage
     // the app's stored read-your-writes tokens first, which manufactures a known-ungated read: the
     // control that proves the probe reports the two states differently rather than reporting the
     // same thing twice. Without a control, a probe that always answered "gated" would look correct.
+    //
+    // The gated arm seeds the token through an INIT SCRIPT, not a plain write, and that detail is
+    // the whole difference between a 50% flake and a deterministic check. Writing the key into the
+    // live page before reloading loses a race the test cannot see: adding an action invalidates the
+    // actions query, the refetch is still in flight, and when it returns non-stale `gatedRead`
+    // CLEARS the very key just written. An init script runs in the NEW document before any app code,
+    // so nothing is alive to clear it. (Two wrong diagnoses were paid for before this one: "the app
+    // sends two reads and we sampled the second" was refuted by `reads=1` in the arm's own dump.)
     public async Task<string> ObserveActionsReadTokenAsync(bool dropPersistedTokens = false)
     {
         await page.RouteAsync("**/actions*", RecordActionsRead);
@@ -892,9 +900,13 @@ public sealed class AppPage
                                 $"page.Url={page.Url}");
 
         var key = $"ryw.latest.actions:{match.Groups[1].Value}";
-        await page.EvaluateAsync(
-            "([k, v]) => sessionStorage.setItem(k, v)",
-            new[] { key, token });
+        // Init script, deliberately — see the note on ObserveActionsReadTokenAsync. It runs in the
+        // next document before app code, so the in-flight refetch on the CURRENT page cannot clear
+        // what we are seeding. Init scripts cannot be removed, which is why the caller runs the
+        // UNGATED arm first: by the time this is installed, the control has already been taken.
+        await page.AddInitScriptAsync(
+            $"try {{ sessionStorage.setItem({System.Text.Json.JsonSerializer.Serialize(key)}, " +
+            $"{System.Text.Json.JsonSerializer.Serialize(token)}); }} catch {{}}");
     }
 
     // Both arms' evidence, each captured as it ran. Prefer this over Probe.Describe() in any
