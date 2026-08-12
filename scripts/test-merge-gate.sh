@@ -523,7 +523,13 @@ argv=$(cat "$STUB/argv")
 scope_bad=""
 grep -q -- "--workflow deploy.yml" <<<"$argv" || scope_bad="the run query is not scoped to a workflow; saw: $argv"
 grep -q -- "--branch main" <<<"$argv" || scope_bad="$scope_bad; the run query is not scoped to main; saw: $argv"
-report "the run query is scoped to main's deploy workflow" "$scope_bad" "$argv"
+# The window size is the quiescence rule. CLAUDE.md names `--limit 1` as unsafe by itself — a
+# completed+success run can be re-run, flipping back to in_progress, so a single-run poll can
+# catch a transient green mid-re-run. It was the one flag in this query with no assertion:
+# narrowing it to `--limit 1` left all 54 cases green, because every fixture window is small
+# enough that the verdict does not change. Asserted here rather than inferred from behaviour.
+grep -qE -- "--limit [5-9]|--limit [1-9][0-9]" <<<"$argv" || scope_bad="$scope_bad; the run query does not request a multi-run window, so quiescence cannot be evaluated; saw: $argv"
+report "the run query is scoped to main's deploy workflow, over a window" "$scope_bad" "$argv"
 
 # And the workflow argument must be the one the caller passed, not a hardcoded default that
 # happens to match it.
