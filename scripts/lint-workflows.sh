@@ -129,7 +129,7 @@ else
     curl_help=$(curl --help all 2>/dev/null) || curl_help=""
     case "$curl_help" in *--retry-all-errors*) retry_flags+=(--retry-all-errors) ;; esac
     curl -sSfL --connect-timeout 10 --max-time 45 "${retry_flags[@]}" -o "$tmp/$tgz" "$url" \
-      || unavailable "download failed after 4 attempts: $url"
+      || unavailable "download failed, retries exhausted: $url"
     echo "$tgz_sha  $tmp/$tgz" | sha256sum -c - >/dev/null 2>&1 \
       || tampered "checksum mismatch on $tgz"
     tar -xzf "$tmp/$tgz" -C "$tmp" actionlint || unavailable "could not extract $tgz"
