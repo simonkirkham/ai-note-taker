@@ -96,6 +96,7 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 | TI-83 | **A path added to `docs-check.yml`'s PR trigger but not its push trigger is guarded on pull requests and silently unguarded on direct commits to `main`, which is the route that has no other check** | 🔲 **Open** — raised 2026-08-11 (Hawk, PR #471 / [TI-80], classified should-fix). GitHub Actions has no YAML anchors, so the `paths:` list is necessarily typed twice; the two are in sync today (checked by hand at merge) and nothing but a comment keeps them so. The asymmetry is what makes it worth a check rather than a note: drift on the PR side is loud (a check stops appearing on PRs), drift on the push side is silent, and the push side is the one covering the route with no other guard. **A second reviewer found the better fix — subtraction, not a checker.** Drop `paths:` from the **push** trigger entirely. `actionlint` lints the whole tree regardless of which files changed, so the list never scoped the lint — it only gated whether the job ran at all. Removing it deletes the drift class rather than policing it, and costs ~25s of parallel runner time per push to `main`. **It also closes a live gap, filed here rather than separately because one fix closes both:** `scripts/check-doc-ids.sh` reads `docs/phases/phase-bugs-archive.md` for two of its checks (duplicate `## BUG-N` entries; a bug living in *both* the live doc and the archive), and that file is in **neither** `paths:` list — verified 2026-08-11. So a commit touching only the archive skips the check, and archiving is a **Scribe** step that commits straight to `main`, which is the route with no other guard. **Alternative if `paths:` is kept:** assert `push.paths ⊇ pull_request.paths` (modulo the self-referencing `docs-check.yml` entry) in a sibling of `scripts/test-merge-gate.sh`, on the [TI-77] precedent — plus add the archive path to both lists. **Raised by:** Hawk on PR #471, two independent reviews, findings 2 and 3. |
 | TI-82 | **247 merged branches sit on the remote because the documented merge step silently fails to delete them, and the docs said that failure was harmless** | 🔲 **Open** — raised 2026-08-11 ([TI-80] session, from the coordinator's measurement). Detail in [TI-82](#ti-82-the-documented-merge-step-deletes-neither-branch) below. |
 | TI-78 | **A browser fault that happens late in a long session still goes unreported, and nothing says so** | 🔲 **Open** — raised 2026-08-11 ([TI-67] review). The injected RUM snippet in `.github/workflows/deploy.yml` never sets `sessionEventLimit`, so the client default of **200** applies: `canRecord()` is `session.record && !isLimitExceeded()`, and `isLimitExceeded()` is `session.eventCount >= 200`. With `telemetries: ["errors","performance","http"]` at `sessionSampleRate: 1`, HTTP and performance events alone can exhaust that inside one 30-minute session — after which **every** custom event is dropped silently (`sessionLimitExceeded++`, nothing logged). This lands hardest on exactly the signals [TI-67] just enabled, because faults tend to happen *after* someone has been working a while, and it is the same self-concealing shape TI-67 existed to fix. **Fix:** set `sessionEventLimit` explicitly in the snippet (0 = unlimited), and confirm by reading an event back late in a session rather than by reading the config. |
+| TI-81 | **Nobody can merge for the best part of an hour — the merge gate reports a deploy in progress that actually finished successfully 51 minutes earlier** | 🔲 **Open** — raised 2026-08-11, hit live on deploy #762. Detail in [TI-81](#ti-81-an-orphaned-run-record-blocks-the-merge-gate-for-tens-of-minutes) below. |
 | TI-86 | **Nothing can be merged: every pull request's build now fails on a security advisory in a package no code here calls** | 🔲 **In Progress** — raised 2026-08-13 (hit by [CHANGE-41], PR #475). GitHub published GHSA-q939-rpr3-3284 against **SSH.NET 2025.1.0** (high — a malicious SCP server can write arbitrary files during a recursive download). It arrives transitively via `Testcontainers.DynamoDb`, and `NuGetAudit` + `TreatWarningsAsErrors` turns it into **NU1903**, which fails `dotnet build ai-note-taker.sln`. So a package used by nothing in this repo stops every merge and every deploy, on PRs that never touched .NET. **Testcontainers 4.12 and 4.13 both still pin 2025.1.0** (checked against their nuspecs), so upgrading it does not help. **Fix:** a direct `PackageReference` to SSH.NET **2026.0.0** in `tests/EventStore.Integration`, which is the only way to lift a transitive version; remove it once Testcontainers ships the patched version itself. |
 | TI-87 | **A dropped connection while installing dependencies paints a red X on a pull request that did nothing wrong** | 🔲 **Open** — raised 2026-08-13 (hit by [CHANGE-41], PR #475, run [31677449442](https://github.com/simonkirkham/ai-note-taker/actions/runs/31677449442)). The `desktop` job's `npm --prefix desktop ci` runs Electron's `postinstall`, which downloads the ~100 MB Electron binary from GitHub releases. One `RequestError: socket hang up` failed the job in 17 s; a plain re-run passed with nothing changed. **Same class as [TI-84]** — an unretried, uncached network fetch turning a transient blip into a red check — and the same two fixes apply: retries (`npm config set fetch-retries` does **not** cover Electron's own download; it reads `ELECTRON_GET_...` / needs a retry wrapper) and an `actions/cache` on the Electron download cache keyed by version, which also removes a ~60 s download from every run. **Worth fixing together with [TI-84]**, since one cache-and-retry pass covers both. |
 
@@ -447,6 +448,102 @@ The tier that catches what [TI-59] cannot: latency and the whole capture→engin
 **Deploy-time delta:** none — pure refactor of existing handler code.
 **Raised in:** Hawk review of PR #446 (50-B), 2026-08-10.
 **Depends on:** —
+
+---
+
+## TI-73. The pre-commit gate is unbounded across sessions
+
+**What it costs:** your commit fails on tests you never touched, after a full-suite wait, because another session happened to be committing at the same time. The failure names *their* files, so the session that sees the red is not the session that caused it — and the honest response to a failure in an untouched file (file it as a high-priority bug, per `CLAUDE.md`) is exactly the wrong one here. A false red gate is worse than a slow one: it burns a full suite run, then sends someone hunting a defect that does not exist.
+
+**Observed 2026-08-10**, across two sessions driving four slices between them:
+
+| Fact | Value |
+| --- | --- |
+| Concurrent `vitest run` processes | 4 |
+| Load average | 16.54 on 16 cores |
+| Failing tests | `imageMarkdownRoundTrip`, `taskListMarkdownRoundTrip` — both `web/src/lib` |
+| Failure shape | `Test timed out in 5000ms` — timeouts, not assertion failures |
+| Touched by the committing slice? | **No** — neither file was in its diff |
+| Result in isolation, minutes later | **13/13 pass** |
+
+Measured again ~90 min later, independently, by the other session — the fuller picture, and the reason a vitest-only count understates it:
+
+| Processes | Count |
+| --- | --- |
+| `vitest run` | 7 |
+| `dotnet test` | 3 |
+| MSBuild | **28** |
+| Load | 11.3 instant, **18** on the 15-min average, 16 cores |
+
+**Why [TI-68] does not cover this.** TI-68 capped `web/vite.config.ts` to `maxWorkers: 2` and fixed the single-suite case decisively (uncapped+contended failed in 3 independent runs; capped has never failed in 13+). But the cap bounds **one suite**, not the machine. N sessions × (2 vitest workers + a node process + `tsc` + `eslint`) is unbounded by design, and the backend half is worse: only `Analysis.Eval` and `Infrastructure.Assertions` disable xUnit parallelism, so a frontend-only slice still triggers an uncapped backend run through the hook. TI-68's own row makes the matching point from the other side — *"two capped runs are 4 workers on 16 cores, which is not a contended condition"* — which is true, and is precisely why four of them is.
+
+This is [BUG-69] recurring above the level TI-68 fixed. BUG-69 is closed correctly; its fix was right for one machine, one session.
+
+**Fix direction, cheapest first:**
+
+1. **Make the hook wait rather than fail — and gate on LOAD AVERAGE, not a process count.** At the top of `.githooks/pre-commit`, sleep-and-recheck against a bounded deadline with a clear message, instead of running straight into contention. Waiting is strictly better than a false red — the commit was going to take minutes anyway. **Bound the wait** (~10 min, then proceed anyway): an unbounded wait stalls a session rather than saving one. Use:
+
+   ```bash
+   awk -v c=$(nproc) '{ printf "%.2f\n", $1/c }' /proc/loadavg   # ratio ≳ 1.0 = saturated
+   ```
+
+   **Load average is preferred for one reason only: it sees every kind of competing work without anyone having to enumerate it.** That is the failure that started this — a `vitest run` count is blind to the backend, and the hook runs xUnit too; the measurement above found 7 vitest processes beside 3 `dotnet test` and 28 MSBuild, so a session polling only vitest sees a quiet box while 31 backend processes fill it. **A `pgrep -f` count in the hook is a legitimate alternative**, not a ruled-out one — see the correction below before discarding it.
+
+   **Correction — `pgrep -f` is sound in the hook; it is the agent-side ad-hoc check that is not.** An earlier version of this row claimed `pgrep -fc` self-matches and is therefore never zero. **That was wrong.** The real mechanism: the Claude Code wrapper shell runs as `/bin/bash -c source …snapshot… && eval '<the entire command text the agent typed>'`, so its cmdline contains every pattern in that command and `pgrep -f` legitimately matches *it*. Measured on an idle box:
+
+   | How the pattern reaches pgrep | Result |
+   | --- | --- |
+   | Typed on an agent's tool command line | `count=1`, exit 0 — the wrapper |
+   | Confined to a script, run as a bare path | **`count=0`, exit 1** — correct |
+
+   `.githooks/pre-commit` is invoked by git as a bare path, so nothing carries the pattern on a command line and the count is honest. The inflation is an artefact of *invocation*, not of pgrep — and it is not a constant: on the real pattern the count was 31, of which **3** were wrapper shells (one per concurrent agent shell), so a naive "subtract one" would also have been wrong.
+
+   **This cannot be A/B-tested on a single command line** — put the bracketed and naive forms in one command and the wrapper's cmdline contains both literals, so both match. The same confounder invalidated the first script-based test here: the script was clean, but a control `pgrep` left in the *same* command block put the needle back on the wrapper's cmdline and returned 1 again. Only running the script alone, with the pattern appearing nowhere else, gives the true answer.
+2. **Or take a lock** around the heavy gate (`flock` on a file under the repo root), so the suites serialise across worktrees by construction rather than by politeness.
+3. **Not "raise the timeout"** — that hides the contention and slows the honest failure case.
+
+**Verify with:** start a full suite in one worktree, then commit from another. Today the second run fails on files the second worktree never touched; after the fix it must wait and then pass. Confirm the guard actually fires — a wait that never triggers looks identical to no wait at all ([BUG-65]'s guards-that-cannot-fire shape).
+
+**CI cannot prove this one — a manual demonstration is the only evidence.** `pr.yml:12` paths-ignores `.githooks/**` (and `scripts/**`), so **no check runs against this file on any PR**. A green PR here means nothing was tested, not that the change works. So the acceptance evidence is a hand-run red/green pair plus an injected defect: show the second commit failing today, show it waiting and passing after, then remove the guard and show it failing again. This is the [CLAUDE.md] "a mechanism nobody has watched work is not working" case, with the usual safety net removed — and the same blind spot that let [TI-69] sit unparsed for 162 pushes.
+
+**Note for whoever takes it:** [TI-64] merged 2026-08-10 (068c97d7), so `.githooks/pre-commit` is free. Two things TI-64 changed in it: the three Lambda publishes are now guarded by `test -f` so they only run when absent, and the hook is the sole place that logic lives. Interim mitigation already in use across sessions: agents poll `pgrep -fc 'vitest run'` before committing and treat a timeout in an untouched file as contention, not a defect.
+
+---
+
+## TI-81. An orphaned run record blocks the merge gate for tens of minutes
+
+**What it costs:** every session on the machine is told `IN PROGRESS — wait, do not merge` about a deploy that finished successfully the best part of an hour earlier. It clears on its own, so the standing cost is not a permanent stall but a long false red on the one gate every session has to pass — and the workarounds it invites are merging past the gate or cancelling a run that succeeded, both worse than the wait.
+
+**Observed live, 2026-08-11.** At **15:16:19Z** `bash scripts/deploy-status.sh` printed `IN PROGRESS (#762 status=in_progress) — wait, do not merge` (exit 1) while #763 was already `completed`/`success`. All five of #762's jobs were `completed`/`success` — `deploy-production` finished at **14:25:21Z**, 51 minutes earlier — but the run's own `updated_at` was **14:24:22Z**, 59 seconds *earlier* than its last job completed. The record had not been touched since before its own work finished: a GitHub-side stall, not a stuck deploy. Deploys themselves were healthy; #763 ran and completed normally throughout.
+
+**It settles on its own.** By the next reading at **15:49:39Z** the gate returned `GREEN (#763)` and #762 was `completed`/`success` with `updated_at` 15:38:55Z. So the correct framing is *a false red lasting tens of minutes*, not a record that never settles — an earlier draft of this row said "will never report itself finished", which is wrong and points at the wrong remedy.
+
+**Why the gate cannot see it.** `deploy-status.sh` enforces quiescence across the last 5 runs: any run not in a finished state means "in progress". That rule is load-bearing and stays — a `completed`+`success` run can be **re-run**, flipping it back to `in_progress`, so a `--limit 1` poll can catch a transient green mid-re-run. A stalled record satisfies that rule for as long as it stays stalled.
+
+**Fix — an allow-list of the two states that mean safe, not a list of the ways a run can be unsafe:**
+
+| # | Safe state | Conditions |
+| --- | --- | --- |
+| 1 | Normal | run `status == completed` **and** `conclusion == success` |
+| 2 | Stalled record | run status is a **known** not-finished state, **and** the jobs response is complete (`len == total_count`), **and** every job `completed`+`success`, **and** `pending_deployments` empty, **and** **both** `updated_at` and the newest job completion older than 10 minutes |
+
+Everything else blocks and prints the raw values it saw. A **genuinely failed** job (`failure`/`timed_out`/`startup_failure`) is reported `NOT SAFE`, naming the job — never discounted. `cancelled` and `action_required` block *without* a failure verdict: the busy `deploy` concurrency group cancels the pending run rather than queuing it, so cancelled means superseded far more often than broken, and blaming main for it is the [TI-77] defect one screen above its own fix.
+
+**The form is the point, and it is the whole lesson of this item.** **Six** separate clauses of this condition moved rather than closed while it was being written — a job count; pending environment approvals; job conclusions (where "terminal" silently admits `failure`, which would have reported **GREEN on a run whose `deploy-production` failed**); the run status, never inspected at all, so a **suspended** run was discounted and printed `GREEN — safe to merge` beside an older green; jobs-API **pagination**, page 1 read as the whole set; and the staleness **clock**, keyed on the one field this incident proved unreliable. Six positions, one shape: a value absent, unexamined, or admitting more than its name suggests. Excluding the unsafe states means enumerating everything that can go wrong, and that enumeration failed six times in a day; an allow-list fails **closed** on anything unanticipated, which is the property a merge gate wants. Four of the six were caught by review or by injecting a defect — **none** by reading the code and believing it.
+
+**A second clock, with its limits stated.** On #762 `updated_at` froze 59 seconds *before* the last job finished — it fails **early**, in the direction that admits a discount sooner than the truth warrants, so the newest job completion must be old as well. But it is **belt-and-braces, not a second independent guard**, and the difference matters to anyone relying on it: GitHub carries a re-run's already-successful jobs into the new attempt with their **original** `completed_at` (verified on runs #719/#717), so on a re-run the job clock is old by construction and `updated_at` is doing the work alone. Where the job clock does bite is a run whose jobs genuinely finished moments ago while the record already looks quiet.
+
+**Two clauses are latent, and that is precisely why they are tested rather than commented.** `pending_deployments` returns `[]` on every run today (no protection rules on `deploy-test`/`deploy-production`; checked on #762 and #763), and `deploy.yml` has 5 jobs so pagination cannot bite. Both fail **open** the day that changes — a required reviewer, or a matrix — and "not reachable today" written in a comment is exactly the artefact that stops anyone checking. Removing either guard turns its case red.
+
+**Cost:** two extra `gh api` calls (`/jobs`, `/pending_deployments`) **per not-finished run only**, short-circuiting so a run with a job still executing pays one, under a bounded 20s timeout so a hung connection cannot hang the gate silently ([TI-79]'s shape). A quiescent window — the normal case — pays nothing.
+
+**The discount is printed on the verdict line, never silent** — and cannot be forged: a `|` in a `gh` error used to shift the delimited handoff and print `[discounted: …]` on a run nothing had discounted.
+
+**CI cannot prove this by a green PR** — `pr.yml` paths-ignores `scripts/**`. Evidence is `scripts/test-merge-gate.sh`, **54 cases** (31 added here; `main` has 23, 0 removed), which `docs-check.yml` runs by name since [TI-77] — observed green in run [31621784486](https://github.com/simonkirkham/ai-note-taker/actions/runs/31621784486), whose log carries all 54 `PASS` lines including the newest cases by name, rather than inferred from a tick. The earlier citation here named a run that predated the cases it was cited for; the live readings above; and **fifteen injected defects**, each flipping only the cases that claim it while the targeted orphan case stays green.
+
+**Three of those injections exist because review found guards that were shipping untested**, and the pattern is worth more than the guards themselves: the newest-run sort (failure mode: `GREEN` on a window whose newest run had **failed**), a `JOBFAIL` message still accusing main for a run that was not main's latest, and a null `completed_at` whose obvious tidy-up turns a run that never reported a completion into `GREEN`. **In each round the defects were in code the PREVIOUS round had just added** — and one round's reword silently de-fanged a test the round before had written, leaving an injection that was quoted as biting while actually inert. So: re-run every injection after every change, and never carry one forward as evidence.
+
+**`filter=latest` is load-bearing, checked against real re-runs.** It is the API default, but `filter=all` returns every *attempt*: on real re-runs #719/#717 that is `total_count` 10 against 5. Dropping it does **not** trip the completeness guard — 10 jobs against a `total_count` of 10 is a complete response, and that guard's only message is `read N of M jobs`. What it trips is the **job allow-list**: the superseded attempt's failed job records arrive as if current, so a re-run that passed is reported `did not succeed`. Same false red, one clause over — and worth stating precisely, because round 3 raised this and the correction landed in the code comment and in neither of the two places it pointed at.
 
 ---
 
