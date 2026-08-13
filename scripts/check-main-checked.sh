@@ -59,9 +59,12 @@ set -uo pipefail
 COUNT="${1:-30}"
 REF="${2:-main}"
 
-# A commit pushed seconds ago has no check-suite YET. Ten minutes is far longer than suite
-# creation takes (seconds) and far shorter than the daily cadence this runs on, so it costs
-# nothing and removes the only real false-positive source.
+# A commit pushed seconds ago has no check-suite YET. Ten minutes is DERIVED, not measured:
+# suite creation is understood to take seconds, and ten minutes is far shorter than the daily
+# cadence this runs on, so the window costs nothing and removes the only real false-positive
+# source. Nobody has timed the gap between a push and its first check-suite; if a commit ever
+# shows up as UNCHECKED and then turns out to have been merely slow, that is the number to
+# measure rather than to raise on instinct.
 #
 # Measured against the COMMITTER date, which is the closest thing to a push time the commit
 # itself carries. The assumption that buys: a commit authored long ago but pushed just now

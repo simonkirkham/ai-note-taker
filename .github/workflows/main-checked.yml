@@ -22,9 +22,20 @@ name: Main Checked
 # makes it a backstop: it does not need to have been present when the commit landed.
 #
 # The trade is latency — a hole is found within a day rather than within a minute. That is the
-# right trade for a defect whose current detection latency is infinity, and the window is 50
-# commits deep against a repo doing roughly 15-20 commits a day, so a commit stays in scope for
-# two to three runs even during a busy stretch.
+# right trade for a defect whose current detection latency is infinity.
+#
+# But be honest about the window, because an earlier revision of this comment was not. It said
+# "roughly 15-20 commits a day, so a commit stays in scope for two to three runs" — that was
+# an ESTIMATE, and it does not survive measurement. MEASURED 2026-08-13 from the commit dates
+# of the last 100 commits on main:
+#
+#   2026-08-10  45     2026-08-12   5
+#   2026-08-11  36     2026-08-13  14 (partial day)
+#
+# So on a busy day the 50-commit window covers barely 27 hours — ONE scheduled run, not two or
+# three — and a hole that lands at the start of a 45-commit day can roll out of the window
+# before a second run ever sees it. On a quiet day it covers over a week. If a busier cadence
+# becomes normal, raise COUNT (the API pages at 100) rather than assuming the default covers it.
 #
 # --- NOTHING WATCHES THIS WORKFLOW. READ THIS BEFORE TRUSTING A QUIET WEEK ---------------
 #
