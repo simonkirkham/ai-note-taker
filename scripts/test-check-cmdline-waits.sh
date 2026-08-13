@@ -132,6 +132,27 @@ done
 SH
 run_case "counting the lines of ps aux is the same defect" 1 red-ps-aux-count.sh "red-ps-aux-count.sh:2" -
 
+# The same two forms with a hyphen, which procps accepts and people write constantly. Both were
+# GREEN one character away from red-ps-aux.sh and red-ps-ax.sh: branch (b) needed the aux/ax word
+# to follow whitespace and the hyphen blocked it, while branch (a) needed an `e` or a capital `A`
+# in the option list, which `-aux` and `-ax` do not have. Two fixtures, not one, so neither
+# spelling can regress on its own.
+fixture red-ps-hyphen-aux.sh <<'SH'
+#!/usr/bin/env bash
+while ps -aux | grep -q vitest; do
+  sleep 5
+done
+SH
+run_case "ps -aux, the hyphenated BSD form" 1 red-ps-hyphen-aux.sh "red-ps-hyphen-aux.sh:2" -
+
+fixture red-ps-hyphen-ax.sh <<'SH'
+#!/usr/bin/env bash
+until [ -z "$(ps -ax | grep vitest)" ]; do
+  sleep 5
+done
+SH
+run_case "ps -ax, the hyphenated BSD form" 1 red-ps-hyphen-ax.sh "red-ps-hyphen-ax.sh:2" -
+
 # The shape a peer session walked into WHILE checking for this bug: no `pgrep -f` anywhere,
 # the cmdlines read out of /proc instead. It self-matched exactly the same way.
 fixture red-proc-cmdline.sh <<'SH'
@@ -299,6 +320,53 @@ until ! pgrep -f "ai-note-taker-precommit"; do
 done
 SH
 run_case "an exemption on the first line inside the loop still allows it" 0 ok-marker-just-inside.sh "OK" -
+
+# Tightening the upward bound made an exempted INNER loop poison the loop around it: the marker
+# no longer covered the outer loop, but the inner scan was still exported outward, so the error
+# named line 7 - the loop the marker was written for - and then advised writing the marker the
+# author had already written. An exemption means the scan is accounted for, so it is not
+# re-attributed upward. Both outer keywords, because the bug was in close_loop and indifferent
+# to which one opened the enclosing loop.
+fixture ok-marker-nested.sh <<'SH'
+#!/usr/bin/env bash
+for repo in a b c; do
+  echo "checking $repo"
+  echo "still going"
+  echo "and again"
+  # cmdline-wait-ok: bare-path only, fixed literal this script owns
+  until ! pgrep -f "ai-note-taker-precommit"; do
+    sleep 5
+  done
+done
+SH
+run_case "an exempted inner loop does not poison the loop around it" 0 ok-marker-nested.sh "OK" -
+
+fixture ok-marker-nested-while.sh <<'SH'
+#!/usr/bin/env bash
+while read -r repo; do
+  echo "checking $repo"
+  echo "still going"
+  echo "and again"
+  # cmdline-wait-ok: bare-path only, fixed literal this script owns
+  until ! pgrep -f "ai-note-taker-precommit"; do
+    sleep 5
+  done
+done < repos.txt
+SH
+run_case "the same, with a while as the enclosing loop" 0 ok-marker-nested-while.sh "OK" -
+
+# The header promises a name-only pgrep stays green. It did not, for any process name carrying a
+# hyphen followed by an f: the option scan ran into the ARGUMENT, so `node-fetch` read as an
+# option bearing -f. A check that contradicts its own documented rule is worse than either
+# behaviour alone. The option must now start at whitespace, which a process name cannot.
+fixture ok-pgrep-hyphenated-name.sh <<'SH'
+#!/usr/bin/env bash
+# No -f anywhere: this matches the process NAME, and the wrapper is named `bash`.
+until ! pgrep node-fetch; do
+  sleep 5
+done
+SH
+run_case "a name-only pgrep whose target name contains -f" 0 ok-pgrep-hyphenated-name.sh "OK" -
 
 fixture ok-substitutes.sh <<'SH'
 #!/usr/bin/env bash

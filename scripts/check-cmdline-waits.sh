@@ -65,10 +65,19 @@
 #     escape hatch covers both in one line.
 #
 # EDITING THIS FILE
-# The awk program below is a single-quoted shell string, so ONE apostrophe anywhere inside it —
-# in a comment, in the word "loop's" — terminates the quote and breaks the whole script. It
-# fails loudly rather than silently: `bash -n` and the self-test both catch it immediately.
-# Keep comments inside that block apostrophe-free.
+# Two traps, one loud and one silent.
+#
+# 1. The awk program below is a single-quoted shell string, so ONE apostrophe anywhere inside
+#    it — in a comment, in the word "loop's" — terminates the quote and breaks the whole
+#    script. It fails loudly rather than silently: `bash -n` and the self-test both catch it
+#    immediately. Keep comments inside that block apostrophe-free.
+#
+# 2. EVERY `else` in the awk program must be immediately preceded by `}`. This one is silent.
+#    An unbraced `if`/`for` body before an `else` re-binds that `else` to the INNER `if`, and
+#    awk then swallows the following branch whole — the file still parses, `bash -n` stays
+#    clean, awk prints nothing, and fixtures quietly go green. It has already happened once
+#    here, at the for/else site below, where it disabled body-scan detection entirely. Both
+#    surviving sites carry a brace for exactly this reason; do not "tidy" either away.
 #
 #   bash scripts/check-cmdline-waits.sh              # every tracked shell script
 #   bash scripts/check-cmdline-waits.sh path/to.sh   # named files
@@ -98,18 +107,26 @@ scan_file() {
     # the first. `pgrep -c -f X` and `pgrep -u "$USER" -f X` are the same defect as `pgrep -fc
     # X`, and the first draft caught only the last of the three. `[^|;&]*` stops the search
     # reaching across a pipe into an unrelated command.
-    if (s ~ /(^|[^A-Za-z0-9_-])(pgrep|pkill)[[:space:]]+[^|;&]*(-[A-Za-z]*f[A-Za-z]*|--full)([^A-Za-z0-9_-]|$)/) return 1
+    # The option must START at whitespace. Without that bound the skip-ahead ran into the
+    # ARGUMENT and any process name carrying a hyphen-then-f reddened — `pgrep node-fetch` was
+    # refused while the header above promised a name-only pgrep stays green. A check that
+    # contradicts its own stated rule is worse than either behaviour alone.
+    if (s ~ /(^|[^A-Za-z0-9_-])(pgrep|pkill)[[:space:]]+([^|;&]*[[:space:]])?(-[A-Za-z]*f[A-Za-z]*|--full)([^A-Za-z0-9_-]|$)/) return 1
     # A full process listing, in two branches rather than one. A pid-scoped `ps -p <pid> -o …`
     # is not one, and neither is a `ps` with no listing flag at all.
     #  (a) the flag form: -e or -A, anywhere in the option list.
     if (s ~ /(^|[^A-Za-z0-9_-])ps[[:space:]]+[^|;&]*-[A-Za-z]*[eA]/) return 1
-    #  (b) the BSD form: a bare `aux`/`ax` word. This MUST be a separate branch. Folded into
-    #      (a) as an alternative it could never fire: `[[:space:]]+` consumes the only
-    #      separating space and `[^|;&]*` cannot put one back, so it needed a SECOND space —
-    #      `ps  aux` matched and `ps aux` did not. The branch was written, reviewed and never
-    #      once executed, inside the guard built to refuse exactly that. It is now the shape
-    #      two fixtures assert red.
-    if (s ~ /(^|[^A-Za-z0-9_-])ps[[:space:]]+([^|;&]*[[:space:]])?(aux[A-Za-z]*|ax[A-Za-z]*)([^A-Za-z0-9_-]|$)/) return 1
+    #  (b) the BSD form: an `aux`/`ax` word, with or without a leading hyphen. This MUST be a
+    #      separate branch. Folded into (a) as an alternative it could never fire:
+    #      `[[:space:]]+` consumes the only separating space and `[^|;&]*` cannot put one back,
+    #      so it needed a SECOND space — `ps  aux` matched and `ps aux` did not. The branch was
+    #      written, reviewed and never once executed, inside the guard built to refuse exactly
+    #      that. It is now the shape four fixtures assert red.
+    #      The `-?` is not cosmetic: procps accepts `ps -aux` and `ps -ax`, people write them
+    #      constantly, and without it both slipped through one character away from the fixture
+    #      that catches `ps aux`. (a) does not rescue them either — it needs an `e` or a
+    #      capital `A` in the option list, and `-aux` has neither.
+    if (s ~ /(^|[^A-Za-z0-9_-])ps[[:space:]]+([^|;&]*[[:space:]])?-?(aux[A-Za-z]*|ax[A-Za-z]*)([^A-Za-z0-9_-]|$)/) return 1
     # Reading the command line straight out of /proc.
     if (s ~ /\/proc\/[^[:space:]]*\/cmdline/) return 1
     return 0
@@ -134,8 +151,13 @@ scan_file() {
       printf "  the loop starts at line %d. On a tool call this scan matches the wrapper that\n", start[d] > "/dev/stderr"
       printf "  typed the pattern, so the condition never clears and the session goes silent.\n" > "/dev/stderr"
       status = 1
-    } else if (d > 1 && scanln[d] > 0 && scanln[d-1] == 0) {
-      # Not a wait itself, but the scan still belongs to whatever encloses it.
+    } else if (d > 1 && !okd[d] && scanln[d] > 0 && scanln[d-1] == 0) {
+      # Not a wait itself, but the scan still belongs to whatever encloses it — UNLESS it was
+      # exempted. An exemption means "this scan is accounted for", so an exempted inner loop
+      # must not export it outward. Without `!okd[d]` the scan surfaced again on the enclosing
+      # loop and the error named the very line the author had just allowed, then advised
+      # writing the marker they had already written. A check that accuses wrongly gets switched
+      # off, so over-refusal here costs more than the reach it buys.
       scanln[d-1] = scanln[d]
     }
     delete scanln[d]; delete hdrscan_at[d]; delete slept[d]; delete okd[d]; delete start[d]
