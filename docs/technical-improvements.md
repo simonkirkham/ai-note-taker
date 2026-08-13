@@ -100,7 +100,7 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 | TI-89 | **On a Mac, the self-test that guards the merge gate reports nine failures accusing the merge-gate logic, when the only thing wrong is the machine's `date` command** | 🔲 **Open** — raised 2026-08-13 (Hawk, PR [#469](https://github.com/simonkirkham/ai-note-taker/pull/469) / [TI-81], should-fix). Measured, not argued: `scripts/test-merge-gate.sh:84-85` builds its clock fixtures with `date -u -d '-45 minutes'`, which only GNU coreutils supports. Run against a `date` without `-d`, the suite prints **`MERGE-GATE SELF-TEST: FAILED`, 45 PASS / 9 FAIL**, and every failure message names orphaned run records rather than the clock. Fix: one guard that exits loudly if `date -u -d` is unsupported. CI is `ubuntu-latest`, so it costs nobody today. Detail in [TI-89](#ti-89-the-merge-gates-self-test-blames-the-merge-gate-when-the-machines-date-command-is-the-problem) below. |
 | TI-91 | **The merge gate can say it is safe to merge while a deploy is genuinely running, if the clock on the machine reading it is more than ten minutes fast** | 🔲 **Open** — raised 2026-08-13. **Derived from reading `scripts/deploy-status.sh`, not from an observed miss** — and no reading taken afterwards could establish whether one has already happened. Detail in [TI-91](#ti-91-a-fast-clock-turns-the-merge-gates-stale-run-discount-into-a-fail-open) below. |
 | TI-92 | **A tracking item can be half-archived — copied into the archive but never deleted from the live list — and nothing notices, because the check that catches exactly this looks only at bugs** | 🔲 **Open** — raised 2026-08-13. **34 TI ids sit in both files today**, all pre-existing, so finished work reads as outstanding on the one column the human scans. Detail in [TI-92](#ti-92-half-archived-ti-items-are-invisible-because-the-live-vs-archive-check-covers-bugs-only) below. |
-| TI-94 | **A merge can quietly put back work someone deliberately deleted — no conflict, no marker, every check green — so a closed item reappears as open work and another session's finished change is undone** | 🔲 **Open** — raised 2026-08-13. **Two confirmed instances today; one shipped to `main` and was live for hours.** Archiving is exactly the delete-versus-surrounding-context operation the `merge=union` driver resolves wrongly, so it will recur. Detail in [TI-94](#ti-94-a-merge-silently-restores-a-deleted-section-and-nothing-detects-it) below. |
+| TI-94 | **A merge can quietly put back work someone deliberately deleted — no conflict, no marker, every check green — so a closed item reappears as open work and another session's finished change is undone** | 🔲 **Open** — raised 2026-08-13. **Three confirmed instances in one day; only one was visible to any existing check, and one sat on `main` for 10 straight commits.** Archiving is exactly the delete-versus-surrounding-context operation the `merge=union` driver resolves wrongly, so it will recur. Interim gate, usable today: zero deleted lines in `git diff origin/main` on an append-only file. Detail in [TI-94](#ti-94-a-merge-silently-restores-a-deleted-section-and-nothing-detects-it) below. |
 
 **2026-06-17 deploy-gate stabilisation session:** proved **10 consecutive green deploys** (#595 ×10). Root-caused and fixed a **44-min E2E suite hang** (PR #291's fire-and-forget response-body read on the reload loop) → replaced with a hang-proof, sync-only diagnostic (PR #292) and a **hard 120 s per-test cap** (**TI-43 done**, PR #293). **TI-42** cards-list flake did not recur in 13+ runs (not reproduced ≠ fixed; diagnostic now in place). **BUG-31** turned out to be three stacked causes — original image-reappear symptom fixed, `SaveAndReturnAsync` cards-refetch sync fixed (PR #297, suite-wide win), and a residual stuck-note-detail-read layer carved out as **TI-44**. Full write-up: [docs/learnings/e2e-gate-hang-and-the-diagnostic-that-caused-it.md](learnings/e2e-gate-hang-and-the-diagnostic-that-caused-it.md).
 
@@ -524,9 +524,34 @@ TI-1, 2, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 19, 21, 22, 26, 27, 28, 
 
 **Why it will keep happening:** `.gitattributes` sets `merge=union` on the three tracking tables so concurrent *appends* resolve instead of conflicting. CLAUDE.md documents union's bad case as "two branches editing the same row". **There is a second bad case with no guard: a deletion on one branch against surrounding context on another.** Union keeps both sides, so the deleted content is restored. Archiving is precisely that operation — delete a row and its section from the live doc while other branches hold context around them — so every archive action is an opportunity for this.
 
+### The gate to use today, before any of the below is built
+
+**On a file you are only appending to, the diff against `origin/main` must contain zero deleted lines.** One reading, no set arithmetic, no regex to get wrong. It catches a resurrection and an accidental clobber of someone else's work together, and unlike the heading-set diff it cannot be defeated by a padding mistake:
+
+```bash
+git fetch origin
+git diff origin/main -- docs/technical-improvements.md | grep '^-' | grep -v '^---'
+```
+
+**`git fetch origin` first is part of the gate, not hygiene.** Diffing against a stale `origin/main` gives a false pass — the same input-staleness that made `scripts/next-doc-id.sh` report a taken id as free when the local `origin/main` predated the claim. The script was right; its input was old. Fetch, then check, then commit, with nothing in between.
+
+This filing was verified that way: the commit adding it shows **66 insertions and 0 deletions**.
+
+**When you are revising your own earlier text the count is not zero, and the gate still works** — it just becomes "zero deletions of lines *someone else* wrote". Clear it by proving every deleted line came from your own prior commit, which is mechanical:
+
+```bash
+git diff origin/main -- <file> | grep '^-' | grep -v '^---' | sed 's/^-//' > /tmp/del.txt
+git show <your-sha> -- <file> | grep '^+' | grep -v '^+++' | sed 's/^+//' > /tmp/added.txt
+while IFS= read -r l; do [ -n "$l" ] && grep -qxF "$l" /tmp/added.txt || echo "NOT MINE: $l"; done < /tmp/del.txt
+```
+
+The follow-up commit to this row deleted 7 lines and printed nothing — all 7 were its own. Do not weaken the gate to "deletions are fine when I expect them"; the expectation is the thing being tested.
+
+Keep the heading-set diff below as the *diagnostic* — it names **what** came back — but lead with the deletion count, which answers **whether** anything did.
+
 ### The fix — an orphan-section check
 
-**A `## TI-N` section in the live doc with no matching `| TI-N |` row is an orphan.** Both instances below were exactly that shape. One `comm -23`, no network, runs beside the existing checks in `scripts/check-doc-ids.sh`:
+**A `## TI-N` section in the live doc with no matching `| TI-N |` row is an orphan.** Two of the instances below were exactly that shape. One `comm -23`, no network, runs beside the existing checks in `scripts/check-doc-ids.sh`:
 
 ```bash
 comm -23 \
@@ -546,15 +571,21 @@ Four constraints on the implementation, each measured rather than assumed:
 
 **The positive control is a git blob, not a reconstruction.** `git show 4727672f:docs/technical-improvements.md` **is** the defect — the real file, at the real sha, on `main`. Run the check against that blob and it must print `TI-73` and nothing else. It is immutable, so it cannot rot. **Do not tidy it into a synthetic fixture:** a hand-written fixture is strictly weaker, because it proves the check matches something someone wrote to be matched rather than the shape a merge actually produced.
 
-### Two confirmed instances
+### Three confirmed instances, one of them visible to an existing check
 
-Both verified 2026-08-13 against the repository, not quoted.
+All verified 2026-08-13 by measuring the repository, not quoted from a report. A fourth was reported and **could not be reproduced** — see the note at the end of this section.
 
-**Instance 1 — shipped to `main`, live for hours.** Squash merge [`4727672f`](https://github.com/simonkirkham/ai-note-taker/commit/4727672f) (the [TI-81] merge, PR #469) **added `## TI-73. The pre-commit gate is unbounded across sessions` back** to `docs/technical-improvements.md`; the diff shows it as an added heading. TI-73 had been archived on 2026-08-11 and its section deleted, and union restored it during one of that branch's merges of `main`. Confirmed: **no live row for TI-73 at that commit** (`grep -c '^| TI-73 |'` = 0), so it sat as an orphan section — a closed item presented as open work, prescribing a fix for a pre-commit gate that no longer exists (`.githooks/` was deleted from `main` on 2026-08-11). It merged green. Removed at `b2acbfb1`. TI-73 is now absent from the live doc (0 occurrences) and present in the archive at line 197 — the correct end state.
+**Instance 1 — shipped to `main` and stayed there for 10 consecutive commits.** Squash merge [`4727672f`](https://github.com/simonkirkham/ai-note-taker/commit/4727672f) (the [TI-81] merge, PR #469) **added `## TI-73. The pre-commit gate is unbounded across sessions` back** to `docs/technical-improvements.md`; the diff shows it as an added heading. TI-73 had been archived on 2026-08-11 and its section deleted, and union restored it during one of that branch's merges of `main`. Confirmed: **no live row for TI-73 at that commit** (`grep -c '^| TI-73 |'` = 0), so it sat as an orphan section — a closed item presented as open work, prescribing a fix for a pre-commit gate that no longer exists (`.githooks/` was deleted from `main` on 2026-08-11).
+
+Measured span, by walking `git rev-list 4727672f~1..b2acbfb1` and testing each commit for section-present/row-absent: the orphan was on `main` in **10 successive commits over 55 minutes**, `4727672f` (08:34) through `f3218a71` (09:25), removed at `b2acbfb1` (09:29). Every one of those commits was green. It also propagated: both open slice branches picked it up from `main`, so a single silent restoration seeded ten commits and two branches. TI-73 is now absent from the live doc and present in the archive — the correct end state.
 
 **Instance 2 — caught before it shipped, by eye.** PR [#477](https://github.com/simonkirkham/ai-note-taker/pull/477) rebased onto `main` twice. The first rebase produced duplicate TI-83 **and** TI-84 rows (2 of each) and `scripts/check-doc-ids.sh` caught it. `main` then moved to `10957a81`, which archived TI-84 — deleting both its row and its `## TI-84.` detail section. The second rebase, an hour later, **silently restored the entire `## TI-84.` section**: the resulting commit carries the section with **no matching row**, and only one TI-83 row, so the duplicate check printed OK. Nothing caught it; it was found by diffing section headings against `origin/main` by hand, and removed in a later amend. Pushing it would have undone another session's completed archive with every check green.
 
-> The instance-2 commit is reachable only through that worktree's reflog, so it is **not a durable control** — it will expire. Instance 1's blob is on `main` and is the one to test against.
+**Instance 3 — the only one an existing check would have caught, and only by luck.** The [TI-90] worktree (PR [#478](https://github.com/simonkirkham/ai-note-taker/pull/478)) reached commit `12cb3076` carrying **two `| TI-90 |` rows**. `scripts/check-doc-ids.sh`'s duplicate-id check catches this — but only because the restored content happened to be a *row*, which duplicates an id. Restore a *section* instead, as instances 1 and 2 did, and the same driver on the same file produces nothing for any check to see. **One in three, and the one is an accident of which half of the item came back.**
+
+> **Durability of the controls.** Instances 2 and 3 live only in their worktrees' reflogs and **will expire**; instance 1's blob is on `main` and is permanent. Test against `4727672f`, and do not substitute a fixture for it.
+
+**A fourth instance was reported and does not survive checking.** The report was a resurrected `| TI-84 |` row on the two open slice branches. Every commit carrying that row was tested with `git merge-base --is-ancestor 10957a81 <sha>`, and **none is a descendant of the archive commit** — so each is legitimate pre-archive ancestry, not a restoration. Likewise the TI-73 orphans on those branches are inherited from instance 1's span on `main`, not independent events. Recorded because the near-miss is the point: **a resurrection and ordinary pre-archive ancestry look identical in a `grep`, and only an ancestry test separates them.** Any check built here must test ancestry before it accuses, or it will generate false reports of exactly this kind — and a check that accuses wrongly gets switched off.
 
 ### Why nothing catches it today
 
@@ -563,7 +594,7 @@ Both verified 2026-08-13 against the repository, not quoted.
 - The **duplicate-id** check (`uniq -d` over rows) covers all three prefixes, but a resurrected *section* adds no row, so there is nothing to duplicate. Instance 2 passed it.
 - The **live-vs-archive** `comm -12` check compares **BUG ids only** (script lines 45–55) — verified by reading the script. A resurrected `TI` section is invisible to it, and instance 1's TI-73 had no archive-side row to compare anyway.
 
-It printed `doc ids OK` throughout both instances.
+It printed `doc ids OK` throughout instances 1 and 2, and caught instance 3 only because that one restored a row rather than a section.
 
 ### Other directions, as options not decisions
 
