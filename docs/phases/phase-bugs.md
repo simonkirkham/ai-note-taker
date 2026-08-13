@@ -16,13 +16,15 @@ Ordered by severity, then by id.
 
 | Item | Summary | Status | Depends on |
 |------|---------|--------|------------|
-| BUG-77 | You finish a recording, the note is never analysed, and the only thing you are told is "Analysis failed. Please try again." The message is often wrong about what actually went wrong. | Open | TI-67, BUG-33 |
-| BUG-79 | Something you just created — an action item, or a note — can be missing after you reload, and stay missing. Rare, but this is the one guarantee the app is built to make. | Open | — |
+| BUG-77 | You finish a recording and the note is never analysed. You are now told what actually stopped it — an unreachable server, a note that has gone, a service that is briefly down — instead of one catch-all sentence, and the failure is recorded so a repeat can be diagnosed. Why it happens at all is still unknown. | Open | TI-67, TI-78, BUG-33 |
+| BUG-79 | An action item you add in the first second or two after making a note is silently thrown away for good, and while that happens everything else you do for the next half minute stops updating. | Open | — |
+| BUG-81 | Typing a title on a brand-new note and clicking Save can delete the note instead — the button changes from Save to Cancel under your cursor, and Cancel throws a new note away. | Open | — |
 | BUG-70 | Clicking "+ New Note" while recording and then choosing to keep recording still leaves a blank, untitled note behind on your home list. | Open — held behind 51-C | BUG-54, 51-C |
 | BUG-73 | Signing out while an on-device transcript is still finishing can park you for up to an hour with no way to leave — a real problem on a shared machine. | Open | BUG-55 |
 | BUG-75 | Reopening a note while its on-device transcript is still finishing shows no transcript, and nothing appears until you navigate again or reload. | Open | BUG-72 |
 | BUG-78 | A truncated or hand-edited sign-in link drops you at the sign-in screen and claims your browser is blocking storage — and the message comes back on every reload. | Open | BUG-71, BUG-60, BUG-15 |
 | BUG-80 | A topic you add from the agenda strip can land in an invisible checklist at the very top of the note — the header lists it, but you cannot find it in the note to edit it in place. | Open | BUG-76 |
+| BUG-82 | After a recording with speaker separation, the note can end up never analysed with nothing said on screen and nothing recorded as an error — the same silent outcome BUG-77 is about, on the half BUG-77's fix cannot reach. | Open | BUG-77 |
 
 Further bugs will be appended as they are identified.
 
@@ -34,7 +36,22 @@ Further bugs will be appended as they are identified.
 
 **Severity:** High — a core action fails with an explanation that can be actively misleading, and nothing is recorded when it happens. **Status:** Open. **Hit live** 2026-08-10 ~14:50Z on the desktop app (`1.0.0-20260810.196`); the same note analysed fine 30 minutes later.
 
-**Confirmed defect — the mis-reporting.** `RecordControl.tsx:73` catches with a bare `catch {}` and discards the error, so a dead network, an expired sign-in, a refused request and a parse error all print one sentence that names the wrong subsystem and advises a retry that may be incapable of working. Compounded by [TI-67] (RUM `CustomEvents: DISABLED` in prod), so nothing client-side is recorded either. **This half is fixable now, independently of the trigger:** keep the status and message, and let an unauthenticated result say *sign in again* rather than blaming analysis.
+**Confirmed defect — the mis-reporting. Fixed, PR #472.** `RecordControl.tsx:73` caught with a bare `catch {}` and discarded the error, so a dead network, an expired sign-in, a refused request and a parse error all printed one sentence that named the wrong subsystem and advised a retry that may have been incapable of working. `NoteView.handleGenerateFinalNotes` — the app's *second* way of asking for an analysis — had the same bare catch and its own catch-all sentence. Compounded by [TI-67] (RUM `CustomEvents: DISABLED` in prod), so nothing client-side was recorded either.
+
+**What the fix changed:**
+
+| Now | Detail |
+|---|---|
+| The message names the real failure | Unreachable server → *check your connection*; server fault → *temporarily unavailable*; missing note → *no longer exists*, with the retry advice dropped where a retry cannot work |
+| Both entry points report the same way | `RecordControl` (button + the automatic post-recording analyse) and `NoteView`'s *Generate final notes* both route through `reportAnalyseFailure`. Two paths reporting two different ways is how this stayed invisible |
+| Every **browser-side** failure emits `analyseFailed` to RUM | `kind`, `status`, `sent`, `elapsedMs`, `trigger`, `noteId`, `online`, truncated `detail`. Query in [observability.md](../observability.md#why-did-a-notes-analysis-fail) |
+| A request that never left the browser is distinguishable from one the server refused | `apiFetch`'s synthetic pre-flight 401 is tagged by identity (a module-private `WeakSet`), surfaced as `ApiError.notSent` → `sent: false`. Both are 401 and neither reaches the gateway, so nothing else could tell them apart |
+
+**The auth and forbidden arms are a fallback the user will not normally see** — any 401 whose refresh fails, and any 403, trips `triggerUnauthorized`/`triggerForbidden` first, and `App.tsx` replaces the whole screen with the session-expired banner. Verified by reading the chain (`client.ts` → `AuthContext` → `App.tsx:80`), not measured. The record still lands, which is the part that matters here.
+
+**The server-side re-analysis is NOT covered, by construction.** When auto-analyse is on and a speaker-separation job is in play, the browser deliberately defers and the transcript-completion Lambda analyses instead — nothing fails in the browser, so no `analyseFailed` can exist. That path fails into the **TranscribeCompletion** Lambda's log group — and its common failure is logged at *Information* as `transcribe: re-analysed note {Note} → ServiceUnavailable`, which reads like a success. **Do not read an absent event as "the analysis never ran"** — establish which analyser ran first; [observability.md](../observability.md#why-did-a-notes-analysis-fail) opens with that split and with which log lines mean what. Stated as a coverage boundary only; it is **not** offered as a theory of the trigger.
+
+**Two further reasons the browser record is not yet conclusive.** No `analyseFailed` has ever been observed arriving in prod — [TI-67] proved the channel with a different event, and this one is unwatched until it fires. And until [TI-78] lands, the RUM client's default `sessionEventLimit` of 200 drops custom events late in a long session, which is exactly when a post-recording analyse happens. Treat an absent record as unproven, not as evidence the failure did not occur.
 
 **Trigger — still open, and a previous diagnosis is retracted.** An earlier version of this row asserted the cause was a terminally expired sign-in. **That was wrong.** The reasoning was that `apiFetch` (`client.ts:112-118`) pre-flights every call and, if the JWT is expired and the silent refresh fails, returns a synthetic `new Response(null, {status:401})` **without sending** — which would produce exactly this silent, traceless failure — and the refresh endpoint was observed failing every time.
 
@@ -50,47 +67,85 @@ What killed it: the session was never invalid. `CompleteTranscription` succeeded
 | The analyse path is slow | The 15:19 success took ~15 s end to end, including a **4.4 s** ICS calendar fetch before Bedrock. Whether a client-side deadline interacts with that is untested |
 | The single `4xx` at 14:49Z cannot be attributed | Access logging is `None` on `$default`, and X-Ray's Lambda segments carry no HTTP URL |
 
-**Do instrumentation before any further theory** — widen the catch and land [TI-67]. A second occurrence is otherwise as blind as the first. [TI-63] and [BUG-58] are not ruled out as cleanly as first recorded: both would log *if the request arrived*, and arrival is exactly what is unestablished.
+**Do instrumentation before any further theory** — done: the catch is widened and [TI-67] has landed, so the channel is live. **No theory of the trigger has been advanced by this work and none should be inferred from it.** The next occurrence is the evidence; until one arrives with an `analyseFailed` record against it, the cause is unknown. [TI-63] and [BUG-58] are not ruled out as cleanly as first recorded: both would log *if the request arrived*, and arrival is exactly what is unestablished — `sent` on the new record is the field that settles it.
 
 **Process note:** two sessions in sequence stated a cause with more confidence than the evidence carried, and it reached the human as fact. The disconfirming datum — an authenticated call succeeding inside the same window — was present in the log being read at the time.
 
 ---
 
-## BUG-79 — A fresh write can stay unreadable after a reload
+## BUG-79 — An action added just after creating a note is discarded, and stalls everything behind it
 
-**Severity:** High (deploy-gate flake bar). **Status:** Open. Raised 2026-08-10 from E2E run [#164](https://github.com/simonkirkham/ai-note-taker/actions/runs/31406829746).
+**Severity:** High — silent, permanent loss of a user's action item, plus a ~30 s freeze of every other read. **Status:** Open, cause CONFIRMED 2026-08-11 from the deployed test environment's own logs. Raised 2026-08-10 from E2E run [#164](https://github.com/simonkirkham/ai-note-taker/actions/runs/31406829746).
 
-**Why it matters:** the failing journey exists specifically to prove read-your-writes on the deployed async projector — the guarantee that what you just did survives a reload. When it fails, the user's write appears lost.
+**What the user gets:** they make a note and immediately add an action to it. The action never appears again — not after a reload, not ever. For the next ~30 seconds nothing else they do updates either.
 
-**Symptom:** `ActionReadYourWritesJourney.Added_action_appears_after_reload` failed — add an action, reload, re-open the actions popover, and the action never appeared. The helper reloads in a loop for a full **30 s deadline**, re-sending the consistency token and re-gating each time, and still never saw it (33 s, then threw). This is not a lost 200 ms race. 29 of 30 journeys passed in the same run.
+**Confirmed cause.** The component that builds read models refuses to record an action against a note whose own read model has not been written yet, and it does so by throwing. `ProjectionUpdater.ApplyActionItemAddedAsync` (`src/Api/Projections/ProjectionUpdater.cs`) raises `NoteNotFoundException` when `noteDetailStore.GetAsync` returns null. The note and the action are separate streams and DynamoDB Streams give no ordering between different keys, so when the action is added within about a second of the note, the action's record can arrive first. The throw fails the whole Lambda batch, so the stream retries it, and every other stream sharing that shard waits behind it.
 
-**Not attributable to any code change** — the only change in flight was `.github/workflows/e2e.yml` ([TI-69]); no `src/`, `web/` or `tests/` file moved.
+**The measured sequence** (E2E test account 739754704263, `eu-west-2`, all timestamps read from CloudWatch on 2026-08-11):
 
-**Frequency:**
-
-| Where | Result |
+| Time (UTC, 2026-08-10) | What happened |
 |---|---|
-| Deploy gate, actions | `scripts/flake-watch.sh 745 ActionReadYourWrites` — **10 clean of 10** across #745-#754, every attempt |
-| Outside the gate, actions | 1 hit in 2 runs. The rerun ([#166](https://github.com/simonkirkham/ai-note-taker/actions/runs/31408911704), same filter) passed in **4 s** |
-| Outside the gate, notes | 1 hit in 10 ([#169](https://github.com/simonkirkham/ai-note-taker/actions/runs/31414289871), peer session) |
+| 16:05:00.233 | note `ea24f4e8…` created |
+| 16:05:00.814 | action `9896cded…` added — 581 ms later |
+| 16:05:01.237 → 16:05:02.988 | **5 consecutive** `Projector batch failed (1 streams)`, every one `NoteNotFoundException: Note ea24f4e8… not found` |
+| 16:05:31.188 | the note stream finally folded, **`lag 30834.918ms`** — the shard had been blocked for 30.8 s |
+| — | `Projector applied action#9896cded…` **never appears**, across a 7-minute search. The action was never folded at all |
+| 16:05:33 | the E2E journey gave up after its 30 s deadline |
 
-It surfaced on the first run outside the deploy gate, which is also the first time the E2E suite has ever run outside it. A 4 s pass against a 33 s failure suggests the bad case is not a slow projector but a read that never gates at all.
+**This is the cross-key-order hazard the row already suspected — but on the WRITE side, not the read gate.** CLAUDE.md's guardrail warns about *gating a read* on one stream while reading a projection built from another. The same absence of ordering bites here while *building* the projection, and the consequence is worse than a slow read: a throw poisons the batch, the retry cannot succeed (the note it needs is itself stuck behind the same failed batch), and the action is dropped.
 
-**Not action-specific.** `OpenNoteTabsJourney.OpenTwoNotes_SwitchBetweenTabs_CloseOne` failed the same way on a just-created **note** that never reached the cards list inside 30 s. The shared symptom is a fresh write that never becomes readable.
+**Fix direction:** the action fold must tolerate a not-yet-folded note instead of throwing. Either seed the action against the note id alone and backfill the denormalised title/workspace when the note folds, or re-drive the note's stream first from within the action fold. Whatever the shape, a missing prerequisite projection must not fail the batch — that converts an ordering race into permanent loss plus a shared stall.
 
-**The good evidence:** the probe captured `injectedToken=note#8b7cdd87-…@5` present client-side, five `/notes/cards` reads all `200`, none flagged stale, and the card absent from a rendered list that did contain its sibling.
+**Ruled out, with the evidence** (each was a live hypothesis before this investigation):
 
-**Do NOT read that as "the read never gated."** `AppPage.cs:50-53` sets the label `none/fresh` when the header is *absent*, and its own comment says absent means **fresh-or-ungated**. The probe cannot currently tell those apart, so the gated-vs-ungated question is open; treating the label as proof would repeat [TI-69]'s mistake of inferring a cause from a signal that cannot carry it.
+| Ruled out | Why |
+|---|---|
+| The card/action list read is eventually consistent or truncated | `DynamoDbNoteCardListStore.QueryAllAsync` paginates on `LastEvaluatedKey` and passes `ConsistentRead = true` |
+| CloudFront strips `If-Consistent-With` before the origin sees it | the `/api/*` behaviour uses `OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER`, so every viewer header is forwarded |
+| CloudFront served a cached list | the same behaviour uses `CachePolicy.CACHING_DISABLED` |
+| The read-your-writes gate is broken | the gate logged `RYW gate fresh` for the streams involved, and the projector's recorded position is only advanced *after* every projection for that stream is written |
+| The reads were never gated | the probe now records the outbound token per request and the self-check proves it discriminates — see below |
 
-**Strongest lead, and it is testable:** the injected token is a **note-stream** token (`note#…@5`) while the failing read is the **card-list** projection, folded from a different key. The CLAUDE.md guardrail names this exact hazard — *DynamoDB Streams don't guarantee cross-key order, so gating a read on stream A's position while reading a projection built from stream B is a race.* A gate reporting caught-up on the note stream while the card fold lags produces precisely this: a fresh-looking 200 with the data missing, indefinitely.
+**The probe was fixed first, and its discrimination is proved, not asserted.** The old diagnostic reported only the response header, which the server sets on a stale read *only* — so a gated-and-fresh read and a read carrying no token at all were byte-identical evidence, and the row correctly refused to draw a conclusion from it. `ConsistencyProbe` now records the request's outbound `If-Consistent-With` (visible only from inside a Playwright route) plus a third state for a read issued and never answered. `ConsistencyProbeSelfCheckJourney` manufactures a gated and an ungated read one manipulation apart and fails if they report the same: **green twice** on the real deployed app (E2E run [#175](https://github.com/simonkirkham/ai-note-taker/actions/runs/31542436234)), and **red** with the exact "cannot tell them apart" message when the probe was deliberately blinded to the outbound header (run [#177](https://github.com/simonkirkham/ai-note-taker/actions/runs/31542658092), branch `proof/bug-79-probe-blind`).
 
-**Next step:** make the probe distinguish gated from ungated — emit the request's outbound consistency token, not just the response header. Until then no cause can be confirmed.
+**The self-check needed a self-check, and the first fix for it was wrong.** Its first two 10-run batches were **6 passed / 4 failed** ([#179](https://github.com/simonkirkham/ai-note-taker/actions/runs/31544406237)) and **5 / 5** ([#180](https://github.com/simonkirkham/ai-note-taker/actions/runs/31571731104)), both reporting that the probe could not tell a gated read from an ungated one.
 
-**Diagnostic gap found alongside:** `AppPage.AssertActionVisibleAfterReloadAsync` swallows every `PlaywrightException` until the deadline, then lets the last one propagate bare — no page URL, no rendered state, no token value. That is the pattern [e2e-gate-hang-and-the-diagnostic-that-caused-it](../learnings/e2e-gate-hang-and-the-diagnostic-that-caused-it.md) says to replace with an evidence-carrying `throw`, and it is why this row cannot yet name the cause.
+The first diagnosis — "the app issues two actions reads after a reload and the helper sampled the second" — was **wrong**, and is recorded here rather than quietly replaced. It was refuted by the per-arm dump added alongside it, which reported `reads=1`: there was never a second read.
 
-**Reproduce:** `gh workflow run e2e.yml -f runs=10 -f filter=ActionReadYourWritesJourney` — possible for the first time, per [TI-69].
+The actual race: the token was seeded into the **live page** before reloading, and adding an action leaves a refetch in flight. That refetch returns non-stale, so `gatedRead` clears the very key just written, and whether it did so before the reload was a coin flip. Seeding through a Playwright **init script** puts the value in the next document before any app code runs, where nothing is alive to clear it; the ungated arm runs first because an init script cannot be removed. **10 passed, 0 failed** on that fix ([#181](https://github.com/simonkirkham/ai-note-taker/actions/runs/31572833088)).
+
+Worth keeping for two reasons. The failure was the same shape as the bug — something that looked like a property of the system was a property of when it was measured. And the first fix was believed on reasoning alone; what refuted it was a field in the instrument's own output, which is the argument for making a diagnostic explain its own failures.
+
+**Frequency, measured 2026-08-11:** `gh workflow run e2e.yml --ref slice/bug-79-read-your-writes -f runs=10` over `ActionReadYourWrites` + `OpenNoteTabs` — **10 passed, 0 failed** (run [#178](https://github.com/simonkirkham/ai-note-taker/actions/runs/31542845086)). The window is narrow: the note fold has to lose the race by a few hundred milliseconds, so a clean 10 does not clear the defect, it only bounds how often the race is lost.
+
+**Retracted from the original write-up:** "a read that never gates at all" as the leading explanation, and the reading of the earlier note-case evidence as a read-your-writes failure. That case was a different defect entirely — see [BUG-81].
 
 ---
+
+## BUG-81 — Clicking Save on a new note can delete it
+
+**Severity:** High — silent, unrecoverable loss of a note the user just wrote, on the single most ordinary action there is. **Status:** Open, strongly supported by the deployed environment's logs; the final step is observed by inference, not directly. Split out of [BUG-79] on 2026-08-11.
+
+**What the user gets:** they make a note, type a title, and click Save. The note is deleted. Nothing warns them, and it does not come back.
+
+**How it happens.** The Save button and the Cancel button occupy the same place in the note header, and which one is rendered depends on whether the note looks empty (`NoteView.tsx`, the `hasContent` branch in the note header). For a brand-new note, Cancel does not merely go back — it deletes the note (`handleCancel` in `NoteView.tsx`). The note momentarily looks empty right after a successful rename: the displayed title is `titleDraft ?? detail?.title ?? initialTitle` (the `title` binding in `NoteView.tsx`), the rename's success handler clears `titleDraft`, and the note-detail read that was already in flight when the rename happened comes back carrying the note as it was *before* the rename — with no title — and overwrites the cache the rename had patched (`useRenameNoteDetail`, `useNoteDetailMutations.ts`, which never cancels the in-flight query). For that window the header shows Cancel where Save was, and a click already on its way lands on Cancel.
+
+**The measured sequence** (E2E test account, from CloudWatch on 2026-08-11; E2E run [#169](https://github.com/simonkirkham/ai-note-taker/actions/runs/31414289871)):
+
+| Time (UTC, 2026-08-10) | What happened |
+|---|---|
+| 17:30:55.37 → .55 | note `8b7cdd87…` created, assigned a workspace, given a date |
+| 17:30:55.928 | `NoteRenamed` — the title is saved |
+| 17:30:56.068 | the note-detail read returns `outcome=Fresh result=Hit` — but its own latency (209 ms) puts its start at ~17:30:55.86, 69 ms *before* the rename was written |
+| ~17:30:56.11 | the rename is folded into the read model (`NoteRenamed lag 182.06ms`) — **43 ms after** the read above was served, so that read provably carried the note with no title |
+| 17:30:56.367 | **`NoteDeleted`** — from a browser request (`HeadlessChrome` user agent), 299 ms later |
+| 17:31:35.7 | the journey gave up looking for a card that no longer existed |
+
+**Why the delete can only have come from Cancel.** The test never asks for a delete, and only two notes existed in that window — both this journey's. The app has exactly two paths to a delete: the Delete button, which is rendered **only when the note is non-empty**, and Cancel, which is rendered **only when it is empty** and which deletes a new note. A delete demonstrably happened, so the click landed on Cancel, which requires the note to have been rendering as empty at that instant.
+
+**What is NOT directly observed:** the button swap itself. Confirming it means catching the control's identity at click time — record the `data-testid` actually hit, or assert no `DELETE /notes/{id}` fires during a save. That check does not exist yet and should come with the fix.
+
+**Fix direction:** two independent problems, and both are worth closing. (1) A destructive action must never occupy the same position as a non-destructive one, and must never appear under a cursor already moving toward the other — keep Cancel and Save in fixed, distinct positions, and never let a note flip to "empty" while a rename is settling. (2) The rename must cancel the in-flight note-detail query (`qc.cancelQueries`) before patching the cache, or an older response will keep overwriting a newer local truth. The second is the narrower fix; the first is what stops the class.
 
 ## BUG-70 — "+ New Note" while recording leaves an orphan note behind
 
@@ -163,3 +218,24 @@ It surfaced on the first run outside the deploy gate, which is also the first ti
 Reproduced against a real editor: adding `Renewals` to that body yields `- [ ] \n- [ ] Renewals\n\n- Shopping\n  - [ ] Milk\n\n- [ ] Bread` and a topic list of `Renewals, Milk, Bread`. When there is no stray list — `- Shopping` / `  - [ ] Milk` — placement is already correct and the item joins the nested checklist.
 
 **Fix direction:** choose the target list from a `taskList` that actually yields a countable topic, falling back to the first one only when none does. That makes the function's name true and puts the new topic with the ones on screen. The blockquote exclusion must survive: a quoted checklist is never a target, because the walk never reads it.
+
+---
+
+## BUG-82 — A server-side re-analysis can fail silently, with a log line that reads like success
+
+**Severity:** Medium — same user-visible outcome as [BUG-77] (a recording that never gets analysed, no explanation), on the path BUG-77's fix cannot cover. **Status:** Open. Found by review of [BUG-77] (PR #472); **pre-existing**, not a regression from it.
+
+**Symptom:** you finish a recording with speaker separation on and auto-analyse on. The note is never analysed. Nothing appears on screen — no error, no retry prompt — because the browser deliberately handed the analysis to the server and has nothing to report.
+
+**Why nothing surfaces it:**
+
+| Layer | What happens |
+|---|---|
+| Browser | `RecordControl` defers the on-Stop analyse while diarization is `refining`/`timedOut` (33-B2, correct — the server re-analyses on the winning transcript). No request, so BUG-77's `analyseFailed` event cannot exist here, by construction |
+| Server | `MaybeAnalyseAsync` (`src/TranscribeCompletion/TranscribeCompletionFunction.cs:164`) logs `transcribe: re-analysed note {Note} → {Outcome}` at **Information** — including when the outcome is `ServiceUnavailable`. Success-sounding wording for a failure |
+| Server, error path | The outer `catch` at `:168` (`transcribe: re-analysis failed…`, Error) never fires for the common case: `NoteAnalysisService` catches Bedrock/`InvalidOperationException`/`TimeoutException` and **returns** `ServiceUnavailable` rather than throwing (`src/Api/Services/NoteAnalysisService.cs:66-72`) |
+| Alarms | The shared service does emit `AnalysisFailed` and an Error log in the completion Lambda's group, so the signal is not absent — but nothing ties it back to the user, and nothing tells them |
+
+**Fix direction:** treat a non-`Analysed` outcome in `MaybeAnalyseAsync` as a failure — log it at Warning/Error naming the outcome, and give the user a way to find out (the note has no summary and no explanation). Consider whether the note should carry a "not analysed" state the UI can show, rather than looking identical to a note nobody asked to analyse.
+
+**Not a theory of [BUG-77]'s trigger.** This was found by reading the code while documenting what BUG-77's browser-side record does *not* cover. Whether the 2026-08-10 occurrence came through this path is unknown and unevidenced — the two share a symptom, nothing more.
