@@ -26,10 +26,35 @@ name: Main Checked
 # commits deep against a repo doing roughly 15-20 commits a day, so a commit stays in scope for
 # two to three runs even during a busy stretch.
 #
-# Known limit, stated rather than hidden: nothing here watches this workflow itself. If GitHub
-# stops delivering the schedule, this goes quiet in the same way the thing it monitors did.
-# GitHub also disables scheduled workflows in repositories with 60 days of no activity; this
-# repo is nowhere near that, and the daily job summary is the tell if it ever happens.
+# --- NOTHING WATCHES THIS WORKFLOW. READ THIS BEFORE TRUSTING A QUIET WEEK ---------------
+#
+# This is the sharpest limit here, not a footnote. If GitHub stops delivering the schedule,
+# this file goes quiet in EXACTLY the way the thing it monitors did — no failure, no red X,
+# no trace. Its silence is indistinguishable from a clean `main`, which is the failure mode it
+# was built for, applied to itself. (GitHub also disables scheduled workflows in repositories
+# with 60 days of no activity; this repo is nowhere near that, but the rule exists.)
+#
+# So the silence has to be actively disproven, and these are the three commands that do it.
+# THE FIRST TWO RUN IMMEDIATELY ON MERGE — they take seconds, and "we'll see it tomorrow" is
+# how TI-69 shipped a workflow that never parsed, painted 162 push red X's over three days,
+# and was noticed by nobody, because a workflow that fails to register produces silence rather
+# than an error.
+#
+#   1. gh workflow list | grep -i "main-checked"
+#      FAILS IF: nothing prints. A file that does not parse is simply ABSENT from the list —
+#      absence, not an error message, is the whole failure mode. This is the positive control:
+#      it is the one of the three that can express a no about registration.
+#
+#   2. gh workflow run main-checked.yml -f count=50
+#      FAILS IF: HTTP 422. That is precisely the check TI-69 failed. Then read the run:
+#      gh run list --workflow main-checked.yml --limit 1
+#
+#   3. gh run list --workflow main-checked.yml --event schedule --limit 1
+#      Run AFTER the first 07:17 UTC window has passed. FAILS IF: the list is empty — the
+#      timer never fired, and every quiet day since has been meaningless. Worth re-running
+#      whenever this workflow has been silent for longer than feels right.
+#
+# --- Cost ---------------------------------------------------------------------------------
 #
 # Deliberately cheap: one checkout and 51 REST calls, no build, no test, no deploy. Measured
 # 2026-08-13 at 36s wall clock for a 50-commit window. Adds nothing to deploy time — it never
@@ -84,6 +109,14 @@ jobs:
         run: |
           set +e
           bash ./scripts/check-main-checked.sh "$COUNT" main | tee /tmp/main-checked.out
+          # PIPESTATUS[0], not $?, because the exit code carries three meanings and the whole
+          # design turns on telling 1 from 2. To be accurate about what this buys: GitHub's
+          # default shell is `bash --noprofile --norc -e -o pipefail`, and MEASURED
+          # 2026-08-13, `pipefail` makes $? equal PIPESTATUS[0] whenever `tee` succeeds — so
+          # $? would work TODAY and this is not fixing a live bug. It is defensive clarity:
+          # the correct code is read directly rather than inherited from a shell flag set
+          # elsewhere, so adding a `shell:` line or a `defaults:` block here cannot silently
+          # turn the verdict into tee's exit status.
           rc=${PIPESTATUS[0]}
           set -e
           {

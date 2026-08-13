@@ -73,17 +73,42 @@ GRACE_MINUTES="${CHECK_MAIN_GRACE_MINUTES:-10}"
 
 # Off by default. A commit with suites from some other app but none from github-actions had
 # its push event delivered — another app demonstrably reacted to it — and simply matched no
-# workflow. Measured on 2026-08-13: 20 of the last 40 commits on main are in exactly that
-# state, because deploy.yml paths-ignores docs/** and docs-check.yml only gained its push
-# trigger at TI-80. Failing on those is a 50% false-alarm rate on real history, and an alarm
-# that cries wolf every other commit is one nobody reads.
+# workflow.
 #
-# Set to 1 once TI-83 makes every push to main trigger a workflow, at which point the absence
-# of an Actions suite becomes a real finding rather than the configured behaviour.
+# MEASURED 2026-08-13 08:19 UTC, pinned to a fixed tip so it reproduces (the window slides as
+# main advances, which is why the earlier "20 of the last 40" reading in this comment did not):
+#
+#   gh api "repos/{owner}/{repo}/commits?sha=10957a81&per_page=50" --jq '.[].sha'
+#   then one repos/{owner}/{repo}/commits/<sha>/check-suites call per sha
+#   => 1 UNCHECKED, 22 no-actions, 27 ok
+#
+# So failing on the no-actions class is a 44% false-alarm rate on real history, and an alarm
+# that cries wolf on nearly every other commit is one nobody reads. deploy.yml paths-ignores
+# docs/** and docs-check.yml only gained its push trigger at TI-80, which is why they exist.
+#
+# RESIDUAL HOLE, written down rather than left to be discovered: accepting ANY app's suite
+# proves an event reached an app. It does NOT prove the github-actions pipeline was triggered.
+# A commit could carry a CodeRabbit suite while Actions was never invoked, and this script
+# calls that ok. Narrow — but it is the same shape of thing this exists to catch, one level in.
+# The strict bar below closes it, at the cost of the false-alarm rate above.
+#
+# Set to 1 once every push to main triggers a workflow, at which point the benign no-actions
+# class stops existing by construction and the absence of an Actions suite becomes a real
+# finding. That flip is TI-93, with its checkable condition; it is not an option waiting for
+# somebody to remember it.
 REQUIRE_ACTIONS="${CHECK_MAIN_REQUIRE_ACTIONS:-0}"
 
 if ! [[ "$COUNT" =~ ^[0-9]+$ ]] || (( COUNT < 1 )) || (( COUNT > 100 )); then
   echo "MAIN-CHECKED: COULD NOT DETERMINE — count must be 1-100 (the commits API pages at 100), got '$COUNT'"
+  exit 2
+fi
+
+# REF is interpolated straight into a query string, so anything outside the characters a git
+# ref can hold would silently change WHICH commits get reconciled — a `&` would append a
+# parameter of the caller's choosing. Not reachable from the workflow (it passes a literal
+# `main`), so this is hygiene; it fails to outcome 2 like everything else not established.
+if ! [[ "$REF" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+  echo "MAIN-CHECKED: COULD NOT DETERMINE — ref must look like a git ref (letters, digits, . _ / -), got '$REF'"
   exit 2
 fi
 
@@ -202,6 +227,17 @@ for c in commits:
             unverifiable.append(short)
             lines.append("  unverifiable %s  no suites, and no readable commit date to judge "
                          "whether it is simply too recent  %s" % (short, subject))
+        elif age < 0:
+            # The window is `now - committer date`, and any NEGATIVE age satisfies
+            # `age < GRACE`. Without this arm a commit stamped in the future is excused as
+            # too-recent and the run exits 0 with a genuine zero-suite commit in the window —
+            # the exact defect this script exists to remove, one level in. A clock that
+            # disagrees with this one is not a positively-established grace window, so it
+            # falls to outcome 2 like every other thing not established.
+            unverifiable.append(short)
+            lines.append("  unverifiable %s  no suites, and committed %dm in the FUTURE — the "
+                         "clock that stamped it disagrees with this one, so the grace window "
+                         "cannot be judged  %s" % (short, -age, subject))
         elif age < GRACE:
             recent.append(short)
             lines.append("  too-recent   %s  no suites yet, committed %dm ago (inside the %dm "
@@ -276,5 +312,9 @@ fi
 note=""
 (( n_recent > 0 )) && note="$note, $n_recent too recent to judge"
 (( n_noactions > 0 )) && note="$note, $n_noactions with suites but no workflow match"
-echo "MAIN-CHECKED: GREEN — all $n_total commits on $REF were checked ($n_ok with a github-actions suite$note)"
+# "$n_ok of $n_total", not "all $n_total": the headline is the part that gets grepped, and it
+# would be literally false whenever a commit was excused as too-recent or reported no-actions.
+# The parenthetical discloses those, but a disclosure under a false headline is the shape of
+# thing this script exists to remove.
+echo "MAIN-CHECKED: GREEN — no commit in the last $n_total on $REF is unchecked ($n_ok of $n_total with a github-actions suite$note)"
 exit 0

@@ -170,17 +170,25 @@ run_case "a fully-checked window is green" 0 "GREEN" "UNCHECKED"
 suites 4727672f "$CR:null" "$GA:failure"
 run_case "a suite that RAN and FAILED is not unchecked" 0 "GREEN" "UNCHECKED"
 
-# Measured on main 2026-08-13: 20 of the last 40 commits carry a coderabbit suite and NO
-# github-actions suite, because deploy.yml paths-ignores docs/** and docs-check.yml only
-# gained its push trigger at TI-80. Failing on those would put the alarm at a 50% false
-# positive rate on real history, and an alarm that cries wolf every other commit is one
-# nobody reads. Another app answering also PROVES the push event was delivered, which is the
-# thing actually being reconciled here. So it is reported, and it does not fail.
+# MEASURED 2026-08-13 08:19 UTC, pinned to a fixed tip so it reproduces (the window slides as
+# main advances, which is why an earlier "20 of the last 40" reading here did not):
+#
+#   gh api "repos/{owner}/{repo}/commits?sha=10957a81&per_page=50" --jq '.[].sha'
+#   then one repos/{owner}/{repo}/commits/<sha>/check-suites call per sha
+#   => 1 UNCHECKED, 22 no-actions, 27 ok
+#
+# Those 22 carry a coderabbit suite and NO github-actions suite, because deploy.yml
+# paths-ignores docs/** and docs-check.yml only gained its push trigger at TI-80. Failing on
+# them would put the alarm at a 44% false-positive rate on real history, and an alarm that
+# cries wolf on nearly every other commit is one nobody reads. Another app answering also
+# PROVES the push event was delivered, which is the thing actually being reconciled here. So
+# it is reported, and it does not fail.
 suites 4727672f "$CR:null"
 run_case "coderabbit-only is reported, not accused" 0 "no-actions" "UNCHECKED"
 run_case "  ...and the run still passes"            0 "GREEN" -
-# ...but the stricter bar is one env var away, for once TI-83 makes every push to main
-# trigger a workflow. Asserted so the flag cannot rot into a no-op.
+# ...but the stricter bar is one env var away, for once every push to main triggers a workflow
+# (TI-93 holds the flip and its checkable condition). Asserted so the flag cannot rot into a
+# no-op before anyone reaches for it.
 run_case "  ...unless the stricter bar is asked for" 1 "no-actions" - CHECK_MAIN_REQUIRE_ACTIONS=1
 
 # ---------------------------------------------------------------------------------------
@@ -203,6 +211,24 @@ run_case "  ...and the window is stated in the output" 0 "grace" -
 # Shrinking the window must re-accuse the fresh commit. Without this, a window hard-coded to
 # something enormous would pass every case above.
 run_case "  ...and the window is really the threshold" 1 "UNCHECKED" - CHECK_MAIN_GRACE_MINUTES=1
+
+# A commit stamped by a clock that disagrees with this one. The window is `now - committer
+# date`, so a FUTURE stamp yields a NEGATIVE age — and any negative number satisfies
+# `age < GRACE`. Without an explicit arm the commit is excused as "too recent" and the run goes
+# GREEN with a genuine zero-suite commit in the window, which is the one defect class this
+# script exists to remove.
+#
+# Not hypothetical here. The stamp read is the COMMITTER date, and for a direct doc push to
+# `main` — the route CLAUDE.md prescribes — that is the committing machine's clock, which on
+# WSL skews across sleep/resume. It also self-heals only once wall-clock time overtakes the
+# stamp, by which point the window has rolled past the commit, so in practice it is excused
+# permanently. A clock the script cannot trust must fail LOUD, never quiet.
+FUTURE=$(date -u -d '+1 hour' +%Y-%m-%dT%H:%M:%SZ)
+commit_list "ffff6666:CHANGE-43 stamped by a clock an hour ahead:$FUTURE"
+suites ffff6666
+run_case "a future-dated commit is unverifiable, not excused" 2 "unverifiable" "GREEN"
+run_case "  ...and is never excused as too-recent"           2 "unverifiable" "too-recent"
+run_case "  ...and the direction of the skew is named"       2 "FUTURE" -
 
 # ---------------------------------------------------------------------------------------
 # THE THIRD OUTCOME. Exit 2, never 0 and never 1.
@@ -235,6 +261,16 @@ build_real_shape
 printf '{"message":"Not Found","documentation_url":"https://docs.github.com"}\n' >"$FIX/4727672f.json"
 run_case "a response with no total_count is unverifiable" 2 "unverifiable" "GREEN"
 run_case "  ...and is never called unchecked"             2 "unverifiable" "UNCHECKED"
+
+# ...and the same shape with the LIST present. The fixture above does NOT actually pin the
+# total_count guard: it carries no `check_suites` key either, so it is caught one line later by
+# the is-a-list guard, and injecting the classic `.get("total_count") or 0` leaves the whole
+# suite green. This body isolates the guard — with that defect injected it reads as a genuine
+# zero and manufactures an accusation against a commit nothing was established about.
+build_real_shape
+printf '{"check_suites":[]}\n' >"$FIX/4727672f.json"
+run_case "a body carrying the list but no total_count is unverifiable" 2 "no total_count" "GREEN"
+run_case "  ...and is never called unchecked"                          2 "unverifiable" "UNCHECKED"
 
 # 4. total_count present but disagreeing with the array it describes — a paginated or
 # truncated page. Reading either number alone cannot see it.
@@ -294,23 +330,36 @@ echo "check-main-checked.sh — portability"
 
 # scripts/ lives on a Windows/WSL mount where the exec bit does not survive, so most of it is
 # committed 100644. Anything invoked bare dies on a fresh clone.
-NOEXEC="$(mktemp -d)"
+#
+# The "permission denied" grep that used to stand here was close to vacuous: check-main-checked.sh
+# invokes no sibling script today, so nothing could produce that string and the case could not
+# express a no. It is replaced by two assertions that CAN fail — a static one that catches a
+# bare sibling invocation the moment somebody adds one (before it ever has to be executed to
+# be caught), and a runtime one that pins the actual verdict rather than merely "some output".
 noexec_bad=""
+bare=$(grep -nE '(^|[^a-z_])(\./)?scripts/[A-Za-z0-9._-]+\.sh' "$DIR/check-main-checked.sh" \
+       | grep -v 'bash ' | grep -v '^[0-9]*:#' || true)
+[[ -n "$bare" ]] && noexec_bad=$'a sibling script is invoked without `bash`, which dies on a 100644 checkout:\n'"$bare"
+
+NOEXEC="$(mktemp -d)"
 # The copy is asserted. Left unchecked, a missing script makes `cp` fail, `noexec_out` empty,
 # and the grep below find nothing — reporting PASS having run nothing at all. Seen for real
 # while this suite was still red.
 if ! cp "$DIR/check-main-checked.sh" "$NOEXEC/" 2>/dev/null; then
-  noexec_bad="check-main-checked.sh is missing, so nothing was exercised"
+  noexec_bad="$noexec_bad; check-main-checked.sh is missing, so nothing was exercised"
 else
   chmod 644 "$NOEXEC"/*.sh
+  # Re-stated rather than inherited, so this case pins a known verdict instead of whatever
+  # the previous section happened to leave behind.
+  build_real_shape
   noexec_out=$(GH_COMMITS="$STUB/commits.json" GH_FIX="$FIX" PATH="$STUB:$PATH" \
-               bash "$NOEXEC/check-main-checked.sh" 5 testref 2>&1) || true
-  grep -qi "permission denied" <<<"$noexec_out" \
-    && noexec_bad="a sibling script is invoked directly"
-  [[ -z "$noexec_out" ]] && noexec_bad="the script printed nothing, so nothing was exercised"
+               bash "$NOEXEC/check-main-checked.sh" 5 testref 2>&1); noexec_rc=$?
+  [[ "$noexec_rc" == 1 ]] || noexec_bad="$noexec_bad; exit $noexec_rc with the exec bit cleared, wanted 1"
+  grep -q "MAIN-CHECKED: FAILED — 1 of 5" <<<"$noexec_out" \
+    || noexec_bad="$noexec_bad; the full verdict did not survive a 100644 checkout"
 fi
 rm -rf "$NOEXEC"
-report "runs with the exec bit cleared" "$noexec_bad" "${noexec_out:-}"
+report "runs with the exec bit cleared" "${noexec_bad#; }" "${noexec_out:-}"
 
 # The same trap that bit deploy-status.sh: a single apostrophe inside the `python3 -c '...'`
 # block closes the quote early and the script becomes unparseable shell.
