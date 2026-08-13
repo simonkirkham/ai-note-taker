@@ -3,8 +3,9 @@
 **A session goes quiet mid-task and stays quiet.** It is waiting for a build or a test run that
 already finished, it never reaches another tool round, and **queued messages cannot reach it** —
 so a peer or the human asking "are you alive?" gets nothing back. Recovery is killing a process
-by hand. It happened for real on 2026-08-11, and again a day later to a session that was
-deliberately checking for it.
+by hand. Reported twice — on 2026-08-11, and again a day later to a session that was deliberately
+checking for it. Both are recalled from those sessions' reports, not measured here; the
+self-matching that causes it *is* measured here, and is what the probes below show.
 
 ## The tell, first — because it fires on the evidence in front of you
 
@@ -58,7 +59,8 @@ literals sat in its own command line.
 ## The count cannot be corrected, so never wait on one
 
 The inflation is **not a constant** — it is one match per concurrent agent wrapper carrying the
-literal. Measured on a three-session box: a real count of 31 reported as 34. "Subtract one" is
+literal. Reported from a three-session box: a real count of 31 seen as 34 — that figure is
+recalled from the session that hit it, not measured here. "Subtract one" is
 wrong and gets more wrong the busier the machine is. **Never trust a count, only a pid.**
 
 The `[b]racket` trick (`grep -cE '[v]itest'`) stops the scan matching the wrapper that *typed*
@@ -88,8 +90,9 @@ the script. Run the two measurements as separate calls or the result is meaningl
 and a finished job writes nothing more. Poll the file instead: `until grep -q SENTINEL <file>`.
 
 **2. A sentinel poll outlives its own condition, and that is sharper than "it does not return".**
-From outside, a wait that is late is indistinguishable from a wait that is stuck. Measured: an
-agent slept out three full 570-second rounds on a deploy that had already finished. Bound the
+From outside, a wait that is late is indistinguishable from a wait that is stuck. Reported by the
+session it happened to (not measured here): an agent slept out three full 570-second rounds on a
+deploy that had already finished. Bound the
 loop with a deadline **and** re-read the underlying state on exit rather than trusting the loop's
 own verdict.
 

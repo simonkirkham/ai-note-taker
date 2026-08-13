@@ -12,7 +12,8 @@
 # wrapper's own cmdline carries whatever pattern was typed and the scan always finds itself.
 # `pgrep -fc 'qqq-isolated-nonsense-qqq'` returns 1 on a completely idle box. So
 # `until ! pgrep -f "bin/eslint"; do sleep 15; done` never exits, whatever eslint does.
-# It happened for real on 2026-08-11.
+# Reported by the session it happened to, on 2026-08-11, and again a day later — not measured
+# here. The self-matching itself IS measured here, and is what the fixtures assert.
 #
 # WHAT THIS FLAGS, AND WHAT IT DELIBERATELY DOES NOT
 # It targets the SHAPE, not the tool: a loop that WAITS (the scan sits in its exit condition,
@@ -30,12 +31,17 @@
 # The [b]racket trick is NOT exempted. It stops the scan matching the wrapper that typed the
 # pattern, but a peer session's wrapper that typed the plain word still matches, so the count
 # is still not a fact about your job. And the inflation is not a constant that can be
-# subtracted out — it is one match per concurrent wrapper carrying the literal (measured: a
-# real count of 31 reported as 34 on a three-session box). Never trust a count, only a pid.
+# subtracted out — it is one match per concurrent wrapper carrying the literal (a real count of
+# 31 seen as 34 on a three-session box, reported by that session, not measured here). Never
+# trust a count, only a pid.
 #
 # THE ESCAPE HATCH
-# `# cmdline-wait-ok: <reason>` on or just above the loop allows it. The reason is required —
-# an exemption with no reason is refused — so an allowed case stays readable six months later.
+# `# cmdline-wait-ok: <reason>` allows it. The reason is required — an exemption with no reason
+# is refused — so an allowed case stays readable six months later. It reaches 3 lines in BOTH
+# directions from the loop it applies to: just above it, or on the first lines inside it, and no
+# further either way. Both bounds are there because both were breached — an unbounded reach
+# downward let a marker exempt a loop 300 lines later, and an unbounded reach upward let a
+# marker merely NAMED in prose deep in a loop body exempt that whole loop.
 #
 # WHERE IT RUNS
 # .github/workflows/docs-check.yml only. pr.yml paths-ignores scripts/**, and `.githooks/`
@@ -50,6 +56,19 @@
 #  2. Heredoc bodies are skipped. A heredoc is a nested program written to disk and run by
 #     bare path, and its do/done tokens would corrupt the nesting count here.
 #  3. It reads shell only — a wait written in Python or C# is not looked at.
+#  4. Two known false positives, both left as-is rather than coded around. A legitimate wait
+#     that merely MENTIONS a process listing in an advice string reddens
+#     (`until [ -f build.done ]; do echo "try 'ps -ef | grep dotnet'"; sleep 20; done`), and so
+#     does a single-pass read over one snapshot when the scan lands on the `while` line
+#     (`while IFS= read -r line; do …; done < <(ps -ef)`). Neither is the defect. Narrowing the
+#     regex to exclude them would cost more sensitivity than the two cases are worth, and the
+#     escape hatch covers both in one line.
+#
+# EDITING THIS FILE
+# The awk program below is a single-quoted shell string, so ONE apostrophe anywhere inside it —
+# in a comment, in the word "loop's" — terminates the quote and breaks the whole script. It
+# fails loudly rather than silently: `bash -n` and the self-test both catch it immediately.
+# Keep comments inside that block apostrophe-free.
 #
 #   bash scripts/check-cmdline-waits.sh              # every tracked shell script
 #   bash scripts/check-cmdline-waits.sh path/to.sh   # named files
@@ -75,10 +94,22 @@ fi
 scan_file() {
   awk -v FILE="$1" '
   function is_scan(s) {
-    # pgrep/pkill asked for the FULL command line. -f, --full, and combined flags (-fc, -af).
-    if (s ~ /(^|[^A-Za-z0-9_-])(pgrep|pkill)[[:space:]]+(-[A-Za-z]*f|--full)/) return 1
-    # A full process listing: -e, -A, aux, ax. A pid-scoped `ps -p <pid> -o …` is not one.
-    if (s ~ /(^|[^A-Za-z0-9_-])ps[[:space:]]+[^|;&]*(-[A-Za-z]*[eA]|[[:space:]]a?ux|[[:space:]]ax)/) return 1
+    # pgrep/pkill asked for the FULL command line, with -f in ANY option position — not just
+    # the first. `pgrep -c -f X` and `pgrep -u "$USER" -f X` are the same defect as `pgrep -fc
+    # X`, and the first draft caught only the last of the three. `[^|;&]*` stops the search
+    # reaching across a pipe into an unrelated command.
+    if (s ~ /(^|[^A-Za-z0-9_-])(pgrep|pkill)[[:space:]]+[^|;&]*(-[A-Za-z]*f[A-Za-z]*|--full)([^A-Za-z0-9_-]|$)/) return 1
+    # A full process listing, in two branches rather than one. A pid-scoped `ps -p <pid> -o …`
+    # is not one, and neither is a `ps` with no listing flag at all.
+    #  (a) the flag form: -e or -A, anywhere in the option list.
+    if (s ~ /(^|[^A-Za-z0-9_-])ps[[:space:]]+[^|;&]*-[A-Za-z]*[eA]/) return 1
+    #  (b) the BSD form: a bare `aux`/`ax` word. This MUST be a separate branch. Folded into
+    #      (a) as an alternative it could never fire: `[[:space:]]+` consumes the only
+    #      separating space and `[^|;&]*` cannot put one back, so it needed a SECOND space —
+    #      `ps  aux` matched and `ps aux` did not. The branch was written, reviewed and never
+    #      once executed, inside the guard built to refuse exactly that. It is now the shape
+    #      two fixtures assert red.
+    if (s ~ /(^|[^A-Za-z0-9_-])ps[[:space:]]+([^|;&]*[[:space:]])?(aux[A-Za-z]*|ax[A-Za-z]*)([^A-Za-z0-9_-]|$)/) return 1
     # Reading the command line straight out of /proc.
     if (s ~ /\/proc\/[^[:space:]]*\/cmdline/) return 1
     return 0
@@ -127,7 +158,12 @@ scan_file() {
     if (raw ~ /cmdline-wait-ok:/) {
       if (raw ~ /cmdline-wait-ok:[[:space:]]*[^[:space:]]/) {
         okpending = 1; okline = NR
-        for (i = 1; i <= depth; i++) okd[i] = 1
+        # Bounded in BOTH directions. open_loop applies the downward bound (a marker does not
+        # reach a loop far below it); this is the upward one. Without it, `okd` was set on
+        # every open loop at any distance, so a marker merely NAMED in prose 25 lines into a
+        # loop body exempted that whole loop — the same defect red-marker-far-away.sh catches
+        # from the other side, and the direction the prose in this very file sits in.
+        for (i = 1; i <= depth; i++) if (NR - start[i] <= 3) okd[i] = 1
       } else {
         printf "ERROR: %s:%d: a cmdline-wait-ok exemption needs a reason after the colon\n", FILE, NR > "/dev/stderr"
         status = 1
@@ -141,16 +177,27 @@ scan_file() {
       # A while/until condition is re-evaluated every iteration, so a scan there IS the wait.
       # The keyword may be on this line (read before the tokeniser below reaches it) or may
       # have opened a header on an earlier line.
-      if (pk == "while" || pk == "until" || code ~ /(^|[^A-Za-z0-9_])(while|until)([^A-Za-z0-9_]|$)/)
+      if (pk == "while" || pk == "until" || code ~ /(^|[^A-Za-z0-9_])(while|until)([^A-Za-z0-9_]|$)/) {
         hdrscan = NR
-      # A for/select list is evaluated once. Not a wait, and not attributable to an enclosing
-      # loop either, since the scan belongs to the header being opened.
-      else if (pk == "for" || pk == "select" || code ~ /(^|[^A-Za-z0-9_])(for|select)([^A-Za-z0-9_]|$)/)
-        ;
+      }
+      # A for/select list is evaluated once, so it is not the wait of THIS loop — but it is
+      # still attributable to any loop already open AROUND it. Marking only enclosing levels
+      # (the header opens its own loop a token later, so that level is not open yet) is what
+      # separates the two cases: a scan in a for-header inside a waiting while is the identical
+      # defect with the scan moved from the for BODY to its header, while a bare
+      # `for p in $(pgrep -f …)` at depth 0 marks nothing and stays green.
+      #
+      # The braces are load-bearing. Unbraced, `for (…) if (…) …` followed by `else` binds
+      # that else to the INNER if, and awk silently swallows the body-scan branch below —
+      # every scan in a loop body then went undetected while the file still parsed.
+      else if (pk == "for" || pk == "select" || code ~ /(^|[^A-Za-z0-9_])(for|select)([^A-Za-z0-9_]|$)/) {
+        for (j = 1; j <= depth; j++) if (scanln[j] == 0) scanln[j] = NR
+      }
       # Otherwise it is in a body. Mark every enclosing level: the scan that drives an outer
       # wait is routinely written inside an inner loop.
-      else
+      else {
         for (j = 1; j <= depth; j++) if (scanln[j] == 0) scanln[j] = NR
+      }
     }
 
     n = split(code, tok, /[^A-Za-z0-9_]+/)
