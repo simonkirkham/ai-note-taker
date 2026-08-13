@@ -223,3 +223,17 @@ box. Counting runner processes is the sound instrument; load average is corrobor
 **Learnings:** [ti-81-orphaned-deploy-run](learnings/ti-81-orphaned-deploy-run.md) — the discriminator between orphaned and slow-but-alive had to be measured (job records are created at **eligibility**, not dispatch, so the no-record window is ~0s); "all jobs terminal" admits `failure`, and injecting exactly that reported a **failed** deploy as safe to merge; four permissive-direction injections went red, three flipping exit 0→1; and a `min()` tidy-up that would turn a run which never reported a completion into a green, pinned by a test. Follow-up [TI-89](technical-improvements.md#ti-89-the-merge-gates-self-test-blames-the-merge-gate-when-the-machines-date-command-is-the-problem).
 
 **Same shape as TI-88** (a merge waved through as safe and refused seconds later): a gate reporting a state that was true a moment ago and is not true now. TI-81 was a stale run record, TI-88 a stale mergeability flag — different gates, different scripts, one shape. The shape is the reusable part; see [technical-improvements.md](technical-improvements.md#ti-88-a-gate-verdict-has-an-expiry-and-the-window-between-reading-it-and-acting-on-it-is-where-it-fails).
+
+## TI-86. Nothing could be merged: every pull request's build failed on a security advisory in a package no code here calls
+
+✅ **Done** — raised and fixed 2026-08-13 (PR [#476](https://github.com/simonkirkham/ai-note-taker/pull/476), deploy #770), same day, in ~40 minutes.
+
+**What it cost:** every pull request in the repo that runs a .NET build went red and could not merge — including [CHANGE-41], a frontend-only change that touches no .NET at all. It surfaced as an unexplained `backend` failure on a PR whose author had no reason to look at NuGet.
+
+**Why:** GitHub published GHSA-q939-rpr3-3284 against **SSH.NET 2025.1.0** (high — a malicious SCP server can write arbitrary files during a recursive download). It arrives transitively via `Testcontainers.DynamoDb`, and `NuGetAudit` + `TreatWarningsAsErrors` promotes it to **NU1903**, which fails `dotnet build ai-note-taker.sln`. Nothing in this repo calls SSH.NET; the dependency exists only because Testcontainers ships an SSH transport.
+
+**Fix:** a direct `PackageReference` to **SSH.NET 2026.0.0** in `tests/EventStore.Integration`. `Testcontainers` 4.12.0 and 4.13.0 both still pin 2025.1.0 — checked against their published nuspecs — so upgrading it does not help, and a direct reference is the only way to lift a transitive version. The line carries a comment to delete it once Testcontainers ships the patch itself.
+
+**The generalisable part:** a **dated, external** trigger can turn a repo red with no commit behind it, and it lands on whichever PR happens to run next — so the first person to see it has no reason to suspect their own change. Read the failing step rather than the failing job name; `NU1903` names the package, and the package named a library the diff had never heard of.
+
+**Two flakes were separated from it in the same session, not folded in:** an unretried Electron download that dropped a connection ([TI-87], open), and a merge gate that reported CLEAN three seconds before the merge was refused ([TI-88], open, another session's reading).

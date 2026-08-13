@@ -183,6 +183,8 @@ cdk deploy
 | ----------------------- | ------------------------- | -------------------------------------------------- |
 | `VITE_API_URL`          | `http://localhost:5000`   | Base URL the frontend calls for API requests       |
 | `VITE_GOOGLE_CLIENT_ID` | _(empty)_                 | Google OAuth2 client ID for PKCE sign-in flow      |
+| `VITE_BUILD_NUMBER`     | _(leave unset)_           | Deploy run number shown at the foot of the sidebar. Set by `deploy.yml` and the desktop installer build; unset locally, where the app reads `Build dev` |
+| `VITE_BUILD_SHA`        | _(leave unset)_           | Commit the bundle was built from — the sidebar build stamp's hover text. Set alongside `VITE_BUILD_NUMBER`; unset locally, where there is no hover text |
 
 **Tests** — set in CI or manually before running post-deploy test suites:
 
