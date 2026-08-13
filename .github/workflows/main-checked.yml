@@ -1,0 +1,103 @@
+name: Main Checked
+
+# TI-90. Reconciles the recent commits on `main` against their check-suites and fails if any
+# commit landed with nothing run against it at all.
+#
+# --- Why this is on a SCHEDULE, and not on push ---------------------------------------------
+#
+# The failure being caught is "a trigger did not fire". Measured 2026-08-13: commit 4727672f
+# has total_count 0 on its check-suites — no github-actions suite, and no CodeRabbit suite
+# either. A `paths:` filter cannot suppress an unrelated app, so this is not a workflow-config
+# defect; zero suites across every app means no check machinery was triggered at all, most
+# parsimoniously because no push event was delivered GitHub-side.
+#
+# So a guard triggered by that same push event is structurally incapable of catching it. Had
+# this workflow been wired to `push:`, the commit that lost its push event would have lost
+# this run along with every other, and the backstop would be absent in precisely the case it
+# exists for. Wiring it to `push:` with a `paths:` list would be worse again — two independent
+# reasons to be silent instead of one.
+#
+# `schedule:` is delivered by GitHub timers, independent of the push deliveries of this repo,
+# and it looks BACKWARDS over a window rather than at one commit. That combination is what
+# makes it a backstop: it does not need to have been present when the commit landed.
+#
+# The trade is latency — a hole is found within a day rather than within a minute. That is the
+# right trade for a defect whose current detection latency is infinity, and the window is 50
+# commits deep against a repo doing roughly 15-20 commits a day, so a commit stays in scope for
+# two to three runs even during a busy stretch.
+#
+# Known limit, stated rather than hidden: nothing here watches this workflow itself. If GitHub
+# stops delivering the schedule, this goes quiet in the same way the thing it monitors did.
+# GitHub also disables scheduled workflows in repositories with 60 days of no activity; this
+# repo is nowhere near that, and the daily job summary is the tell if it ever happens.
+#
+# Deliberately cheap: one checkout and 51 REST calls, no build, no test, no deploy. Measured
+# 2026-08-13 at 36s wall clock for a 50-commit window. Adds nothing to deploy time — it never
+# runs on the deploy path.
+
+on:
+  schedule:
+    # 07:17 UTC daily. Off the hour on purpose: GitHub queues scheduled workflows across all
+    # repositories and runs on the hour are the most delayed and most likely to be dropped.
+    - cron: "17 7 * * *"
+
+  # So a hole can be checked for on demand, and so this workflow can be PROVEN to work without
+  # waiting a day for the timer — the repo rule is that a mechanism nobody has watched work is
+  # not working.
+  workflow_dispatch:
+    inputs:
+      count:
+        description: "How many commits back from the tip of main to reconcile (1-100)"
+        required: false
+        default: "50"
+
+permissions:
+  contents: read
+  # The check-suites API is read through GITHUB_TOKEN; without this the calls 404 and every
+  # commit comes back `unverifiable` rather than silently clean, which is the intended
+  # direction but still a broken run.
+  checks: read
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      # Invoked via `bash` deliberately: this repo lives on a Windows/WSL mount where the
+      # executable bit does not survive, so most of scripts/ is committed 100644.
+      #
+      # Three outcomes, and they are NOT collapsed into pass/fail:
+      #   0  every commit was checked
+      #   1  a commit reached main with nothing run against it — a hole
+      #   2  the question was not answered (401, rate limit, malformed page, missing field)
+      #
+      # 2 fails the job as loudly as 1. A backstop that reports all-clear because it could not
+      # reach the API manufactures exactly the false confidence it exists to remove, and
+      # nobody re-runs a green. The summary says which of the two it was, because they are
+      # opposite instructions: fix main, or run this again.
+      - name: Reconcile main against its check-suites
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COUNT: ${{ github.event.inputs.count || '50' }}
+        run: |
+          set +e
+          bash ./scripts/check-main-checked.sh "$COUNT" main | tee /tmp/main-checked.out
+          rc=${PIPESTATUS[0]}
+          set -e
+          {
+            echo "## Main Checked (TI-90)"
+            echo ""
+            echo '```'
+            cat /tmp/main-checked.out
+            echo '```'
+            echo ""
+            case "$rc" in
+              0) echo "Every commit in the window had a check-suite." ;;
+              1) echo "**A commit reached \`main\` with nothing run against it.** Nothing else anywhere reported this. See TI-90 in docs/technical-improvements.md." ;;
+              2) echo "**Could not determine** — this is NOT an all-clear. Re-run this workflow; if it persists, the API or the token is the problem." ;;
+              *) echo "**Unrecognised exit code $rc** from the script." ;;
+            esac
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"

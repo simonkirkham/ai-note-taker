@@ -100,6 +100,7 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 | TI-89 | **On a Mac, the self-test that guards the merge gate reports nine failures accusing the merge-gate logic, when the only thing wrong is the machine's `date` command** | 🔲 **Open** — raised 2026-08-13 (Hawk, PR [#469](https://github.com/simonkirkham/ai-note-taker/pull/469) / [TI-81], should-fix). Measured, not argued: `scripts/test-merge-gate.sh:84-85` builds its clock fixtures with `date -u -d '-45 minutes'`, which only GNU coreutils supports. Run against a `date` without `-d`, the suite prints **`MERGE-GATE SELF-TEST: FAILED`, 45 PASS / 9 FAIL**, and every failure message names orphaned run records rather than the clock. Fix: one guard that exits loudly if `date -u -d` is unsupported. CI is `ubuntu-latest`, so it costs nobody today. Detail in [TI-89](#ti-89-the-merge-gates-self-test-blames-the-merge-gate-when-the-machines-date-command-is-the-problem) below. |
 | TI-91 | **The merge gate can say it is safe to merge while a deploy is genuinely running, if the clock on the machine reading it is more than ten minutes fast** | 🔲 **Open** — raised 2026-08-13. **Derived from reading `scripts/deploy-status.sh`, not from an observed miss** — and no reading taken afterwards could establish whether one has already happened. Detail in [TI-91](#ti-91-a-fast-clock-turns-the-merge-gates-stale-run-discount-into-a-fail-open) below. |
 | TI-92 | **A tracking item can be half-archived — copied into the archive but never deleted from the live list — and nothing notices, because the check that catches exactly this looks only at bugs** | 🔲 **Open** — raised 2026-08-13. **34 TI ids sit in both files today**, all pre-existing, so finished work reads as outstanding on the one column the human scans. Detail in [TI-92](#ti-92-half-archived-ti-items-are-invisible-because-the-live-vs-archive-check-covers-bugs-only) below. |
+| TI-90 | **A change can land in the main codebase with nothing checked against it at all, and nothing anywhere reports it** | 🔲 **In Progress** — raised 2026-08-13. Measured: commit `4727672f` carries **zero** check-suites from **any** app, while `14a4a48f`, `fb286458` and `c12fa2c9` around it each carry two. A daily backstop now reconciles `main` against its check-suites and names any such commit; the cause of the undelivered push event is still unknown. Detail in [TI-90](#ti-90-a-commit-can-reach-main-with-no-check-suite-from-any-app-and-the-absence-is-why-nobody-noticed) below. |
 
 **2026-06-17 deploy-gate stabilisation session:** proved **10 consecutive green deploys** (#595 ×10). Root-caused and fixed a **44-min E2E suite hang** (PR #291's fire-and-forget response-body read on the reload loop) → replaced with a hang-proof, sync-only diagnostic (PR #292) and a **hard 120 s per-test cap** (**TI-43 done**, PR #293). **TI-42** cards-list flake did not recur in 13+ runs (not reproduced ≠ fixed; diagnostic now in place). **BUG-31** turned out to be three stacked causes — original image-reappear symptom fixed, `SaveAndReturnAsync` cards-refetch sync fixed (PR #297, suite-wide win), and a residual stuck-note-detail-read layer carved out as **TI-44**. Full write-up: [docs/learnings/e2e-gate-hang-and-the-diagnostic-that-caused-it.md](learnings/e2e-gate-hang-and-the-diagnostic-that-caused-it.md).
 
@@ -541,6 +542,46 @@ The nine read like the gate is broken: `an orphaned record is discounted, and sa
 **A known limit, recorded so nobody files it as a defect:** a `skipped` job blocks the discount, so an orphaned record on a run carrying one keeps the original bug. This is conscious and tested (`a conclusion outside the allow-list blocks rather than being guessed at`) — it is the allow-list failing **closed**, which is the property the whole fix exists to have. Measured **1 skipped job in 125, across 25 runs**, and in that one instance it accompanied a failure that blocks regardless.
 
 **Raised in:** 2026-08-13, Hawk's post-merge review of PR #469 ([TI-81, archived](technical-improvements-archive.md#ti-81-an-orphaned-run-record-blocks-the-merge-gate-for-tens-of-minutes)), two findings folded into one item.
+## TI-90. A commit can reach main with no check-suite from any app, and the absence is why nobody noticed
+
+**Symptom.** A change lands in the main codebase and nothing is checked against it — no failure, no red X, no trace anywhere. `main` then looks checked when it was never looked at, and the next person builds on top of it believing the opposite.
+
+**Measured 2026-08-13**, on `repos/simonkirkham/ai-note-taker/commits/<sha>/check-suites`:
+
+| Commit | `total_count` | Apps |
+| --- | --- | --- |
+| `4727672f` (TI-81 squash merge) | **0** | none |
+| `14a4a48f` | 2 | `coderabbitai`, `github-actions` |
+| `fb286458` | 2 | `coderabbitai`, `github-actions` |
+| `c12fa2c9` | 2 | `coderabbitai`, `github-actions` |
+| `93cc8cad` | 3 | `coderabbitai`, `github-actions` ×2 |
+
+**This is not a workflow-config defect, and looking for one is the wrong search.** `docs-check.yml` is byte-identical between `14a4a48f` and `4727672f`; all three files `4727672f` changed are in its push `paths:` list; and its `concurrency.group` is keyed by `github.sha` on a push, so no push can cancel another. Decisively: **CodeRabbit is absent too**, and a `paths:` filter cannot suppress an unrelated app's check-suite. Zero suites across *every* app means no check machinery was triggered at all — most parsimoniously, no push event was delivered GitHub-side.
+
+**Retracted diagnosis, kept on purpose.** An earlier version of this blamed the `paths:` filter. It was wrong because `actions/runs` — which lists *workflow runs only* — was used to answer a question about *all checks*. "The guard did not fire" and "nothing fired" are different claims needing different queries; `check-suites` answers the second, and only the second.
+
+**[TI-83] does not close this.** Dropping a `paths:` list changes what happens when a push event *arrives*. It does nothing at all when no push event arrives.
+
+**Same family as [TI-88] and the archived [TI-81]:** a gate reporting a state that is not the state now. TI-81 was a stale run record read as live, TI-88 a verdict that expired between being read and being acted on, and this one a check that was never asked. In all three the artefact on screen is confidently wrong rather than absent, which is why none of them surfaces as a complaint.
+
+**What shipped: a backstop, not a fix.** The cause of the undelivered push event is still unknown and is not within reach from this side of the API. What is within reach is noticing — so `scripts/check-main-checked.sh` walks the last N commits on `main`, asks the check-suites API about each, and fails if any commit has none. `.github/workflows/main-checked.yml` runs it daily.
+
+- **Why a schedule, not a push trigger.** The failure is "a trigger did not fire", so a guard triggered by that same push event is structurally incapable of catching it — the commit that lost its push event would have lost this run too. A `schedule:` is delivered by GitHub timers, independent of this repo's push deliveries, and it looks *backwards* over a window rather than at one commit. The cost is latency: a hole is found within a day rather than within a minute, against a current detection latency of never.
+- **Three outcomes, not two.** `0` all checked · `1` an unchecked commit · `2` could not determine. The third is the one that matters: a 401, a rate limit, a proxy error page, and a body missing `total_count` all look like a genuine zero to the obvious implementation, and a backstop that reports all-clear because it could not reach the API manufactures exactly the false confidence it exists to remove. Exit 1 and exit 2 are opposite instructions — fix `main`, or ask again — and never share a code or a word.
+- **Grace window, 10 minutes.** A commit pushed seconds ago has no suite yet. Measured against the committer date, which in this repo is within a minute of the push time (squash merges stamp it at the merge instant; direct doc pushes commit and push within seconds).
+- **Why "no `github-actions` suite" is *not* the failure condition.** Measured over the last 50 commits on `main`: **1 UNCHECKED, 24 with suites but none from `github-actions`, 25 fully checked**. Those 24 are benign — `deploy.yml` paths-ignores `docs/**` and `docs-check.yml` only gained its push trigger at [TI-80] — and another app answering *proves the push event was delivered*, which is the thing being reconciled. Failing on them would be a 48% false-alarm rate that buries the one real hole. They are reported and do not fail; `CHECK_MAIN_REQUIRE_ACTIONS=1` raises the bar for once [TI-83] makes every push to `main` trigger a workflow.
+
+**Verified, not asserted** — three arms, because a detector that reddens on everything only proves it noticed something:
+
+1. **Red on the real case.** `bash scripts/check-main-checked.sh 6 b59e991c` → `MAIN-CHECKED: FAILED — 1 of 6 commits reached b59e991c with NO check-suite from any app: 4727672f`, exit 1, with the other five reported `ok`.
+2. **Green on the neighbours.** `14a4a48f`, `fb286458`, `c12fa2c9` each → `MAIN-CHECKED: GREEN`, exit 0.
+3. **Loud, not green, on every error path** — forced against the real API, not a stub: an invalid token (real HTTP 401), an unreachable host, a non-existent ref (real HTTP 404), a real 401 on the per-commit call with the commit list succeeding, and a real HTTP 200 whose valid JSON simply has no `total_count`. All five printed `COULD NOT DETERMINE` and exited 2; none printed `GREEN`, none printed `UNCHECKED`.
+
+**Cost.** One API call per commit plus one for the list — 51 calls for the default 50-commit window, measured at 36s wall clock. No build, no test, no deploy; nothing on the deploy path.
+
+**Known limit.** Nothing watches this workflow itself. If GitHub stops delivering the schedule, it goes quiet the same way the thing it monitors did.
+
+**Tests.** `scripts/test-check-main-checked.sh`, 33 stub-driven cases, no network, ~2s, wired into `docs-check.yml` (`pr.yml` paths-ignores `scripts/**`, and this script prints GREEN forever in normal operation, so nothing about day-to-day use would ever reveal a broken failure arm). Every classification is asserted both ways — one fixture that must be reported and one that must not, differing only in the clause under test.
 
 ---
 

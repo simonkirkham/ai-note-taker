@@ -49,6 +49,12 @@ on:
       - "scripts/merge-gate.sh"
       - "scripts/deploy-status.sh"
       - "scripts/test-merge-gate.sh"
+      # TI-90's main-checked self-test. Same reason as TI-77 above — scripts/** is invisible
+      # to pr.yml — with one addition: check-main-checked.sh is a BACKSTOP, so in normal
+      # operation it prints GREEN forever and nothing about day-to-day use would ever reveal
+      # that its failure arm had stopped working.
+      - "scripts/check-main-checked.sh"
+      - "scripts/test-check-main-checked.sh"
       # TI-70's workflow lint (PR #464). ".github/workflows/**" subsumes the explicit
       # docs-check.yml entry above it; both kept so neither side of the merge lost a line.
       - "scripts/lint-workflows.sh"
@@ -77,6 +83,8 @@ on:
       - "scripts/merge-gate.sh"
       - "scripts/deploy-status.sh"
       - "scripts/test-merge-gate.sh"
+      - "scripts/check-main-checked.sh"
+      - "scripts/test-check-main-checked.sh"
       - "scripts/lint-workflows.sh"
       - ".github/workflows/**"
       - ".github/actions/**"
@@ -122,6 +130,17 @@ jobs:
       # rebase a clean branch) survived. Stub-driven, deterministic, no network, ~15s.
       - name: Merge-gate self-test
         run: bash ./scripts/test-merge-gate.sh
+
+      # TI-90. The OFFLINE half of check-main-checked.sh: a stubbed `gh`, no network,
+      # deterministic, ~2s. The live half runs on a schedule in main-checked.yml, because the
+      # thing it reconciles is what actually happened on main and that cannot be stubbed.
+      #
+      # The bulk of the cases are the third outcome — could-not-determine. A backstop that
+      # degrades into a pass when the API is unreachable is strictly worse than no backstop,
+      # and a 401, a rate limit, a proxy error page and a body missing total_count all look
+      # like "zero suites" to the obvious implementation.
+      - name: Main-checked self-test
+        run: bash ./scripts/test-check-main-checked.sh
 
   workflows:
     runs-on: ubuntu-latest
