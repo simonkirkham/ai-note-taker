@@ -28,19 +28,25 @@ name: Repo Checks
 # the paths below is reachable by a direct commit. Until this trigger existed, a workflow
 # file pushed to `main` was linted by nothing anywhere — `.githooks/pre-commit` had been
 # the last (opt-in, per-clone) defence and it was deleted on 2026-08-11. That is the exact
-# route TI-69 shipped through, so the two triggers carry the same `paths:` list.
+# route TI-69 shipped through. It carried a copy of the `paths:` list until TI-83 deleted
+# it; see the comment on the trigger for why subtraction beat keeping the two in step.
 #
 # Deliberately narrow: it does not build, test, or deploy anything. Grep + a stubbed
-# shell test + one Go binary, well under a minute. Both jobs run whenever any listed
-# path changes — a docs-only PR also pays ~6s of actionlint and a workflow-only PR also
-# pays the grep and the self-test, which is cheaper than the machinery needed to scope
-# each job to its own paths.
+# shell test + one Go binary, well under a minute. On a pull request both jobs run whenever
+# any listed path changes — a docs-only PR also pays ~6s of actionlint and a workflow-only
+# PR also pays the grep and the self-test, which is cheaper than the machinery needed to
+# scope each job to its own paths. On a push to `main` both simply always run.
 
 on:
   pull_request:
     branches: [ main ]
     paths:
       - "docs/phases/phase-bugs.md"
+      # check-doc-ids.sh reads the archive for two of its checks (duplicate "## BUG-N"
+      # entries, and a bug living in both the live doc and the archive), so a PR that
+      # touches only the archive must still run it. Added by TI-83; it had been missing
+      # from both lists since the archive was created.
+      - "docs/phases/phase-bugs-archive.md"
       - "docs/phases/phase-minor-changes.md"
       - "docs/technical-improvements.md"
       - "docs/roadmap.md"
@@ -59,27 +65,55 @@ on:
       # so the metadata check runs when one changes. See scripts/lint-workflows.sh's header.
       - ".github/actions/**"
 
-  # TI-80. The same set of paths, deliberately re-typed: GitHub Actions does not support
-  # YAML anchors, so there is no way to share one list between two triggers. The only
-  # difference is that the pull_request list's ".github/workflows/docs-check.yml" entry is
-  # not repeated — ".github/workflows/**" already matches it; it survives above only
-  # because neither side of a merge wanted to drop a line. Keep these in step: a path
-  # added to one and not the other is guarded on the PR route and unguarded on the push
-  # route, which is the failure this trigger exists to remove.
+  # NO `paths:` here, deliberately (TI-83). Both jobs read the WHOLE tree whatever a commit
+  # touched — actionlint lints every workflow, check-doc-ids.sh greps every tracking doc —
+  # so the list never scoped what got CHECKED. It only decided whether the check RAN, which
+  # made it pure drift surface: GitHub Actions has no YAML anchors, so keeping it meant
+  # typing the same list twice and hoping the copies stayed in step. And drift on THIS side
+  # is the silent one — a path missing from the pull_request list makes a check visibly stop
+  # appearing on PRs, while a path missing here just quietly stops guarding the route that
+  # has no other guard.
+  #
+  # It had already drifted: `docs/phases/phase-bugs-archive.md` is read by check-doc-ids.sh
+  # for two of its checks (duplicate `## BUG-N` entries, and a bug living in both the live
+  # doc and the archive) and was in NEITHER list. So an archive-ONLY commit matches neither
+  # trigger and runs no check at all — and archive-only is exactly the shape of a half-done
+  # close, where the row was never deleted from phase-bugs.md, which is the case the
+  # duplicate check exists to catch. Archiving is a Scribe step that commits straight to
+  # `main`, the one route with no other guard.
+  #
+  # LATENT, NOT OBSERVED — the record should not imply this has already bitten. All 11
+  # commits that have ever touched the archive on `main` also touched phase-bugs.md, so
+  # every one of them matched; and the push trigger did not exist at all until 14c6c034
+  # (2026-08-12, TI-80), which is after the most recent of them (bb4c5611, 2026-08-11).
+  # Demonstrated deliberately instead, on `proof/ti83-paths`: commit 1cf9468d changed only
+  # the archive and added a duplicate `## BUG-1`, and produced NO run at all — that
+  # branch's only run is 31623178252, on its parent 8589d591. The branch has since been
+  # deleted, so that sha no longer resolves; run 31623178252 is the durable record.
+  #
+  # Subtracting the list closes that here without anyone having to remember it, and closes
+  # every future instance of it too; the pull_request list gets the path added by hand,
+  # because there the filter is still worth having.
+  #
+  # LIMIT, so nobody reads this as more than it is: dropping `paths:` makes the workflow run
+  # whenever a push EVENT arrives. It does nothing when no push event arrives at all — a
+  # commit on `main` that triggers no check-suites in the first place is a separate defect
+  # and is tracked separately (TI-90).
+  #
+  # The cost, stated because deploy time is a first-class cost here: both jobs now run on
+  # EVERY push to `main` rather than on a matching one. Deploy wall clock is UNCHANGED —
+  # these jobs do not gate deploy.yml and run in parallel with it, so no merge waits any
+  # longer. Per-JOB duration over the last twelve push runs (2026-08-13): doc-ids 19-23s,
+  # workflows 5-10s, the two in parallel. The recurring bill is ZERO: this repo is public,
+  # so standard-runner minutes are free.
+  #
+  # The one real cost was that each extra run is another actionlint download, and
+  # lint-workflows.sh used to fetch it with no --retry and no cache — so a network blip
+  # red-X'd a `main` commit that did nothing wrong, and more runs meant more of that.
+  # TI-84 (PR #474, merged 608c882e on 2026-08-13) added the retry and landed first; this
+  # change is rebased onto it. Resolved, not accepted.
   push:
     branches: [ main ]
-    paths:
-      - "docs/phases/phase-bugs.md"
-      - "docs/phases/phase-minor-changes.md"
-      - "docs/technical-improvements.md"
-      - "docs/roadmap.md"
-      - "scripts/check-doc-ids.sh"
-      - "scripts/merge-gate.sh"
-      - "scripts/deploy-status.sh"
-      - "scripts/test-merge-gate.sh"
-      - "scripts/lint-workflows.sh"
-      - ".github/workflows/**"
-      - ".github/actions/**"
 
 # Keyed by head branch on a pull request, so a newer commit cancels the superseded run —
 # only the latest commit's checks matter there.
