@@ -251,6 +251,11 @@ jobs:
           # backend MS_CLIENT_ID). Empty when unset → the Outlook connect is a no-op.
           VITE_MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
           VITE_MS_TENANT_ID: ${{ secrets.MS_TENANT_ID }}
+          # CHANGE-41: the deploy number shown at the foot of the sidebar, so "is my change
+          # live?" is answered by looking at the app. Both frontend builds in this workflow
+          # take it from the same run, so test and production can never disagree.
+          VITE_BUILD_NUMBER: ${{ github.run_number }}
+          VITE_BUILD_SHA: ${{ github.sha }}
 
       - name: Inject RUM snippet
         working-directory: web
@@ -609,6 +614,11 @@ jobs:
           # backend MS_CLIENT_ID). Empty when unset → the Outlook connect is a no-op.
           VITE_MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
           VITE_MS_TENANT_ID: ${{ secrets.MS_TENANT_ID }}
+          # CHANGE-41: the deploy number shown at the foot of the sidebar, so "is my change
+          # live?" is answered by looking at the app. Both frontend builds in this workflow
+          # take it from the same run, so test and production can never disagree.
+          VITE_BUILD_NUMBER: ${{ github.run_number }}
+          VITE_BUILD_SHA: ${{ github.sha }}
 
       - name: Inject RUM snippet
         working-directory: web

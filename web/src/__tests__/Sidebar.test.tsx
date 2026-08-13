@@ -181,4 +181,38 @@ describe('Sidebar', () => {
     expect(closed).toHaveLength(1)
     expect(closed[0]).toHaveTextContent('»')
   })
+
+  // CHANGE-41 — which build is running, readable from the app itself
+  describe('build number', () => {
+    afterEach(() => {
+      vi.unstubAllEnvs()
+    })
+
+    it('shows the build number injected at build time', () => {
+      vi.stubEnv('VITE_BUILD_NUMBER', '752')
+      renderSidebar()
+      expect(screen.getByTestId('build-number')).toHaveTextContent('Build 752')
+    })
+
+    it('reads "dev" when the app was not built by a deploy', () => {
+      // GitHub passes an unset value as "", not undefined — both mean "not a deploy".
+      vi.stubEnv('VITE_BUILD_NUMBER', '')
+      renderSidebar()
+      expect(screen.getByTestId('build-number')).toHaveTextContent('Build dev')
+    })
+
+    it('names the commit it was built from on hover', () => {
+      vi.stubEnv('VITE_BUILD_NUMBER', '752')
+      vi.stubEnv('VITE_BUILD_SHA', '0123456789abcdef0123456789abcdef01234567')
+      renderSidebar()
+      expect(screen.getByTestId('build-number')).toHaveAttribute('title', 'Build 752 — commit 0123456')
+    })
+
+    it('has no hover text when no commit was injected', () => {
+      vi.stubEnv('VITE_BUILD_NUMBER', '752')
+      vi.stubEnv('VITE_BUILD_SHA', '')
+      renderSidebar()
+      expect(screen.getByTestId('build-number')).not.toHaveAttribute('title')
+    })
+  })
 })
