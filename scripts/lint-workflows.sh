@@ -101,7 +101,74 @@ else
     tmp=$(mktemp -d) || unavailable "could not create a temp dir"
     trap 'rm -rf "$tmp"' EXIT
     echo "  ↓ fetching actionlint $VERSION ($arch)..."
-    curl -sSfL --max-time 120 -o "$tmp/$tgz" "$url" || unavailable "download failed: $url"
+    # Retried, because this download sits on the critical path of a check that now runs on
+    # every push to main (TI-80), and one blip used to paint a red X on a commit that broke
+    # nothing — the exact signal TI-69 taught this repo to stop reading. A guard against
+    # false red X's must not have one of its own. (TI-84)
+    #
+    # --retry on its own only covers curl's "transient" set: timeouts and HTTP 408/429/5xx.
+    # An outage arrives just as often as a reset connection, a TLS handshake failure or a
+    # DNS miss, and none of those are in it. --retry-all-errors covers them, and is safe
+    # here ONLY because the checksum two lines below is what decides whether the bytes are
+    # trusted — no number of retries can turn a bad download into an accepted one. Its one
+    # cost is that a genuinely absent release (a mistyped VERSION) now fails after 4 quick
+    # attempts instead of 1, which is ~6s on a case that fails either way. It landed in
+    # curl 7.71 (2020), and an older curl rejects the whole command line rather than the
+    # single flag, so probe for it rather than assume it. Probed via a variable, not a
+    # pipe: `curl ... | grep -q` can leave curl on SIGPIPE, and `pipefail` would then read
+    # the successful match as a failure.
+    #
+    # Measured, not assumed: --max-time is applied PER ATTEMPT under --retry, not across
+    # the set — a server stalling the first two of three requests under
+    # `--max-time 3 --retry 2 --retry-delay 1` returned exit 0 after 8s of wall clock.
+    #
+    # --retry-delay does NOT bound the wait between attempts. curl sleeps for the LARGER
+    # of --retry-delay and the server's Retry-After header, so a server asking for a long
+    # pause gets it. That is not exotic here: GitHub rate-limits release-asset downloads
+    # by IP and Actions runners share IP pools, so 429 + Retry-After is a primary path.
+    # Measured against a local server (curl 8.5.0). The middle column is the BEFORE state —
+    # the same cases without --retry-max-time, which is what motivated adding it; the right
+    # column is each case re-measured with the exact flags this script now ships.
+    #                              | before          | after (shipped flags)
+    #   2 x 429, Retry-After: 20   | 40.0s,  exit 0  | 40.1s,  exit 0   a wait that fits is still served
+    #   3 x 429, Retry-After: 120  | 360.3s, exit 0  | 120.1s, exit 22  bounded — a clean, attributable red
+    #   2 x 429, no Retry-After    | 4.0s,   exit 0  | -                control: the header causes the wait
+    # The 360s case is the one that matters. GitHub kills the job at 5 minutes with "has
+    # exceeded the maximum execution time" — an annotation naming neither actionlint nor
+    # the download, so the red X is both slower to appear AND harder to attribute than
+    # the 6s "download failed" this replaced. That is the exact defect TI-84 exists to
+    # remove, so a retry without a ceiling would have reintroduced it.
+    #
+    # Hence --retry-max-time 120. The rule is NOT "no retry starts once 120s have elapsed" —
+    # under that rule a 429 arriving at t=0 with Retry-After: 310 would still be retried, and
+    # curl would sleep the full 310s, well past the job kill. What curl actually requires is
+    # that ELAPSED PLUS THE SLEEP IT IS ABOUT TO TAKE fits inside --retry-max-time, and a
+    # Retry-After that does not fit is refused OUTRIGHT rather than shortened to the budget
+    # that is left. Measured with the shipped flags: Retry-After: 310 -> ONE request, 0.011s,
+    # exit 22. That is what makes 120 + 45 a true ceiling rather than arithmetic nobody
+    # enforces: the last attempt can only BEGIN inside the 120s window, and is then bounded
+    # by --max-time 45 — worst case measured at 164.1s (exit 28), a retry beginning at 119s
+    # against a stalling server. Inside the job's timeout-minutes: 5, with ~2 min of headroom.
+    #
+    # The trade that buys: a rate limit asking for longer than 120s gets NO retry at all —
+    # one request, then straight to red. That is the right side to fail on, because a fast
+    # attributable red beats a job kill; but it does mean the retry does not help on the
+    # long-rate-limit path this paragraph spends its length justifying. (The boundary is
+    # inclusive: Retry-After: 120 exactly is still retried once, measured at 2 requests.)
+    #
+    # Raising --max-time or --retry-max-time means redoing that sum; 45s is already a
+    # 45 KB/s floor on a 2 MB file, and failing an attempt fast is what lets the retry
+    # help at all.
+    #
+    # --retry, --retry-delay and --retry-max-time are all curl 7.12.3 (2004) — old enough
+    # to use unprobed. The two later ones are probed, same reason and same way:
+    # --retry-all-errors is 7.71 (2020), --retry-connrefused 7.52 (2017).
+    retry_flags=(--retry 3 --retry-delay 2 --retry-max-time 120)
+    curl_help=$(curl --help all 2>/dev/null) || curl_help=""
+    case "$curl_help" in *--retry-all-errors*) retry_flags+=(--retry-all-errors) ;; esac
+    case "$curl_help" in *--retry-connrefused*) retry_flags+=(--retry-connrefused) ;; esac
+    curl -sSfL --connect-timeout 10 --max-time 45 "${retry_flags[@]}" -o "$tmp/$tgz" "$url" \
+      || unavailable "download failed, retries exhausted: $url"
     echo "$tgz_sha  $tmp/$tgz" | sha256sum -c - >/dev/null 2>&1 \
       || tampered "checksum mismatch on $tgz"
     tar -xzf "$tmp/$tgz" -C "$tmp" actionlint || unavailable "could not extract $tgz"
