@@ -78,6 +78,20 @@
   color: var(--color-primary);
 }
 
+/* CHANGE-41 — the running build, last line in the sidebar. Deliberately the quietest
+   thing on the screen: it is reference detail, looked up on purpose, never scanned.
+   Uses --color-text-muted rather than a further-dimmed colour so it stays legible in
+   all 17 themes (measured: 4.76:1 at worst, on each theme's own surface — the same
+   colour the adjacent Sign out label already uses). Smallness alone does the tucking
+   away. */
+.sidebarBuild {
+  font-size: 0.6875rem;
+  line-height: 1.2;
+  color: var(--color-text-muted);
+  letter-spacing: 0.02em;
+  padding-top: 0.125rem;
+}
+
 /* Sidebar folders section */
 .sidebarFolders {
   margin-top: 1.25rem;
