@@ -21,7 +21,7 @@ The check is not wrong about what it saw. It is unable to say **when** what it s
 
 **The general form:** a check whose output does not name what it was computed against cannot be re-validated by anything downstream. Either close the window (re-run the gate inside the merge step) or make the verdict carry its input (record `origin/main`'s sha at read time and fail closed if it has moved). Both are written up on TI-88; neither is picked here.
 
-**Same shape as [TI-81](../technical-improvements-archive.md#ti-81-an-orphaned-run-record-blocks-the-merge-gate-for-tens-of-minutes)**, which stalled every merge for the best part of an hour on a run record that had stopped being updated. Stale run record there, stale mergeability flag here; different gates, different scripts, one shape. And the same family as [TI-77], where mergeability *not yet computed* was reported as a conflict — TI-77 fixed "no answer yet", this is "an answer that has since expired".
+**Same shape as [TI-81](../technical-improvements-archive.md#ti-81-an-orphaned-run-record-blocks-the-merge-gate-for-tens-of-minutes)** ([write-up](ti-81-orphaned-deploy-run.md)), which stalled every merge for the best part of an hour on a run record that had stopped being updated. Stale run record there, stale mergeability flag here; different gates, different scripts, one shape. And the same family as [TI-77], where mergeability *not yet computed* was reported as a conflict — TI-77 fixed "no answer yet", this is "an answer that has since expired".
 
 ## Rule 2 — never run cleanup on the assumption an action succeeded
 
