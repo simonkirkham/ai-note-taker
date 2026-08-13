@@ -145,3 +145,25 @@ The same reviewer's other findings on the same PR were real, executed, and caugh
 **The rule:** ask which specific findings were executed, and treat the rest as hypotheses to check. A finding does not become a measurement by being repeated, by being detailed, or by being written in the same document as findings that were.
 
 This is the mirror of the earlier sub-classes. Those are checks that ran and could not report the condition; this is a claim that never ran at all and is indistinguishable from one that did. The countermeasure is the same shape — **name the observation** — pointed at the reviewer's own output instead of at the code under review.
+
+---
+
+# The fourth sub-class: every check was sound and the category underneath them was wrong
+
+Measured 2026-08-13, on another session's [TI-90] work.
+
+Everything above is an instrument that cannot report the failing state. This one is caught by none of it: **the instrument was correct, and the thing it counted was not the thing it was named for.**
+
+A detector counted commits on `main` carrying no check-suite and called them "commits nothing checked". It had a measured count, three green evidence arms, two review rounds and a positive control. **Nothing tested whether "no check-suite" means "unchecked".** Evidence gathered since indicates GitHub creates a check-suite for the **head commit of a push only** — so every intermediate commit of a multi-commit push legitimately carries zero, and every one of them would have been reported as a hole in the safety net.
+
+Two properties earn it its own entry.
+
+**The false-alarm rate rises with the window size.** The detector would have got louder the more you asked of it — the worst possible curve for something whose only job is to be believed. A plain false positive is better behaved than that: it does not grow as you widen the question.
+
+**The tell was a shape, not a value.** Two zero-suite commits with the *same subject thirty seconds apart*, bracketed by commits that did have suites — a cluster where the theory predicted scattered, independent misses. No individual reading looked wrong; only the pattern did.
+
+**The check to add: before trusting a count, ask what one unit of it means, and go find a case that satisfies the trip condition innocently.** A positive control proves the instrument fires; it says nothing about whether firing means what you claimed.
+
+**Corollary — disclaim your own data where it cannot speak.** The clean control here was a run of squash merges, and a squash merge is necessarily its own push head, so it is silent on multi-commit pushes. Saying that outright is what stopped "nine consecutive commits all had suites" being quoted back as confirmation.
+
+**Status — the head-only rule is a hypothesis under test** by another session, not established. One case (`4727672f`, a PR squash merge and therefore its own push head) is **not** explained by it, and remains the only likely-genuine instance.
