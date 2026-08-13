@@ -100,6 +100,7 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 | TI-89 | **On a Mac, the self-test that guards the merge gate reports nine failures accusing the merge-gate logic, when the only thing wrong is the machine's `date` command** | 🔲 **Open** — raised 2026-08-13 (Hawk, PR [#469](https://github.com/simonkirkham/ai-note-taker/pull/469) / [TI-81], should-fix). Measured, not argued: `scripts/test-merge-gate.sh:84-85` builds its clock fixtures with `date -u -d '-45 minutes'`, which only GNU coreutils supports. Run against a `date` without `-d`, the suite prints **`MERGE-GATE SELF-TEST: FAILED`, 45 PASS / 9 FAIL**, and every failure message names orphaned run records rather than the clock. Fix: one guard that exits loudly if `date -u -d` is unsupported. CI is `ubuntu-latest`, so it costs nobody today. Detail in [TI-89](#ti-89-the-merge-gates-self-test-blames-the-merge-gate-when-the-machines-date-command-is-the-problem) below. |
 | TI-91 | **The merge gate can say it is safe to merge while a deploy is genuinely running, if the clock on the machine reading it is more than ten minutes fast** | 🔲 **Open** — raised 2026-08-13. **Derived from reading `scripts/deploy-status.sh`, not from an observed miss** — and no reading taken afterwards could establish whether one has already happened. Detail in [TI-91](#ti-91-a-fast-clock-turns-the-merge-gates-stale-run-discount-into-a-fail-open) below. |
 | TI-92 | **A tracking item can be half-archived — copied into the archive but never deleted from the live list — and nothing notices, because the check that catches exactly this looks only at bugs** | 🔲 **Open** — raised 2026-08-13. **34 TI ids sit in both files today**, all pre-existing, so finished work reads as outstanding on the one column the human scans. Detail in [TI-92](#ti-92-half-archived-ti-items-are-invisible-because-the-live-vs-archive-check-covers-bugs-only) below. |
+| TI-94 | **A merge can quietly put back work someone deliberately deleted — no conflict, no marker, every check green — so a closed item reappears as open work and another session's finished change is undone** | 🔲 **Open** — raised 2026-08-13. **Two confirmed instances today; one shipped to `main` and was live for hours.** Archiving is exactly the delete-versus-surrounding-context operation the `merge=union` driver resolves wrongly, so it will recur. Detail in [TI-94](#ti-94-a-merge-silently-restores-a-deleted-section-and-nothing-detects-it) below. |
 
 **2026-06-17 deploy-gate stabilisation session:** proved **10 consecutive green deploys** (#595 ×10). Root-caused and fixed a **44-min E2E suite hang** (PR #291's fire-and-forget response-body read on the reload loop) → replaced with a hang-proof, sync-only diagnostic (PR #292) and a **hard 120 s per-test cap** (**TI-43 done**, PR #293). **TI-42** cards-list flake did not recur in 13+ runs (not reproduced ≠ fixed; diagnostic now in place). **BUG-31** turned out to be three stacked causes — original image-reappear symptom fixed, `SaveAndReturnAsync` cards-refetch sync fixed (PR #297, suite-wide win), and a residual stuck-note-detail-read layer carved out as **TI-44**. Full write-up: [docs/learnings/e2e-gate-hang-and-the-diagnostic-that-caused-it.md](learnings/e2e-gate-hang-and-the-diagnostic-that-caused-it.md).
 
@@ -514,6 +515,71 @@ TI-1, 2, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 19, 21, 22, 26, 27, 28, 
 2. The sweep must not start until PRs **#477, #478 and #479** have landed. It rewrites most of `docs/technical-improvements.md`, and `merge=union` on this file resolves concurrent *appends*, not a wholesale rewrite against branches holding their own rows — #478 ([TI-90]) and #479 ([TI-79]) are both in a fix round. Part 2 touches only a script and is independent of that constraint.
 
 **Raised in:** 2026-08-13, from a read of `scripts/check-doc-ids.sh` on `origin/main`.
+
+---
+
+## TI-94. A merge silently restores a deleted section, and nothing detects it
+
+**What it costs:** a merge can undo a deletion someone made on purpose. The content comes back, git reports no conflict, no marker is written, and every check passes — so a finished item reappears on the outstanding list carrying advice that no longer applies, and the session that deleted it is never told. One instance below reached `main` and stayed live for hours before a human spotted it by eye.
+
+**Why it will keep happening:** `.gitattributes` sets `merge=union` on the three tracking tables so concurrent *appends* resolve instead of conflicting. CLAUDE.md documents union's bad case as "two branches editing the same row". **There is a second bad case with no guard: a deletion on one branch against surrounding context on another.** Union keeps both sides, so the deleted content is restored. Archiving is precisely that operation — delete a row and its section from the live doc while other branches hold context around them — so every archive action is an opportunity for this.
+
+### The fix — an orphan-section check
+
+**A `## TI-N` section in the live doc with no matching `| TI-N |` row is an orphan.** Both instances below were exactly that shape. One `comm -23`, no network, runs beside the existing checks in `scripts/check-doc-ids.sh`:
+
+```bash
+comm -23 \
+  <(grep -oE '^## TI-[0-9]+' docs/technical-improvements.md | grep -oE 'TI-[0-9]+' | sort -u) \
+  <(grep -oE '^\| *TI-[0-9]+ +\|' docs/technical-improvements.md | grep -oE 'TI-[0-9]+' | sort -u)
+```
+
+Four constraints on the implementation, each measured rather than assumed:
+
+1. **It must run against the LIVE docs only, never the archives.** Measured on `origin/main` 2026-08-13: `technical-improvements-archive.md` has **42 `## TI-` sections and 0 table rows**; `phase-bugs-archive.md` has **73 `## BUG-` sections and 0 table rows**. The archives carry no table at all, so a rule written generically over "the doc pair" — the obvious way to write it, since the live-vs-archive check beside it takes both files — fires on **all 115 archive entries** and is red from birth. A check that is red from birth gets commented out, not fixed.
+2. **The row pattern must tolerate column padding** — `^\| *TI-[0-9]+ +\|`, not the existing BUG check's single-space `^\| BUG-[0-9]+ \|`. Single-digit ids are written `| TI-1  |`, with two spaces, and the single-space pattern does not match them, so it reports a *false orphan* for every one of TI-1 through TI-9. Same blind spot [TI-92](#ti-92-half-archived-ti-items-are-invisible-because-the-live-vs-archive-check-covers-bugs-only) measures at seven ids.
+   **This is not hypothetical — it happened while filing this item.** The first measurement of the baseline below used the single-space pattern and reported **2 orphan sections on `origin/main` (TI-3 and TI-7)**. Both were false: the rows exist, padded. The correct count is zero. So the instrument written to catch a check that cannot see what it seeks was itself, on its first run, a check that could not see what it sought — and it reported a confident number rather than an error. Treat the padded pattern as the requirement, not the preference, and re-read [`docs/learnings/a-mechanism-nobody-has-watched-work-is-not-working.md`](learnings/a-mechanism-nobody-has-watched-work-is-not-working.md) before trusting any count this check prints.
+3. **It is disjoint from [TI-92](#ti-92-half-archived-ti-items-are-invisible-because-the-live-vs-archive-check-covers-bugs-only) part 2, not a variation of it.** They take different inputs: live-vs-archive compares **two files**; the orphan check compares **two structures within one file**. TI-92 part 2 is necessary but not sufficient here — it catches a section present in both files and misses an orphan whose archive entry is absent, which is what instance 1 was.
+4. **Apply the same shape to `phase-bugs.md` and `phase-minor-changes.md`** — all three carry `merge=union` and all three are archived the same way.
+
+**It must be seen red before it is trusted.** Baseline measured on `origin/main` at `b2acbfb1` with the command above: **zero orphan sections**. So it goes green on day one, and a check whose only observed output is green is untested.
+
+**The positive control is a git blob, not a reconstruction.** `git show 4727672f:docs/technical-improvements.md` **is** the defect — the real file, at the real sha, on `main`. Run the check against that blob and it must print `TI-73` and nothing else. It is immutable, so it cannot rot. **Do not tidy it into a synthetic fixture:** a hand-written fixture is strictly weaker, because it proves the check matches something someone wrote to be matched rather than the shape a merge actually produced.
+
+### Two confirmed instances
+
+Both verified 2026-08-13 against the repository, not quoted.
+
+**Instance 1 — shipped to `main`, live for hours.** Squash merge [`4727672f`](https://github.com/simonkirkham/ai-note-taker/commit/4727672f) (the [TI-81] merge, PR #469) **added `## TI-73. The pre-commit gate is unbounded across sessions` back** to `docs/technical-improvements.md`; the diff shows it as an added heading. TI-73 had been archived on 2026-08-11 and its section deleted, and union restored it during one of that branch's merges of `main`. Confirmed: **no live row for TI-73 at that commit** (`grep -c '^| TI-73 |'` = 0), so it sat as an orphan section — a closed item presented as open work, prescribing a fix for a pre-commit gate that no longer exists (`.githooks/` was deleted from `main` on 2026-08-11). It merged green. Removed at `b2acbfb1`. TI-73 is now absent from the live doc (0 occurrences) and present in the archive at line 197 — the correct end state.
+
+**Instance 2 — caught before it shipped, by eye.** PR [#477](https://github.com/simonkirkham/ai-note-taker/pull/477) rebased onto `main` twice. The first rebase produced duplicate TI-83 **and** TI-84 rows (2 of each) and `scripts/check-doc-ids.sh` caught it. `main` then moved to `10957a81`, which archived TI-84 — deleting both its row and its `## TI-84.` detail section. The second rebase, an hour later, **silently restored the entire `## TI-84.` section**: the resulting commit carries the section with **no matching row**, and only one TI-83 row, so the duplicate check printed OK. Nothing caught it; it was found by diffing section headings against `origin/main` by hand, and removed in a later amend. Pushing it would have undone another session's completed archive with every check green.
+
+> The instance-2 commit is reachable only through that worktree's reflog, so it is **not a durable control** — it will expire. Instance 1's blob is on `main` and is the one to test against.
+
+### Why nothing catches it today
+
+`scripts/check-doc-ids.sh` has two checks and neither sees this shape:
+
+- The **duplicate-id** check (`uniq -d` over rows) covers all three prefixes, but a resurrected *section* adds no row, so there is nothing to duplicate. Instance 2 passed it.
+- The **live-vs-archive** `comm -12` check compares **BUG ids only** (script lines 45–55) — verified by reading the script. A resurrected `TI` section is invisible to it, and instance 1's TI-73 had no archive-side row to compare anyway.
+
+It printed `doc ids OK` throughout both instances.
+
+### Other directions, as options not decisions
+
+- **Extend the live-vs-archive check to TI and CHANGE** — this is **[TI-92](#ti-92-half-archived-ti-items-are-invisible-because-the-live-vs-archive-check-covers-bugs-only) part 2**, already specced there. Do not duplicate it. Necessary but not sufficient, per constraint 3 above.
+- **Reconsider `merge=union` on these files, or narrow where it applies** — union was adopted because PR #414 re-conflicted three times in one day. Removing it trades silent restoration for frequent conflicts; narrowing it (union on the table region only, normal merge on the detail sections) keeps the benefit where appends happen and restores conflict markers where deletions happen. Unmeasured.
+- **Correct the `merge=union` comment in `.gitattributes` in the same change** — it currently states that `scripts/check-doc-ids.sh` "runs in the pre-commit hook", so a reader concludes union's bad case is caught before a local commit. It is not: `.githooks/` was deleted from `main` on 2026-08-11 (`dba8fce8`, "Remove the pre-commit hook entirely, and every reference to it") and `git ls-tree -r origin/main` lists **0** files under `.githooks/`. Name `.github/workflows/docs-check.yml` as the only enforcement point. This is the documentation of the exact mechanism TI-94 is about, which is why it is here and not a row of its own.
+
+### Sequencing
+
+TI-94's check is **independent of TI-92's sweep and can land at any time** — it touches only `scripts/check-doc-ids.sh`, goes green on the current tree, and needs no doc rewrite. TI-92's 27+ row sweep must still wait behind PRs **#477**, **#478** and **#479**.
+
+### A related current reading, recorded here to place it correctly
+
+Three ids have a `## TI-` section in **both** the live doc and the archive: **TI-19, TI-42, TI-44**. All three trace to `8b3b0d15` (2026-06-29, `Revert "docs(scout): add per-slice Value statements to Phase 43"`), which re-added all three headings — pre-existing, not fresh resurrections. **This belongs to [TI-92](#ti-92-half-archived-ti-items-are-invisible-because-the-live-vs-archive-check-covers-bugs-only)'s sweep scope, not TI-94's**, and it is a different measurement from TI-92's headline 34: that 34 counts live *rows* against archive *sections*; this 3 counts live *sections* against archive *sections*. Both were re-measured 2026-08-13 and both are correct.
+
+**Raised in:** 2026-08-13, from two observed instances — one on `main`, one on a branch.
 
 ---
 
