@@ -126,21 +126,36 @@ else
     # of --retry-delay and the server's Retry-After header, so a server asking for a long
     # pause gets it. That is not exotic here: GitHub rate-limits release-asset downloads
     # by IP and Actions runners share IP pools, so 429 + Retry-After is a primary path.
-    # Measured against a local server with these exact flags (curl 8.5.0):
-    #   2 x 429, Retry-After: 20   -> 40.0s, exit 0   (not the 4s --retry-delay 2 implies)
-    #   3 x 429, Retry-After: 120  -> 360.3s, exit 0  (past the job's timeout-minutes: 5)
-    #   2 x 429, no Retry-After    -> 4.0s, exit 0    (control: the header is the cause)
+    # Measured against a local server (curl 8.5.0). The middle column is the BEFORE state —
+    # the same cases without --retry-max-time, which is what motivated adding it; the right
+    # column is each case re-measured with the exact flags this script now ships.
+    #                              | before          | after (shipped flags)
+    #   2 x 429, Retry-After: 20   | 40.0s,  exit 0  | 40.1s,  exit 0   a wait that fits is still served
+    #   3 x 429, Retry-After: 120  | 360.3s, exit 0  | 120.1s, exit 22  bounded — a clean, attributable red
+    #   2 x 429, no Retry-After    | 4.0s,   exit 0  | -                control: the header causes the wait
     # The 360s case is the one that matters. GitHub kills the job at 5 minutes with "has
     # exceeded the maximum execution time" — an annotation naming neither actionlint nor
     # the download, so the red X is both slower to appear AND harder to attribute than
     # the 6s "download failed" this replaced. That is the exact defect TI-84 exists to
     # remove, so a retry without a ceiling would have reintroduced it.
     #
-    # Hence --retry-max-time 120: curl refuses to START a retry once that many seconds
-    # have elapsed. It bounds when the last attempt may BEGIN, not when it ends, so that
-    # attempt is still bounded by --max-time 45 — worst case 120 + 45, measured at 164.1s
-    # (exit 28) with a retry beginning at 119s against a stalling server. Inside the
-    # 5-minute timeout-minutes on the job that runs this, with ~2 min of headroom.
+    # Hence --retry-max-time 120. The rule is NOT "no retry starts once 120s have elapsed" —
+    # under that rule a 429 arriving at t=0 with Retry-After: 310 would still be retried, and
+    # curl would sleep the full 310s, well past the job kill. What curl actually requires is
+    # that ELAPSED PLUS THE SLEEP IT IS ABOUT TO TAKE fits inside --retry-max-time, and a
+    # Retry-After that does not fit is refused OUTRIGHT rather than shortened to the budget
+    # that is left. Measured with the shipped flags: Retry-After: 310 -> ONE request, 0.011s,
+    # exit 22. That is what makes 120 + 45 a true ceiling rather than arithmetic nobody
+    # enforces: the last attempt can only BEGIN inside the 120s window, and is then bounded
+    # by --max-time 45 — worst case measured at 164.1s (exit 28), a retry beginning at 119s
+    # against a stalling server. Inside the job's timeout-minutes: 5, with ~2 min of headroom.
+    #
+    # The trade that buys: a rate limit asking for longer than 120s gets NO retry at all —
+    # one request, then straight to red. That is the right side to fail on, because a fast
+    # attributable red beats a job kill; but it does mean the retry does not help on the
+    # long-rate-limit path this paragraph spends its length justifying. (The boundary is
+    # inclusive: Retry-After: 120 exactly is still retried once, measured at 2 requests.)
+    #
     # Raising --max-time or --retry-max-time means redoing that sum; 45s is already a
     # 45 KB/s floor on a 2 MB file, and failing an attempt fast is what lets the retry
     # help at all.
