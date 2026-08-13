@@ -122,3 +122,26 @@ Parts 3 and 4 are the ones that get skipped, and they are the only two that test
 - Check `gh pr view <n> --json headRefOid` matches the sha an agent says it pushed; "the fixes are in" is a claim about edits, not about the PR.
 - Commit early and often, incomplete increments included — a dirty tree is invisible to CI, to the reviewer and to the coordinator, and does not survive a process exit. Chain the push into the same command and report the resulting sha.
 - **The general test, which caught all of these and which reading caught none of:** run the check, then ask whether its answer was *capable* of being wrong. A check that cannot return the failing value is not a check.
+
+---
+
+# The third sub-class: a review finding is a prediction, not a measurement
+
+Collected 2026-08-12/13, from two review rounds on [TI-84].
+
+A careful reviewer produces two kinds of finding, and they arrive looking identical. One was executed — a command was run, an output was read. The other is a confident inference from reading the code. Both land in the same document, in the same voice, at the same level of mechanism detail, so **nothing on the page separates "I ran this" from "this would happen"**.
+
+Two findings from one reviewer on this work were confident, mechanism-level and **wrong**:
+
+| The finding | Measured |
+| --- | --- |
+| A self-test "degrades into a silent pass" on a machine without GNU `date` | It fails loudly — `PASS=45 FAIL=9`, exit 1 |
+| A re-run clock had no test pinning it | The fixture already existed; injecting the defect reddened exactly that case, 53 PASS / 1 FAIL |
+
+The same reviewer's other findings on the same PR were real, executed, and caught a genuine false-green ([TI-84] item 1 — a retry that made the failure slower to see). Quality was not the variable. **Register was**: an executed finding and an inferred one read the same.
+
+**Consequence, measured:** one of the two wrong findings was relayed to another session inside twenty minutes and endorsed there before anyone ran it. An inference travels at the speed of a fact and picks up corroboration on the way — and the second session's agreement was then read as confirmation, when it was the same unexecuted claim arriving twice.
+
+**The rule:** ask which specific findings were executed, and treat the rest as hypotheses to check. A finding does not become a measurement by being repeated, by being detailed, or by being written in the same document as findings that were.
+
+This is the mirror of the earlier sub-classes. Those are checks that ran and could not report the condition; this is a claim that never ran at all and is indistinguishable from one that did. The countermeasure is the same shape — **name the observation** — pointed at the reviewer's own output instead of at the code under review.

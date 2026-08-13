@@ -237,3 +237,21 @@ box. Counting runner processes is the sound instrument; load average is corrobor
 **The generalisable part:** a **dated, external** trigger can turn a repo red with no commit behind it, and it lands on whichever PR happens to run next — so the first person to see it has no reason to suspect their own change. Read the failing step rather than the failing job name; `NU1903` names the package, and the package named a library the diff had never heard of.
 
 **Two flakes were separated from it in the same session, not folded in:** an unretried Electron download that dropped a connection ([TI-87], open), and a merge gate that reported CLEAN three seconds before the merge was refused ([TI-88], open, another session's reading).
+
+## TI-84. A momentary GitHub outage paints a red X on a `main` commit that did nothing wrong
+
+✅ **Done** — raised 2026-08-12 (Hawk, PR [#471](https://github.com/simonkirkham/ai-note-taker/pull/471) / [TI-80], should-fix), fixed 2026-08-12 (PR [#474](https://github.com/simonkirkham/ai-note-taker/pull/474), squash `608c882e`).
+
+**What it cost:** a red X on a `main` commit that was fine, put there by a network blip rather than by anything in the change. That is the worst possible signal in this repo — a red X that means nothing trains everyone to stop reading them, and [TI-69] already produced 162 of them with a real failure hiding among them. The guard against false red X's had acquired a false-red-X failure mode of its own.
+
+**Why:** `scripts/lint-workflows.sh` downloaded actionlint with a single `curl` attempt and no `--retry`, and every CI run re-fetched it from GitHub releases. One transient response exited 1 via the script's own `download failed` path. Confined to pull requests until [TI-80] added the push trigger; after that it landed on `main`.
+
+**Fix:** the fetch retries, and the retry is **bounded** — `--retry-max-time` plus a per-attempt `--max-time`, so a rate-limited runner still fails as a clean, attributable red inside the job's 5-minute budget rather than being killed as an unexplained job timeout. `--retry-all-errors` covers resets, TLS failures and DNS misses, which plain `--retry` does not; the checksum sits outside the retry and is untouched, so retries cannot launder bad bytes.
+
+**The `actions/cache` half of the prescription was measured and rejected.** The whole script is 2.09s cold; a cache restore is a service round-trip plus a tar extract, routinely 1–3s — at best break-even, and it substitutes one network dependency for another. Worse, a corrupt restored binary hits the `tampered` path, which exits 1 by design and deliberately does not re-download, so a transient becomes a red X that stays red until a human busts the key.
+
+**The generalisable part:** *a timeout you compute from your own flags is a hypothesis; only a flag that refuses makes it a bound.* The first version's retry made the symptom worse — 360.3s and exit 0 against a server sending `Retry-After: 120`, past the job's timeout — and review caught it by measuring rather than reasoning. Full account in [ti-84-bounded-retry](learnings/ti-84-bounded-retry.md).
+
+**Not done, deliberately:** a permanent hermetic self-test of the retry (the [TI-77] `scripts/test-merge-gate.sh` precedent). Stubbing the pinned checksums as well as the download is a larger surface than the one line it guards, plus a step on every push to `main`. File it as its own row if wanted.
+
+**Still open, same class:** [TI-87] — an unretried Electron download that drops a connection and reds a pull request.
