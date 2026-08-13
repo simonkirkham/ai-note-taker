@@ -174,11 +174,13 @@ jobs:
       - name: Cmdline-scan wait loops
         run: bash ./scripts/check-cmdline-waits.sh
 
-      # The guard's own self-test: 27 fixtures — 17 that must go RED and 10 that must stay
+      # The guard's own self-test: 32 fixtures — 19 that must go RED and 13 that must stay
       # GREEN — plus a repo-wide scan. It is the injected-defect check made permanent; without
       # it, a guard that had quietly stopped biting would look exactly like a clean repo, which
       # is not a hypothetical here. Seven dangerous loops passed the first draft, including
-      # `ps aux`, and they are now seven of those fixtures.
+      # `ps aux`, and they are now seven of those fixtures. The GREEN half carries as much
+      # weight as the RED: three fixtures exist because the guard refused something legitimate,
+      # and a guard that accuses wrongly is a guard someone switches off.
       - name: Cmdline-scan guard self-test
         run: bash ./scripts/test-check-cmdline-waits.sh
 
