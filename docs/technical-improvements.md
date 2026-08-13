@@ -98,6 +98,8 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 | TI-87 | **A dropped connection while installing dependencies paints a red X on a pull request that did nothing wrong** | 🔲 **Open** — raised 2026-08-13 (hit by [CHANGE-41], PR #475, run [31677449442](https://github.com/simonkirkham/ai-note-taker/actions/runs/31677449442)). The `desktop` job's `npm --prefix desktop ci` runs Electron's `postinstall`, which downloads the ~100 MB Electron binary from GitHub releases. One `RequestError: socket hang up` failed the job in 17 s; a plain re-run passed with nothing changed. **Same class as [TI-84]** — an unretried, uncached network fetch turning a transient blip into a red check — and the same two fixes apply: retries (`npm config set fetch-retries` does **not** cover Electron's own download; it reads `ELECTRON_GET_...` / needs a retry wrapper) and an `actions/cache` on the Electron download cache keyed by version, which also removes a ~60 s download from every run. **Worth fixing together with [TI-84]**, since one cache-and-retry pass covers both. **Bound the retry, don't just add one** — [TI-84]'s review found that a naive retry delay is a lower bound, not an upper one: a rate-limited response carrying `Retry-After: 120` makes the client wait the longer of the two and blow the job's timeout, converting a 6-second red X that *names the failed download* into a timeout that names nothing. Whatever retry this uses needs an explicit total-time cap. |
 | TI-88 | **A merge can be waved through as safe and then refused seconds later, and the cleanup that follows can close the pull request** | 🔲 **Open** — raised 2026-08-13, hit live on PR [#469](https://github.com/simonkirkham/ai-note-taker/pull/469): the gate printed `GREEN — safe to merge`, the merge was refused ~3 s later on conflicts, and the branch cleanup that assumed it had landed auto-closed the PR. Detail in [TI-88](#ti-88-a-gate-verdict-has-an-expiry-and-the-window-between-reading-it-and-acting-on-it-is-where-it-fails) below. |
 | TI-89 | **On a Mac, the self-test that guards the merge gate reports nine failures accusing the merge-gate logic, when the only thing wrong is the machine's `date` command** | 🔲 **Open** — raised 2026-08-13 (Hawk, PR [#469](https://github.com/simonkirkham/ai-note-taker/pull/469) / [TI-81], should-fix). Measured, not argued: `scripts/test-merge-gate.sh:84-85` builds its clock fixtures with `date -u -d '-45 minutes'`, which only GNU coreutils supports. Run against a `date` without `-d`, the suite prints **`MERGE-GATE SELF-TEST: FAILED`, 45 PASS / 9 FAIL**, and every failure message names orphaned run records rather than the clock. Fix: one guard that exits loudly if `date -u -d` is unsupported. CI is `ubuntu-latest`, so it costs nobody today. Detail in [TI-89](#ti-89-the-merge-gates-self-test-blames-the-merge-gate-when-the-machines-date-command-is-the-problem) below. |
+| TI-91 | **The merge gate can say it is safe to merge while a deploy is genuinely running, if the clock on the machine reading it is more than ten minutes fast** | 🔲 **Open** — raised 2026-08-13. **Derived from reading `scripts/deploy-status.sh`, not from an observed miss** — and no reading taken afterwards could establish whether one has already happened. Detail in [TI-91](#ti-91-a-fast-clock-turns-the-merge-gates-stale-run-discount-into-a-fail-open) below. |
+| TI-92 | **A tracking item can be half-archived — copied into the archive but never deleted from the live list — and nothing notices, because the check that catches exactly this looks only at bugs** | 🔲 **Open** — raised 2026-08-13. **34 TI ids sit in both files today**, all pre-existing, so finished work reads as outstanding on the one column the human scans. Detail in [TI-92](#ti-92-half-archived-ti-items-are-invisible-because-the-live-vs-archive-check-covers-bugs-only) below. |
 
 **2026-06-17 deploy-gate stabilisation session:** proved **10 consecutive green deploys** (#595 ×10). Root-caused and fixed a **44-min E2E suite hang** (PR #291's fire-and-forget response-body read on the reload loop) → replaced with a hang-proof, sync-only diagnostic (PR #292) and a **hard 120 s per-test cap** (**TI-43 done**, PR #293). **TI-42** cards-list flake did not recur in 13+ runs (not reproduced ≠ fixed; diagnostic now in place). **BUG-31** turned out to be three stacked causes — original image-reappear symptom fixed, `SaveAndReturnAsync` cards-refetch sync fixed (PR #297, suite-wide win), and a residual stuck-note-detail-read layer carved out as **TI-44**. Full write-up: [docs/learnings/e2e-gate-hang-and-the-diagnostic-that-caused-it.md](learnings/e2e-gate-hang-and-the-diagnostic-that-caused-it.md).
 
@@ -506,6 +508,71 @@ This is [BUG-69] recurring above the level TI-68 fixed. BUG-69 is closed correct
 **CI cannot prove this one — a manual demonstration is the only evidence.** `pr.yml:12` paths-ignores `.githooks/**` (and `scripts/**`), so **no check runs against this file on any PR**. A green PR here means nothing was tested, not that the change works. So the acceptance evidence is a hand-run red/green pair plus an injected defect: show the second commit failing today, show it waiting and passing after, then remove the guard and show it failing again. This is the [CLAUDE.md] "a mechanism nobody has watched work is not working" case, with the usual safety net removed — and the same blind spot that let [TI-69] sit unparsed for 162 pushes.
 
 **Note for whoever takes it:** [TI-64] merged 2026-08-10 (068c97d7), so `.githooks/pre-commit` is free. Two things TI-64 changed in it: the three Lambda publishes are now guarded by `test -f` so they only run when absent, and the hook is the sole place that logic lives. Interim mitigation already in use across sessions: agents poll `pgrep -fc 'vitest run'` before committing and treat a timeout in an untouched file as contention, not a defect.
+
+---
+
+## TI-91. A fast clock turns the merge gate's stale-run discount into a fail-open
+
+**What it costs:** the gate prints `GREEN — safe to merge` while a deploy is still running, the merge lands on top of it, and the in-flight deploy is disrupted. **Derived from reading the script, not observed here.** No instance has been seen on this box, and — see below — none could be found afterwards even if it had happened.
+
+**Why.** `age_minutes()` in `scripts/deploy-status.sh` computes `datetime.now(timezone.utc) - t`. Both `t` values it is handed are **GitHub-side** timestamps — the run record's `updatedAt` and each job's `completed_at` — while `now` is the **local** clock. The discount is then gated on `if age < STALE_MINUTES or job_age < STALE_MINUTES`, which blocks whenever either looks recent. `STALE_MINUTES = 10`.
+
+| Local clock | Computed ages | Outcome |
+| --- | --- | --- |
+| Behind GitHub | Negative, so under the threshold | Blocks. Fail-**closed**, safe |
+| Ahead by more than `STALE_MINUTES` (10) | Both inflated past the threshold | A genuinely running deploy is classified orphaned, discounted, and the gate prints safe to merge. Fail-**open** |
+
+**The script already names this and does nothing about it.** The comment immediately above the clock test reads: *"Clock skew is a one-sided fail-open — a local clock more than STALE_MINUTES AHEAD discounts live runs — and two GitHub-side timestamps measured against one local `now` does nothing about that."* Documented is not guarded, and that is the row's point. [TI-81, archived](technical-improvements-archive.md#ti-81-an-orphaned-run-record-blocks-the-merge-gate-for-tens-of-minutes) built this discount precisely to avoid merging onto a live deploy; the clock is a route back to that outcome that bypasses every clause of the allow-list rather than defeating one.
+
+**Reachability.** WSL2 clocks drifting after the host sleeps or hibernates is well-known platform behaviour, and this repo's gate runs on that box. **No instance has been observed here.** Measured just now for provenance: `gh api -i` returned `Date: Thu, 13 Aug 2026 08:21:34 GMT` and local `date -u` read the same second — no skew at the time of filing.
+
+**It leaves no trace, which is the argument for fixing it rather than watching for it.** The gate prints GREEN with a plausible-looking age, the merge succeeds, and the only symptom is a disrupted deploy surfacing — if at all — as an unrelated flake much later. No reading taken afterwards can establish whether this has already happened.
+
+**Docs-only merges are structurally immune, and that is what makes it dangerous.** `.github/workflows/deploy.yml` paths-ignores `docs/**`, `**/*.md` and `scripts/**` (verified on `origin/main`), so a docs- or scripts-only merge produces a `Repo Checks` run and never a deploy — nothing to disrupt, whatever the clock says. Exposure falls entirely on merges carrying backend or frontend changes, while the inert merges that dominate by volume here accumulate an unbroken record of correct-looking verdicts that means nothing. A session doing docs work reads that record and concludes the gate is sound.
+
+**Two candidate fixes, neither picked:**
+
+| # | Fix | What it buys |
+| --- | --- | --- |
+| a | Measure GitHub-side against GitHub-side — the API response carries a server `Date` header (confirmed present on `gh api -i`); using it as `now` makes the skew cancel | The comparison stops depending on the local clock at all |
+| b | Refuse to discount when local `now` is implausible relative to the newest timestamp seen | A clock that cannot be trusted fails **loud**, in **both** directions, not only the negative one |
+
+**Same family as [TI-88] and [TI-90]** — a gate reporting a state that is not the state now. [TI-88] is a stale mergeability flag and [TI-81] was a stale run record; this one is a sound record read against a wrong clock.
+
+**Raised in:** 2026-08-13, from a read of `scripts/deploy-status.sh` on `origin/main`.
+
+---
+
+## TI-92. Half-archived TI items are invisible because the live-vs-archive check covers bugs only
+
+**What it costs:** an item written into the archive but never deleted from the live table stays on the outstanding list forever, so anyone scanning the `Status` column to decide what is left reads finished work as open. CI fails the build for exactly this state on a bug and permits it silently on a technical improvement.
+
+**Why.** `scripts/check-doc-ids.sh` lines 45–55 `comm -12` the ids in `docs/phases/phase-bugs.md` against the `## BUG-N` headings in `docs/phases/phase-bugs-archive.md` and fail when an id appears in both. There is **no equivalent for TI** (`technical-improvements.md` vs `technical-improvements-archive.md`) and none for CHANGE. The *duplicate*-id check higher up does cover all three prefixes; it is only the live-vs-archive half that is BUG-only.
+
+**Measured 2026-08-13 — 34 TI ids have a row in the live table and an entry in the archive.** All pre-existing; none introduced today.
+
+```bash
+comm -12 \
+  <(grep -oE '^\| *TI-[0-9]+ +\|' docs/technical-improvements.md | grep -oE 'TI-[0-9]+' | sort -u) \
+  <(grep -oE '^## TI-[0-9]+' docs/technical-improvements-archive.md | grep -oE 'TI-[0-9]+' | sort -u)
+```
+
+TI-1, 2, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 19, 21, 22, 26, 27, 28, 29, 30, 31, 32, 35, 36, 37, 38, 39, 41, 42, 43, 44.
+
+**The count is 34 and not 27, and the seven-id gap is itself part of the fix.** The existing BUG check matches `^\| BUG-[0-9]+ \|` — exactly one space before the closing pipe. This table pads its column, so a single-digit id is written `| TI-1  |` with two spaces and does not match. Copying the BUG regex verbatim to TI finds 27 of the 34 and silently misses TI-1, 2, 4, 5, 6, 8 and 9. The BUG check carries the same blind spot latently — it does not bite today only because every single-digit bug is already archived out of the live table.
+
+**Part 1 — sweep the affected ids.** For each, decide whether the live row or the archive entry is the survivor, then delete the other.
+
+**Part 2 — extend the live-vs-archive check to TI and CHANGE**, with a padding-tolerant pattern (`^\| *<PREFIX>-[0-9]+ +\|`) so it cannot miss a padded row. Note there is **no CHANGE archive file today** (`docs/phases/` has only `phase-bugs-archive.md`), so the CHANGE half guards a file that does not yet exist and must no-op cleanly when it is absent, exactly as the BUG block already does.
+
+**Part 2 must be seen failing before it is trusted.** With 34 existing instances it should go red immediately on the current tree. If it goes green, the check is the defect — not the tree.
+
+**Ordering and sequencing, both binding:**
+
+1. Part 2 will fail CI on `main` until part 1 is done, so either sweep first or land the check together with the sweep in one change. A red shared gate blocks every session here, so an interim red is a real cost, not a formality.
+2. The sweep must not start until PRs **#477, #478 and #479** have landed. It rewrites most of `docs/technical-improvements.md`, and `merge=union` on this file resolves concurrent *appends*, not a wholesale rewrite against branches holding their own rows — #478 ([TI-90]) and #479 ([TI-79]) are both in a fix round. Part 2 touches only a script and is independent of that constraint.
+
+**Raised in:** 2026-08-13, from a read of `scripts/check-doc-ids.sh` on `origin/main`.
 
 ---
 
