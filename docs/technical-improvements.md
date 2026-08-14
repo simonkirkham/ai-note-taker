@@ -801,6 +801,28 @@ The first was a regression introduced by the round-1 fix — green before it, re
 
 **Also from that round:** `.githooks/**` was dropped from the trigger (0 files on `main` since 2026-08-11 — dead config, and the script's own `git ls-files -- '.githooks/*'` already covers reinstatement), and the five `scripts/*.sh` entries listed by name were replaced by `**/*.sh`, a net deletion — all five are inside the glob.
 
+### OPEN CONTROL — the wildcard trigger has not been watched matching on a pull request
+
+**If `**/*.sh` under-matches, the repo's own guards stop being checked and nothing reports it.** The five entries it replaced were `check-doc-ids.sh`, `lint-workflows.sh`, `merge-gate.sh`, `deploy-status.sh` and `test-merge-gate.sh` — so the failure mode is the guards' own guard quietly switching off. A filter that stops matching produces no run, no error and no annotation, which is the same self-concealing shape as [TI-69].
+
+Evidence, separated by strength rather than merged into one claim:
+
+| Claim | Strength |
+| --- | --- |
+| The `pull_request` trigger fires at all | **Observed** repeatedly, incl. PR #477 and #478 |
+| `**/*.sh` in a `paths:` list matches a nested `scripts/*.sh` | **Observed** on GitHub's own matcher — throwaway branch `proof/ti79-sh-glob`, two temporary workflows each with a single-entry `paths:` list; a push changing only `scripts/sessions.sh` ran the `**/*.sh` one (run `31685559621`, `total_count=1` by full sha) and never ran the `**/*.no-such-extension-xyz` control |
+| `**/*.md` matches a nested path in a `paths-ignore` list | **Observed** in real history — `39e19fb5` changed only `desktop/MANUAL-VERIFICATION.md`, which matches only `**/*.md` in `deploy.yml`, and no Deploy run exists; `fb286458` is the positive control |
+| The same holds on the **`pull_request`** trigger specifically | **INFERRED, not observed.** `paths` and `paths-ignore` share one matching implementation across triggers, so the transfer is sound — but it is an inference |
+
+**Why the last one could not be closed before merging.** A `pull_request` filter is evaluated against the **whole PR diff**, and PR #479 also changes `docs/technical-improvements.md` and `.github/workflows/**` — both matching other entries — so any control run inside #479 is vacuous: its outcome is fixed regardless of the glob. A push to `main` is equally vacuous, since the `push:` trigger has had no `paths:` key since #477.
+
+**The control to run, once, after this merges.** Open a PR whose entire diff is a one-line comment change to `scripts/sessions.sh` or `scripts/next-doc-id.sh` — verified mechanically against the post-change list: every `.sh` file in the repo is matched by `**/*.sh` and by **no other entry**.
+
+- **Pass:** `gh pr checks <n>` lists `doc-ids` and `workflows`.
+- **Fail:** an empty check list. That is the coverage regression, and the fix is to restore the five enumerated entries alongside the glob.
+
+**Tooling trap that makes "nothing ran" unfalsifiable:** a short sha silently returns zero rows on **both** routes — `gh run list --commit <short>` gave 0 and `gh api …/actions/runs?head_sha=<short>` gave `total_count=0` on a commit that has exactly one run, while the full 40-character sha gave 1 on both. Always pass `$(git rev-parse <ref>)`.
+
 **Related:** [docs/learnings/waiting-without-scanning-process-cmdlines.md](learnings/waiting-without-scanning-process-cmdlines.md) is the written rule. [docs/learnings/a-mechanism-nobody-has-watched-work-is-not-working.md](learnings/a-mechanism-nobody-has-watched-work-is-not-working.md) carries this as instance 2 and its live recurrence.
 
 ---
