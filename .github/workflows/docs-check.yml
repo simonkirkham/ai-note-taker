@@ -50,14 +50,19 @@ on:
       - "docs/phases/phase-minor-changes.md"
       - "docs/technical-improvements.md"
       - "docs/roadmap.md"
-      - "scripts/check-doc-ids.sh"
-      # TI-77's merge-gate self-test (PR #463)
-      - "scripts/merge-gate.sh"
-      - "scripts/deploy-status.sh"
-      - "scripts/test-merge-gate.sh"
+      # One entry covering every shell script, replacing five that were listed by name
+      # (check-doc-ids, merge-gate, deploy-status, test-merge-gate, lint-workflows). All five
+      # live under scripts/, so all five are inside this glob — this is a net deletion, not an
+      # addition. TI-79's guard reads EVERY tracked shell script, so listing only its own two
+      # files would leave a bad wait loop added to any other script ungated.
+      #
+      # "**/*.sh" reaches the repo ROOT, where dev.sh lives. Measured rather than derived:
+      # deploy.yml paths-ignores "**/*.md", and three commits on main touching only the
+      # root-level CLAUDE.md produced no deploy.yml run — so GitHub's "**/" matches zero path
+      # segments. The only .sh files outside scripts/ are dev.sh and docker/init-tables.sh.
+      - "**/*.sh"
       # TI-70's workflow lint (PR #464). ".github/workflows/**" subsumes the explicit
-      # docs-check.yml entry above it; both kept so neither side of the merge lost a line.
-      - "scripts/lint-workflows.sh"
+      # docs-check.yml entry below it; both kept so neither side of the merge lost a line.
       - ".github/workflows/docs-check.yml"
       - ".github/workflows/**"
       # Metadata only — actionlint validates a local action's YAML and `runs.using` via the
@@ -156,6 +161,28 @@ jobs:
       # rebase a clean branch) survived. Stub-driven, deterministic, no network, ~15s.
       - name: Merge-gate self-test
         run: bash ./scripts/test-merge-gate.sh
+
+      # TI-79. A wait built on scanning process command lines for a literal SELF-MATCHES: each
+      # Bash tool call runs as `/bin/bash -c … && eval '<the entire command text>'`, so the
+      # wrapper's own cmdline carries the pattern and the scan always finds itself. The loop
+      # reported from 2026-08-11 — `until ! pgrep -f "bin/eslint"; do sleep 15; done` — could
+      # never have exited, and a stuck session cannot be reached by message either, so nobody
+      # is told. This refuses the SHAPE (a loop waiting on a cmdline scan, by any means), not
+      # the tool: a one-shot `pgrep -f` in a bare-path script is correct and stays green. Same
+      # reason as the two checks above — pr.yml paths-ignores scripts/**, and .githooks/ was
+      # deleted on 2026-08-11, so this is the only place the check can run.
+      - name: Cmdline-scan wait loops
+        run: bash ./scripts/check-cmdline-waits.sh
+
+      # The guard's own self-test: 32 fixtures — 19 that must go RED and 13 that must stay
+      # GREEN — plus a repo-wide scan. It is the injected-defect check made permanent; without
+      # it, a guard that had quietly stopped biting would look exactly like a clean repo, which
+      # is not a hypothetical here. Seven dangerous loops passed the first draft, including
+      # `ps aux`, and they are now seven of those fixtures. The GREEN half carries as much
+      # weight as the RED: three fixtures exist because the guard refused something legitimate,
+      # and a guard that accuses wrongly is a guard someone switches off.
+      - name: Cmdline-scan guard self-test
+        run: bash ./scripts/test-check-cmdline-waits.sh
 
   workflows:
     runs-on: ubuntu-latest
