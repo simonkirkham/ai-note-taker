@@ -262,8 +262,25 @@ fi
 [ -d "$WORKTREE_DIR" ] && row PASS "Worktree directory" "$WORKTREE_DIR" \
   || row WARN "Worktree directory" "missing — mkdir -p $WORKTREE_DIR (every slice runs in one)"
 
-[ -f "$CHROME" ] && row PASS "Chrome (for CSS checks)" "$CHROME" \
-  || row WARN "Chrome (for CSS checks)" "not at the expected Windows path — visual/CSS measurement falls back to guesswork"
+# A browser is needed to measure CSS rather than reason about it. Any of three
+# will do: Chrome on the Windows side, a Linux chrome/chromium, or the Chromium
+# Playwright installs for the browser tests. Google ships no Linux Chrome for
+# arm64, so on those machines Playwright's is the only one.
+BROWSER=""
+if [ -f "$CHROME" ]; then
+  BROWSER="$CHROME"
+elif command -v google-chrome >/dev/null 2>&1; then
+  BROWSER="$(command -v google-chrome)"
+elif command -v chromium >/dev/null 2>&1; then
+  BROWSER="$(command -v chromium)"
+else
+  BROWSER="$(find "$HOME/.cache/ms-playwright" -maxdepth 3 -name 'headless_shell' -o -maxdepth 3 -name 'chrome' 2>/dev/null | head -1)"
+fi
+if [ -n "$BROWSER" ]; then
+  row PASS "Browser (for CSS checks)" "$BROWSER"
+else
+  row WARN "Browser (for CSS checks)" "none found — visual and CSS work falls back to guesswork. Cheapest fix: build tests/Browser.E2E and run its playwright.ps1 install chromium"
+fi
 
 [ -d "$REPO_ROOT/web/node_modules" ] && row PASS "Frontend packages" "installed" \
   || row WARN "Frontend packages" "npm --prefix web install"

@@ -106,6 +106,20 @@ if [ "$WITH_SECRETS" -eq 1 ]; then
   [ -f "$HOME/.aws/config" ]      && cp "$HOME/.aws/config"      "$STAGE/bundle/aws/config"
   [ -f "$HOME/.aws/credentials" ] && cp "$HOME/.aws/credentials" "$STAGE/bundle/aws/credentials"
   chmod -R go-rwx "$STAGE/bundle/aws"
+
+  # Everything this project runs on lives in eu-west-2. A region line in the
+  # credentials file overrides the one in config, so a wrong value there sends
+  # every command that omits --region to an empty region — and an exported
+  # bundle would carry that mistake to the next machine. Normalise the copy in
+  # the bundle; the source machine's own files are untouched.
+  APP_REGION=eu-west-2
+  for f in "$STAGE/bundle/aws/credentials" "$STAGE/bundle/aws/config"; do
+    [ -f "$f" ] || continue
+    if grep -E "^[[:space:]]*region[[:space:]]*=" "$f" | grep -qvE "=[[:space:]]*$APP_REGION[[:space:]]*$"; then
+      sed -i -E "s|^[[:space:]]*region[[:space:]]*=.*|region = $APP_REGION|" "$f"
+      echo "  normalised the region in the bundled $(basename "$f") to $APP_REGION (this machine had a different one, which queries an empty region)"
+    fi
+  done
 else
   # Profile names and accounts only — no keys. Enough to tell the new machine
   # what it is missing.
