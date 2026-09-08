@@ -273,11 +273,56 @@ it('52-A: a dotted capital I earlier in the transcript does not shift later high
   expect(screen.getByTestId('transcription-text').textContent).toBe('İstanbul hello world')
 })
 
-it('52-A: caps how many matches are highlighted, and says the total is capped', async () => {
+it('52-A: caps how many matches are highlighted, and says stepping is confined to them', async () => {
   render(<TranscriptTab transcript={'budget '.repeat(800)} />)
   await userEvent.type(findBox(), 'budget')
   expect(marks()).toHaveLength(500)
-  expect(screen.getByTestId('transcript-find-count')).toHaveTextContent('1 of 500+')
+  expect(screen.getByTestId('transcript-find-count')).toHaveTextContent('1 of first 500')
+})
+
+it('52-A: a transcript with exactly the cap many matches is not reported as capped', async () => {
+  render(<TranscriptTab transcript={'budget '.repeat(500)} />)
+  await userEvent.type(findBox(), 'budget')
+  expect(screen.getByTestId('transcript-find-count')).toHaveTextContent('1 of 500')
+  expect(screen.getByTestId('transcript-find-count')).not.toHaveTextContent('first')
+})
+
+// The live transcript replaces its last line as a phrase finalises, so it is not a plain append.
+// These use that real shape; a hand-written clean append does not discriminate.
+it('52-A: a phrase finalising mid-recording does not throw the user back to the first match', async () => {
+  // Settled turns, holding two matches; the user is reading the second of them.
+  const settled = 'Speaker 0: the budget and the budget again\n'
+  const { rerender } = render(
+    <TranscriptTab transcript={`${settled}we discussed the bud`} isRecording />,
+  )
+  await userEvent.type(findBox(), 'budget')
+  await userEvent.click(screen.getByRole('button', { name: 'Next match' }))
+  expect(screen.getByTestId('transcript-find-count')).toHaveTextContent('2 of 2')
+  // The provisional last line is REPLACED by the finalised, speaker-labelled turn — it is not
+  // extended, so the transcript as a whole is not a continuation of what came before.
+  rerender(
+    <TranscriptTab transcript={`${settled}Speaker 1: we discussed the budget.`} isRecording />,
+  )
+  expect(screen.getByTestId('transcript-find-count')).toHaveTextContent('2 of 3')
+})
+
+it('52-A: a word revised after the read match does not move the user', async () => {
+  const { rerender } = render(<TranscriptTab transcript="the budget the plan recognise" isRecording />)
+  await userEvent.type(findBox(), 'the')
+  await userEvent.click(screen.getByRole('button', { name: 'Next match' }))
+  expect(screen.getByTestId('transcript-find-count')).toHaveTextContent('2 of 2')
+  rerender(<TranscriptTab transcript="the budget the plan recognize" isRecording />)
+  expect(screen.getByTestId('transcript-find-count')).toHaveTextContent('2 of 2')
+})
+
+it('52-A: text rewritten before the read match starts the search again', async () => {
+  const { rerender } = render(<TranscriptTab transcript="the budget recognise the plan" isRecording />)
+  await userEvent.type(findBox(), 'the')
+  await userEvent.click(screen.getByRole('button', { name: 'Next match' }))
+  expect(screen.getByTestId('transcript-find-count')).toHaveTextContent('2 of 2')
+  // The change lands ahead of the match being read, so the position no longer means anything.
+  rerender(<TranscriptTab transcript="the budget recognize the plan" isRecording />)
+  expect(screen.getByTestId('transcript-find-count')).toHaveTextContent('1 of 2')
 })
 
 it('52-A: clearing the search during a recording resumes following the speech', async () => {

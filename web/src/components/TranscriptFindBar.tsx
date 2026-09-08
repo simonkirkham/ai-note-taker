@@ -24,11 +24,15 @@ export default function TranscriptFindBar({
   const inputRef = useRef<HTMLInputElement>(null);
   const isSearching = query !== "";
 
+  // When capped, the label says which window the controls actually move through. A bare "+" would
+  // be honest about there being more matches while silently implying the buttons can reach them.
   const countLabel = !isSearching
     ? ""
     : total === 0
       ? "No matches"
-      : `${current} of ${total}${capped ? "+" : ""}`;
+      : capped
+        ? `${current} of first ${total}`
+        : `${current} of ${total}`;
 
   function handleClear() {
     onClear();

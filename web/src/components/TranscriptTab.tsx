@@ -10,7 +10,7 @@ export type DiarizationDisplayStatus = "none" | "refining" | "failed";
 
 // A one-character query on an hour-long transcript matches thousands of times; every match is a
 // DOM node, and during a recording the whole tree re-renders on each incoming phrase. Capping the
-// highlights keeps that responsive — the count says "500+" so the total is never a lie.
+// highlights keeps that responsive; the count says so rather than implying the cap is the total.
 const MAX_MATCHES = 500;
 
 interface Match {
@@ -30,23 +30,31 @@ function escapeForRegExp(query: string): string {
 // copy. Lower-casing is not length-preserving — `"İ".toLowerCase()` is two code units — so a single
 // U+0130 anywhere earlier in a transcript de-synchronises the two strings and shifts every later
 // highlight one character left. The query is escaped, so it is still matched as literal text.
+// Scans one past the cap so "exactly 500 matches" is distinguishable from "stopped counting at
+// 500" — otherwise a transcript with precisely 500 would claim there were more.
 function findMatches(text: string, query: string): Match[] {
   if (query === "") return [];
   const pattern = new RegExp(escapeForRegExp(query), "gi");
   const matches: Match[] = [];
-  for (let m = pattern.exec(text); m !== null && matches.length < MAX_MATCHES; m = pattern.exec(text)) {
+  for (let m = pattern.exec(text); m !== null && matches.length <= MAX_MATCHES; m = pattern.exec(text)) {
     matches.push({ start: m.index, end: m.index + m[0].length });
   }
   return matches;
 }
 
-// A live transcript grows by appending, which leaves every earlier match exactly where it was — so
-// the position the user is on stays meaningful and must not move. Any other change (the speaker-
-// labelled transcript replacing the streamed one, or a re-record) rewrites the text wholesale,
-// after which neither "the 5th match" nor "the match at character 400" refers to anything the user
-// chose. The only honest answer there is to start again at the first match.
-function isAppendTo(previous: string | null, next: string | null): boolean {
-  return (next ?? "").startsWith(previous ?? "");
+// Whether the user's position in the transcript survives a change to it.
+//
+// The test is NOT "did the transcript grow" — a live transcript does not grow by appending. An
+// in-flight phrase is rendered as a provisional line which is then REPLACED by the finalised,
+// speaker-labelled turn, and the speech engine also revises words mid-phrase. Comparing whole
+// strings therefore reports "rewritten" once per phrase and throws the user back to the first
+// match every few seconds while recording — the very scenario this exists to protect.
+//
+// What actually matters is whether the text *up to and including the match being read* is
+// untouched. Anything changing after it cannot move it, so a finalised or revised tail keeps the
+// position; a diarization swap or re-record rewrites the text before it too, and resets.
+function keepsPosition(previous: string | null, next: string | null, readThrough: number): boolean {
+  return (next ?? "").startsWith((previous ?? "").slice(0, readThrough));
 }
 
 export default function TranscriptTab({
@@ -71,12 +79,22 @@ export default function TranscriptTab({
 
   // Adjusting state during render, rather than in an effect: React re-renders immediately without
   // committing, and `react-hooks/set-state-in-effect` — a hard CI gate — forbids the effect form.
+  //
+  // How far the user had read is recomputed from the previous transcript rather than carried in a
+  // ref, because reading a ref during render is itself a lint error (and unsound — React may
+  // discard this render). The extra scan runs only on a transcript change and is capped like any
+  // other, so it costs one bounded pass per incoming phrase.
   if (transcript !== seenTranscript) {
+    const before = findMatches(seenTranscript ?? "", query);
+    const wasOn = before.length === 0 ? -1 : Math.min(matchIndex, before.length - 1);
+    const readThrough = wasOn < 0 ? 0 : before[wasOn].end;
     setSeenTranscript(transcript);
-    if (!isAppendTo(seenTranscript, transcript)) setMatchIndex(0);
+    if (!keepsPosition(seenTranscript, transcript, readThrough)) setMatchIndex(0);
   }
 
-  const matches = useMemo(() => findMatches(transcript ?? "", query), [transcript, query]);
+  const found = useMemo(() => findMatches(transcript ?? "", query), [transcript, query]);
+  const capped = found.length > MAX_MATCHES;
+  const matches = capped ? found.slice(0, MAX_MATCHES) : found;
 
   const currentIndex = matches.length === 0 ? -1 : Math.min(matchIndex, matches.length - 1);
   const currentStart = currentIndex < 0 ? null : matches[currentIndex].start;
@@ -173,7 +191,7 @@ export default function TranscriptTab({
           query={query}
           current={currentIndex + 1}
           total={matches.length}
-          capped={matches.length === MAX_MATCHES}
+          capped={capped}
           onQueryChange={search}
           onNext={() => step(1)}
           onPrevious={() => step(-1)}
