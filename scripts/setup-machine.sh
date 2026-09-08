@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# Installs the software a fresh Ubuntu/WSL machine needs to build, test and deploy
+# this repo. Companion to scripts/setup-new-machine.sh, which checks what is present
+# and carries across the settings git does not hold — run that one after this.
+#
 # One-shot setup for a fresh Ubuntu/WSL machine so this repo can be built, tested,
 # linted, deployed and operated. Idempotent — safe to re-run.
 #
@@ -76,8 +80,16 @@ if have docker && ! docker info >/dev/null 2>&1; then
   sudo service docker start >/dev/null 2>&1 || true
 fi
 
+ARCH="$(dpkg --print-architecture)"
 if have google-chrome || have google-chrome-stable; then
   log "Chrome already installed — skipping"
+elif [ "$ARCH" != "amd64" ]; then
+  log "Skipping Google Chrome — no Linux build exists for this machine's $ARCH processor"
+  # A part-completed earlier run can leave an amd64-only source behind, which
+  # makes every later apt-get update noisy on this machine.
+  sudo rm -f /etc/apt/sources.list.d/google-chrome.list
+  echo "  Headless page measurement uses Playwright's Chromium (installed below),"
+  echo "  or Microsoft Edge on the Windows side."
 else
   log "Installing Google Chrome (headless CSS/contrast measurement)"
   curl -fsSL https://dl.google.com/linux/linux_signing_key.pub \
@@ -94,14 +106,10 @@ dotnet restore "$REPO_ROOT/ai-note-taker.sln"
 npm --prefix "$REPO_ROOT/web" install
 [ -f "$REPO_ROOT/web/.env.local" ] || cp "$REPO_ROOT/web/.env.local.example" "$REPO_ROOT/web/.env.local"
 
-log "Installing Playwright browsers for the E2E suite"
-dotnet build "$REPO_ROOT/tests/Browser.E2E/Browser.E2E.csproj" -c Debug >/dev/null
-PW_SCRIPT="$(find "$REPO_ROOT/tests/Browser.E2E/bin" -name 'playwright.ps1' | head -1 || true)"
-if [ -n "$PW_SCRIPT" ] && have pwsh; then
-  pwsh "$PW_SCRIPT" install --with-deps chromium
-else
-  echo "Skipped: PowerShell (pwsh) not present. Run 'sudo snap install powershell --classic' then re-run this script."
-fi
+log "Installing the Playwright browser used by the end-to-end tests"
+# npx (Node) rather than playwright.ps1 (PowerShell): same download, same
+# ~/.cache/ms-playwright location the .NET tests read, one less prerequisite.
+npx --yes playwright install --with-deps chromium
 
 log "Installed versions"
 printf '  dotnet   %s\n' "$(dotnet --version 2>/dev/null || echo MISSING)"
@@ -111,7 +119,7 @@ printf '  aws      %s\n' "$(aws --version 2>&1 || echo MISSING)"
 printf '  cdk      %s\n' "$(cdk --version 2>/dev/null || echo MISSING)"
 printf '  gh       %s\n' "$(gh --version 2>/dev/null | head -1 || echo MISSING)"
 printf '  docker   %s\n' "$(docker --version 2>/dev/null || echo MISSING)"
-printf '  chrome   %s\n' "$(google-chrome --version 2>/dev/null || echo MISSING)"
+printf '  chromium %s\n' "$(ls -d "$HOME/.cache/ms-playwright"/chromium-* 2>/dev/null | head -1 || echo MISSING)"
 printf '  jq       %s\n' "$(jq --version 2>/dev/null || echo MISSING)"
 
 cat <<'REMAINING'
