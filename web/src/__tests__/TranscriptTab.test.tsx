@@ -264,6 +264,77 @@ it('52-A: a growing transcript does not reset which match the user is on', async
   expect(screen.getByTestId('transcript-find-count')).toHaveTextContent('2 of 4')
 })
 
+// Review findings, 52-A.
+it('52-A: a dotted capital I earlier in the transcript does not shift later highlights', async () => {
+  render(<TranscriptTab transcript="İstanbul hello world" />)
+  await userEvent.type(findBox(), 'world')
+  expect(marks()).toHaveLength(1)
+  expect(marks()[0]).toHaveTextContent('world')
+  expect(screen.getByTestId('transcription-text').textContent).toBe('İstanbul hello world')
+})
+
+it('52-A: caps how many matches are highlighted, and says the total is capped', async () => {
+  render(<TranscriptTab transcript={'budget '.repeat(800)} />)
+  await userEvent.type(findBox(), 'budget')
+  expect(marks()).toHaveLength(500)
+  expect(screen.getByTestId('transcript-find-count')).toHaveTextContent('1 of 500+')
+})
+
+it('52-A: clearing the search during a recording resumes following the speech', async () => {
+  const { rerender } = render(<TranscriptTab transcript="the budget words" isRecording />)
+  await userEvent.type(findBox(), 'budget')
+  await userEvent.keyboard('{Escape}')
+  const body = screen.getByTestId('transcription-body')
+  Object.defineProperty(body, 'scrollHeight', { value: 500, configurable: true })
+  body.scrollTop = 0
+  rerender(<TranscriptTab transcript="the budget words and more speech" isRecording />)
+  expect(body.scrollTop).toBe(500)
+})
+
+it('52-A: incoming speech does not drag the view back to the current match', async () => {
+  const { rerender } = render(<TranscriptTab transcript="budget one budget two" isRecording />)
+  await userEvent.type(findBox(), 'budget')
+  vi.mocked(Element.prototype.scrollIntoView).mockClear()
+  rerender(<TranscriptTab transcript="budget one budget two and more speech" isRecording />)
+  rerender(<TranscriptTab transcript="budget one budget two and more speech still" isRecording />)
+  expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled()
+})
+
+it('52-A: stepping still re-centres the view after speech has arrived', async () => {
+  const { rerender } = render(<TranscriptTab transcript="budget one budget two" isRecording />)
+  await userEvent.type(findBox(), 'budget')
+  rerender(<TranscriptTab transcript="budget one budget two and more" isRecording />)
+  vi.mocked(Element.prototype.scrollIntoView).mockClear()
+  await userEvent.click(screen.getByRole('button', { name: 'Next match' }))
+  expect(Element.prototype.scrollIntoView).toHaveBeenCalled()
+})
+
+it('52-A: a transcript rewritten from scratch starts the search again at the first match', async () => {
+  const { rerender } = render(<TranscriptTab transcript="budget a budget b budget c" />)
+  await userEvent.type(findBox(), 'budget')
+  const next = screen.getByRole('button', { name: 'Next match' })
+  await userEvent.click(next)
+  await userEvent.click(next)
+  expect(screen.getByTestId('transcript-find-count')).toHaveTextContent('3 of 3')
+  // The speaker-labelled transcript replaces the streamed one: same words, every position moved.
+  rerender(<TranscriptTab transcript="Speaker 1: budget a budget b budget c" />)
+  expect(screen.getByTestId('transcript-find-count')).toHaveTextContent('1 of 3')
+  expect(currentMark()).toBe(marks()[0])
+})
+
+it('52-A: a rewrite does not strand the user on a match number that no longer exists', async () => {
+  const { rerender } = render(<TranscriptTab transcript="budget a budget b budget c" />)
+  await userEvent.type(findBox(), 'budget')
+  const next = screen.getByRole('button', { name: 'Next match' })
+  await userEvent.click(next)
+  await userEvent.click(next)
+  rerender(<TranscriptTab transcript="budget only" />)
+  expect(screen.getByTestId('transcript-find-count')).toHaveTextContent('1 of 1')
+  // Restoring a longer transcript must not silently teleport them back to the third match.
+  rerender(<TranscriptTab transcript="budget a budget b budget c" />)
+  expect(screen.getByTestId('transcript-find-count')).toHaveTextContent('1 of 3')
+})
+
 it('52-A: a replaced, shorter transcript clamps to the last remaining match', async () => {
   const { rerender } = render(<TranscriptTab transcript="budget one budget two budget three" />)
   await userEvent.type(findBox(), 'budget')

@@ -38,11 +38,18 @@
    invisible. No test can catch that — the component tests assert the mark elements exist, and
    the test environment applies no CSS. At 35% the worst theme measures 5.44:1 for text on the
    highlight and 1.47:1 for the highlight against the surface. */
+   The tint alone is NOT sufficient: measured, it reaches only 1.47:1 against the surface in the
+   weakest theme and 2.78:1 in the strongest — below the 3:1 bar for a non-text indicator. For a
+   non-current match the tint is the only thing saying "this is a match", so it is underlined too
+   and the state never rests on colour alone. The current match additionally carries a solid
+   outline, which clears 3:1 on its own. */
 .match,
 .currentMatch {
   color: var(--color-text);
   background: color-mix(in srgb, var(--color-primary) 35%, transparent);
   border-radius: 2px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .currentMatch {

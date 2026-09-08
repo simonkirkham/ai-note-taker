@@ -4,20 +4,31 @@ import styles from "./TranscriptFindBar.module.css";
 
 export default function TranscriptFindBar({
   query,
-  countLabel,
-  hasMatches,
+  current,
+  total,
+  capped,
   onQueryChange,
-  onStep,
+  onNext,
+  onPrevious,
   onClear,
 }: {
   query: string;
-  countLabel: string;
-  hasMatches: boolean;
+  current: number;
+  total: number;
+  capped: boolean;
   onQueryChange: (query: string) => void;
-  onStep: (delta: number) => void;
+  onNext: () => void;
+  onPrevious: () => void;
   onClear: () => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const isSearching = query !== "";
+
+  const countLabel = !isSearching
+    ? ""
+    : total === 0
+      ? "No matches"
+      : `${current} of ${total}${capped ? "+" : ""}`;
 
   function handleClear() {
     onClear();
@@ -27,7 +38,8 @@ export default function TranscriptFindBar({
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Enter") {
       e.preventDefault();
-      onStep(e.shiftKey ? -1 : 1);
+      if (e.shiftKey) onPrevious();
+      else onNext();
     } else if (e.key === "Escape") {
       e.preventDefault();
       handleClear();
@@ -35,7 +47,12 @@ export default function TranscriptFindBar({
   }
 
   return (
-    <div className={styles.findBar} role="search" data-testid="transcript-find">
+    <div
+      className={styles.findBar}
+      role="search"
+      aria-label="Transcript search"
+      data-testid="transcript-find"
+    >
       <input
         ref={inputRef}
         type="text"
@@ -55,8 +72,8 @@ export default function TranscriptFindBar({
         className={clsx("icon-btn", styles.findButton)}
         data-testid="transcript-find-prev"
         aria-label="Previous match"
-        disabled={!hasMatches}
-        onClick={() => onStep(-1)}
+        disabled={total === 0}
+        onClick={onPrevious}
       >
         ‹
       </button>
@@ -65,8 +82,8 @@ export default function TranscriptFindBar({
         className={clsx("icon-btn", styles.findButton)}
         data-testid="transcript-find-next"
         aria-label="Next match"
-        disabled={!hasMatches}
-        onClick={() => onStep(1)}
+        disabled={total === 0}
+        onClick={onNext}
       >
         ›
       </button>
@@ -75,7 +92,7 @@ export default function TranscriptFindBar({
         className={clsx("icon-btn", styles.findButton)}
         data-testid="transcript-find-clear"
         aria-label="Clear search"
-        disabled={query === ""}
+        disabled={!isSearching}
         onClick={handleClear}
       >
         ✕
