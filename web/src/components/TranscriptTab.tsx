@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import TranscriptFindBar from "./TranscriptFindBar";
 import styles from "./TranscriptTab.module.css";
 
 export type RecordingDownloadStatus = "none" | "uploading" | "available" | "failed";
@@ -38,7 +39,6 @@ export default function TranscriptTab({
   onDownloadRecording?: () => void;
 }) {
   const bodyRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
   const currentMarkRef = useRef<HTMLElement>(null);
   const [query, setQuery] = useState("");
   const [matchIndex, setMatchIndex] = useState(0);
@@ -70,20 +70,9 @@ export default function TranscriptTab({
     setMatchIndex((currentIndex + delta + matches.length) % matches.length);
   }
 
-  function clearSearch() {
-    setQuery("");
+  function search(next: string) {
+    setQuery(next);
     setMatchIndex(0);
-    inputRef.current?.focus();
-  }
-
-  function handleSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      step(e.shiftKey ? -1 : 1);
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      clearSearch();
-    }
   }
 
   function renderTranscript(text: string): ReactNode {
@@ -153,55 +142,14 @@ export default function TranscriptTab({
         </div>
       ) : null}
       {hasTranscript && (
-        <div className={styles.findBar} role="search" data-testid="transcript-find">
-          <input
-            ref={inputRef}
-            type="text"
-            className={styles.findInput}
-            data-testid="transcript-find-input"
-            aria-label="Find in transcript"
-            placeholder="Find in transcript"
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setMatchIndex(0);
-            }}
-            onKeyDown={handleSearchKeyDown}
-          />
-          <span className={styles.findCount} data-testid="transcript-find-count" role="status">
-            {countLabel}
-          </span>
-          <button
-            type="button"
-            className={styles.findButton}
-            data-testid="transcript-find-prev"
-            aria-label="Previous match"
-            disabled={matches.length === 0}
-            onClick={() => step(-1)}
-          >
-            ‹
-          </button>
-          <button
-            type="button"
-            className={styles.findButton}
-            data-testid="transcript-find-next"
-            aria-label="Next match"
-            disabled={matches.length === 0}
-            onClick={() => step(1)}
-          >
-            ›
-          </button>
-          <button
-            type="button"
-            className={styles.findButton}
-            data-testid="transcript-find-clear"
-            aria-label="Clear search"
-            disabled={!isSearching}
-            onClick={clearSearch}
-          >
-            ✕
-          </button>
-        </div>
+        <TranscriptFindBar
+          query={query}
+          countLabel={countLabel}
+          hasMatches={matches.length > 0}
+          onQueryChange={search}
+          onStep={step}
+          onClear={() => search("")}
+        />
       )}
       <div className={styles.body} ref={bodyRef} data-testid="transcription-body">
         {hasTranscript && transcript ? (
