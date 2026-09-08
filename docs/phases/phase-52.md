@@ -136,6 +136,7 @@ Frontend-only phase. **No new commands, events, projections, endpoints, tables o
 
 - **Scope: in-note find only.** This is *not* an extension of Phase 22 search. `NoteSearchView` still deliberately excludes transcript text (`docs/phases/phase-22.md:58`) and this phase does not change that. Indexing transcripts into global search was considered and deferred by the user on 2026-09-08 — filed in [`docs/future-features.md`](../future-features.md).
 - **Where it lives:** `TranscriptTab.tsx` (`web/src/components/TranscriptTab.tsx`) + `TranscriptTab.module.css`. `NoteView` passes `transcript` down already (`NoteView.tsx:1052`) — **no prop-signature change for 52-A, no new plumbing through `NoteView`**, and no widening of any shared callback. Search state is local to `TranscriptTab`.
+  - **As built:** the controls are their own component (`TranscriptFindBar.tsx` + `.module.css`) — `TranscriptTab` had reached four distinct regions in one file. The search *state* stays in `TranscriptTab` (it drives the highlighting); the bar owns its input focus and key handling. The bar has no test file of its own: every one of its behaviours is asserted through `TranscriptTab.test.tsx`, which exercises it in its real context.
 - **Matching is literal, case-insensitive substring — not fuzzy.** Phase 22's Levenshtein/token-set ranking exists to *rank documents*; find-in-page must be predictable and exact or the highlight positions are meaningless. Escape the query before any regex use, or use an `indexOf` loop (preferred — no escaping bug surface). No diacritic folding, no stemming, no whole-word option in this phase.
 - **Rendering:** the body currently renders `{transcript}` inside one `<p data-testid="transcription-text">` (`TranscriptTab.tsx:71`) with `white-space: pre-wrap` (`TranscriptTab.module.css`). Highlighting splits it into alternating plain/`<mark>` segments **inside the same `<p>`**, preserving `pre-wrap` (newlines carry the speaker turns). Keep `data-testid="transcription-text"` on that element — existing component tests and any E2E selector depend on it, and its `textContent` must stay byte-identical to `transcript` when highlighting is applied. Assert that.
 - **Empty query ⇒ zero work.** No query means render the plain string exactly as today, no `<mark>`s, no memo churn — the untouched path stays the shipped path.
@@ -148,12 +149,13 @@ Frontend-only phase. **No new commands, events, projections, endpoints, tables o
 - **Projections:** none.
 - **API:** none.
 - **State:** local to `TranscriptTab` — `query: string`, `currentIndex: number`. Matches are derived (`useMemo`), never stored.
-- **Match index stability while recording:** matches are recomputed as `transcript` grows. Appended speech only appends matches, so clamp `currentIndex` to `matches.length - 1` rather than resetting it — a growing transcript must not bounce the user back to match 1. A *replaced* transcript (33-B1 diarization swap, 18-C re-record) legitimately resets to 0; detect via a shrink or a non-prefix change, don't over-engineer.
+- **Match index stability while recording:** matches are recomputed as `transcript` grows. Appended speech only appends matches, so clamp `currentIndex` to `matches.length - 1` rather than resetting it — a growing transcript must not bounce the user back to match 1.
+  - **As built: clamp only.** A replaced, *shorter* transcript (33-B1 diarization swap, 18-C re-record) lands on the last remaining match, which the clamp already gives. Detecting a same-length non-prefix replacement was dropped as over-engineering: the index would point at a different match, which is no worse than resetting, and it needs a previous-transcript ref to detect at all.
 - **Auto-scroll interaction (the one real subtlety):** the existing effect force-scrolls to the bottom on every transcript change while `isRecording` (`TranscriptTab.tsx:26-30`). That directly fights scroll-to-current-match. Gate it on `query === ""` — active search suppresses follow-the-speech; clearing restores it. Both scenarios in 52-A assert this pair.
 - **Scroll-to-match:** `ref` on the current `<mark>`, `scrollIntoView({ block: "center" })` in an effect on `currentIndex`. Guard for the mark being absent (query cleared in the same tick).
 - **A11y (jsx-a11y is a hard CI gate):**
   - Wrap in `role="search"` with the input labelled `Find in transcript` (visible label or `aria-label`).
-  - Match count in a `role="status"` live region — announce `"3 of 7 matches"` / `"No matches"`. Debounce the announcement (~300ms) so per-keystroke chatter doesn't flood a screen reader.
+  - Match count in a `role="status"` live region — announce `"3 of 7"` / `"No matches"`. **The planned ~300ms announcement debounce was dropped:** `role="status"` is already a polite region, so rapid updates are coalesced by the screen reader rather than queued, and debouncing would have desynchronised the announced count from the visible one. The count element is rendered whenever the search box is (empty when idle) so the live region exists before its content changes — a region created at the same moment its text appears is not reliably announced.
   - Next/previous are real `<button>`s with `aria-label="Next match"` / `"Previous match"`, `disabled` when there are no matches.
   - Current `<mark>` gets `aria-current="true"`; others plain.
   - The clear (`✕`) affordance is a real button — and **check BUG-13** (the Phase 22 search bar shipped a double-clear `✕`: the native `type="search"` clear plus a custom one). Use `type="text"` with one explicit clear button, not `type="search"`.
@@ -184,6 +186,8 @@ Frontend-only phase. **No new commands, events, projections, endpoints, tables o
   - [ ] A growing transcript does not reset which match the user is on
   - [ ] Search state is local to the transcript tab — no `NoteView` prop or callback signature changes
 - **Decisions:**
+  - **The highlight tint is `color-mix(in srgb, var(--color-primary) 35%, transparent)`, not `--color-primary-bg`.** That token is only a 6–12% wash: measured across all 17 themes it sits at **1.07:1** against the surface, so the highlight would have shipped invisible — the entire feature, defeated, with all 34 specs green (the test environment applies no CSS, and the specs assert the mark elements *exist*). At 35% the worst theme measures **5.44:1** for text on the highlight and **1.47:1** for the highlight against the surface. Both states share one background and the current match is distinguished by an outline, so no second colour pairing needs verifying per theme. Re-measure with `scripts/`-style arithmetic over `tokens.css` if the accent tokens change.
+  - Previous/next/clear reuse the shared global `.icon-btn` utility rather than a bespoke control — consistent geometry, hover and disabled with every other icon button; only the focus ring is local, as `.icon-btn` defines none.
   - Literal substring over fuzzy — predictability beats recall for find-in-page.
   - Highlight-in-place over filter-to-matching-lines — the user asked to *find* a mention, and context is the reason the transcript is kept at all.
   - No whole-word / regex / match-case toggles in v1; add only if asked (route to `phase-minor-changes.md`).
@@ -214,6 +218,8 @@ Frontend-only phase. **No new commands, events, projections, endpoints, tables o
 ### Observability
 
 Frontend-only, so the only channel is `recordRumEvent` (`web/src/rum.ts:10`) — there is no server side to log on. **The query text and any transcript excerpt must never be sent** (Phase 22 privacy rule), which rules out most of what would otherwise be useful; the honest position is that this feature's regression net is its component tests, not production telemetry.
+
+**As built (52-A): no telemetry was added.** Custom browser events have never actually emitted ([TI-67] — they are disabled on the monitor, and the deployed client swallows the call), so shipping the events below would have added code that provably produces nothing while reading as coverage. The table stays as the design to implement **once TI-67 is closed**. The one silent failure mode that mattered — a highlight nobody can see — was caught by measuring the colours instead, and is recorded as a decision above.
 
 | Silent failure mode | Slice | Signal |
 |---|---|---|
