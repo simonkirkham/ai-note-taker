@@ -89,7 +89,7 @@ fi
 # ------------------------------------------------------------------- versions
 {
   echo "# Tool versions on the machine this bundle came from ($(hostname), $(date -u +%FT%TZ))."
-  echo "# The new machine is checked against these by scripts/setup-new-machine.sh."
+  echo "# The new machine is checked against these by scripts/check-machine.sh."
   printf 'dotnet=%s\n' "$(dotnet --version 2>/dev/null || echo missing)"
   printf 'node=%s\n'   "$(node --version 2>/dev/null || echo missing)"
   printf 'npm=%s\n'    "$(npm --version 2>/dev/null || echo missing)"
@@ -126,4 +126,4 @@ else
 fi
 [ "$WITH_HISTORY" -eq 0 ] && echo "Session transcripts were NOT included — re-run with --with-history if you want scripts/sessions.sh and scripts/stall-scan.sh to see this machine's past sessions."
 echo "Next: copy it to the other machine, then run"
-echo "  bash scripts/setup-new-machine.sh --apply --bundle <path-to-bundle>"
+echo "  bash scripts/check-machine.sh --apply --bundle <path-to-bundle>"

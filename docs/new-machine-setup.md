@@ -8,10 +8,11 @@ Two scripts do it. Run the first on the machine you have now, the second on the 
 # on the OLD machine — package what git does not carry
 bash scripts/export-machine-config.sh --with-secrets        # add --with-history for past sessions
 
-# on the NEW machine — clone, then apply the bundle and check everything
+# on the NEW machine — clone, install the toolchain, then apply the bundle
 git clone https://github.com/simonkirkham/ai-note-taker.git /mnt/c/code/ai-note-taker
 cd /mnt/c/code/ai-note-taker
-bash scripts/setup-new-machine.sh --apply --bundle ~/ai-note-taker-machine-config-<stamp>.tar.gz --deps
+bash scripts/setup-machine.sh                                    # installs .NET, Node, AWS CLI, CDK, gh, Docker, Chrome
+bash scripts/check-machine.sh --apply --bundle ~/ai-note-taker-machine-config-<stamp>.tar.gz --deps
 ```
 
 The second script prints a PASS/WARN/FAIL row per item and a one-line verdict. Exit 0 means ready to work.
@@ -40,19 +41,19 @@ The second script prints a PASS/WARN/FAIL row per item and a one-line verdict. E
    ```
    Writes one `.tar.gz` to your home directory, mode 600. With `--with-secrets` it contains live AWS keys — move it over an encrypted channel and delete it afterwards. Without the flag it carries no credentials, and you re-run `aws configure` on the other side instead.
 
-2. **Install the toolchain on the new machine.** .NET 10 SDK, Node 24, AWS CLI v2, `npm install -g aws-cdk`, GitHub CLI, python3, Docker Desktop with WSL integration enabled for the distro you work in.
+2. **Install the toolchain on the new machine.** On Ubuntu or WSL, `bash scripts/setup-machine.sh` installs the lot — .NET 10, Node 24, AWS CLI v2, CDK, GitHub CLI, Docker, Chrome, jq, shellcheck — and is safe to re-run. On Windows or macOS, install those by hand.
 
 3. **Clone to the same path: `/mnt/c/code/ai-note-taker`.** Several permission rules in `.claude/settings.json` are absolute paths. A different path means those rules stop matching and you get asked to approve things again.
 
 4. **Apply the bundle.**
    ```bash
-   bash scripts/setup-new-machine.sh --apply --bundle <file> --deps
+   bash scripts/check-machine.sh --apply --bundle <file> --deps
    ```
    `--deps` also runs `dotnet restore` and `npm --prefix web install`.
 
 5. **Sign in to GitHub.** `gh auth login` — HTTPS, with scopes `repo`, `workflow`, `read:org`, `gist`.
 
-6. **Re-run the check until it is clean.** `bash scripts/setup-new-machine.sh`
+6. **Re-run the check until it is clean.** `bash scripts/check-machine.sh`
 
 ## Things that catch people out
 

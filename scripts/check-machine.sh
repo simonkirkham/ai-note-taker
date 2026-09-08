@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
 #
-# Set up (or check) a development machine for this repo.
+# Check that this machine can do the work — and, with --apply, install the config
+# an existing machine exported (Claude permissions, folder trust, memory files,
+# AWS credentials).
 #
-# Default mode checks everything and changes nothing. --apply also installs the
-# config bundle from the old machine, creates the worktree directory, and
-# restores dependencies.
+# Software installation is a separate script: scripts/setup-machine.sh. Run that
+# first on a fresh box, this one second.
+#
+# Default mode checks everything and changes nothing.
 #
 # Usage:
-#   bash scripts/setup-new-machine.sh                                  # check only
-#   bash scripts/setup-new-machine.sh --apply --bundle ~/ai-note-taker-machine-config-*.tar.gz
-#   bash scripts/setup-new-machine.sh --apply --bundle <file> --deps   # also npm install + dotnet restore
+#   bash scripts/check-machine.sh                                  # check only
+#   bash scripts/check-machine.sh --apply --bundle ~/ai-note-taker-machine-config-*.tar.gz
+#   bash scripts/check-machine.sh --apply --bundle <file> --deps   # also npm install + dotnet restore
 #
 # Exit 0 = ready to work. Exit 1 = something blocking is missing.
 #

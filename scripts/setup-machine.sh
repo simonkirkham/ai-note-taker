@@ -125,7 +125,7 @@ printf '  jq       %s\n' "$(jq --version 2>/dev/null || echo MISSING)"
 cat <<'REMAINING'
 
 ============================================================
-STILL NEEDS YOU — two things this script cannot do
+STILL NEEDS YOU — three things this script cannot do
 ============================================================
 
 1. Sign in to GitHub (needed by nearly every helper script):
@@ -140,5 +140,13 @@ STILL NEEDS YOU — two things this script cannot do
 
 Then confirm everything works:
      dotnet test tests/Domain.Specs/Domain.Specs.csproj
+
+3. If you are moving from a machine you already work on, carry its config
+   across so you are not re-approving permissions and losing the agent's
+   memory of how you work — export there, apply here:
+     bash scripts/export-machine-config.sh --with-secrets   # on the OLD machine
+     bash scripts/check-machine.sh --apply --bundle <file>  # here
+   scripts/check-machine.sh with no arguments checks this machine and prints
+   a PASS/WARN/FAIL row per item. See docs/new-machine-setup.md.
 ============================================================
 REMAINING
