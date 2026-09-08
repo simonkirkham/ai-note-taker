@@ -315,6 +315,18 @@ it('52-A: a word revised after the read match does not move the user', async () 
   expect(screen.getByTestId('transcript-find-count')).toHaveTextContent('2 of 2')
 })
 
+// Pins the comparison to the END of the match being read, not its start: a revision landing inside
+// that span can create or destroy a match within it, so the position stops being trustworthy.
+// Comparing only up to the start would silently keep a position whose own text had changed.
+it('52-A: a word revised inside the read match starts the search again', async () => {
+  const { rerender } = render(<TranscriptTab transcript="a budget b budget c" isRecording />)
+  await userEvent.type(findBox(), 'budget')
+  await userEvent.click(screen.getByRole('button', { name: 'Next match' }))
+  expect(screen.getByTestId('transcript-find-count')).toHaveTextContent('2 of 2')
+  rerender(<TranscriptTab transcript="a budget b budjet c budget d" isRecording />)
+  expect(screen.getByTestId('transcript-find-count')).toHaveTextContent('1 of 2')
+})
+
 it('52-A: text rewritten before the read match starts the search again', async () => {
   const { rerender } = render(<TranscriptTab transcript="the budget recognise the plan" isRecording />)
   await userEvent.type(findBox(), 'the')

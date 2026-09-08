@@ -50,7 +50,17 @@ const pairs: [string, string][] = [
   ['src/components/TranscriptFindBar.tsx', 'src/components/TranscriptFindBar.module.css'],
 ]
 
-it.each(pairs)('%s has no stylesheet comment left open or closed twice', (_tsx, css) => {
+// Globbed over every stylesheet, not just this slice's: the defect class is repo-wide, and the
+// next stray marker in any module would ship the same way. All of them are clean today.
+const allStylesheets = Object.keys(
+  import.meta.glob('../{components,styles}/**/*.css', { eager: false }),
+).map((p) => p.replace(/^\.\.\//, 'src/'))
+
+it('every stylesheet is listed for the comment-balance check', () => {
+  expect(allStylesheets.length).toBeGreaterThan(30)
+})
+
+it.each(allStylesheets)('%s has no comment left open or closed twice', (css) => {
   assertCommentsBalanced(css)
 })
 

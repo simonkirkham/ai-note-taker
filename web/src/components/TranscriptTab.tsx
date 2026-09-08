@@ -81,9 +81,20 @@ export default function TranscriptTab({
   // committing, and `react-hooks/set-state-in-effect` — a hard CI gate — forbids the effect form.
   //
   // How far the user had read is recomputed from the previous transcript rather than carried in a
-  // ref, because reading a ref during render is itself a lint error (and unsound — React may
-  // discard this render). The extra scan runs only on a transcript change and is capped like any
-  // other, so it costs one bounded pass per incoming phrase.
+  // ref, because reading a ref during render is unsound — React may discard this render — as well
+  // as a lint error. It runs only on a transcript change, and stops after 501 matches; note that
+  // caps the number of matches collected, not the work, since a rare query still walks the whole
+  // transcript before it stops.
+  //
+  // The `Math.min` is defensive only, and the invariant behind it is what makes this safe: if
+  // `keepsPosition` holds then every match at or before the read one still exists, so the new count
+  // cannot be lower than `matchIndex + 1`; if it does not hold, the index is reset to 0. Either way
+  // the index is in range for both transcripts.
+  //
+  // When the query changes in the same commit as the transcript, `before` is scanned with the NEW
+  // query against the OLD text, so `readThrough` is not the user's real position — harmlessly,
+  // because `search()` has already set the index to 0 and the only reachable action here is to set
+  // it to 0 again, which React bails out of.
   if (transcript !== seenTranscript) {
     const before = findMatches(seenTranscript ?? "", query);
     const wasOn = before.length === 0 ? -1 : Math.min(matchIndex, before.length - 1);
