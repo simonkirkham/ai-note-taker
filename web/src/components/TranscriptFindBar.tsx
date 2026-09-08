@@ -1,3 +1,4 @@
+import clsx from "clsx";
 import { useRef } from "react";
 import styles from "./TranscriptFindBar.module.css";
 
@@ -51,7 +52,7 @@ export default function TranscriptFindBar({
       </span>
       <button
         type="button"
-        className={styles.findButton}
+        className={clsx("icon-btn", styles.findButton)}
         data-testid="transcript-find-prev"
         aria-label="Previous match"
         disabled={!hasMatches}
@@ -61,7 +62,7 @@ export default function TranscriptFindBar({
       </button>
       <button
         type="button"
-        className={styles.findButton}
+        className={clsx("icon-btn", styles.findButton)}
         data-testid="transcript-find-next"
         aria-label="Next match"
         disabled={!hasMatches}
@@ -71,7 +72,7 @@ export default function TranscriptFindBar({
       </button>
       <button
         type="button"
-        className={styles.findButton}
+        className={clsx("icon-btn", styles.findButton)}
         data-testid="transcript-find-clear"
         aria-label="Clear search"
         disabled={query === ""}

@@ -31,11 +31,17 @@
 /* 52-A: search-match highlighting.
    Both states keep the transcript's own text colour on the same tinted background, so the
    current-match emphasis is an outline rather than a second colour pairing needing contrast
-   verification in all 17 themes. */
+   verification in all 17 themes.
+
+   The tint is derived from each theme's own accent rather than `--color-primary-bg`, which is
+   only a 6-12% wash: measured across all 17 themes it sits at 1.07:1 against the surface, i.e.
+   invisible. No test can catch that — the component tests assert the mark elements exist, and
+   the test environment applies no CSS. At 35% the worst theme measures 5.44:1 for text on the
+   highlight and 1.47:1 for the highlight against the surface. */
 .match,
 .currentMatch {
   color: var(--color-text);
-  background: var(--color-primary-bg);
+  background: color-mix(in srgb, var(--color-primary) 35%, transparent);
   border-radius: 2px;
 }
 

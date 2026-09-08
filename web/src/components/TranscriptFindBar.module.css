@@ -30,30 +30,9 @@
   text-align: right;
 }
 
-.findButton {
-  flex: none;
-  padding: var(--space-1) var(--space-3);
-  font-family: inherit;
-  font-size: 0.85rem;
-  color: var(--color-text);
-  background: var(--color-surface);
-  border: 1.5px solid var(--color-border-strong);
-  border-radius: var(--radius);
-  cursor: pointer;
-  transition: border-color var(--transition), background-color var(--transition);
-}
-
-.findButton:hover:not(:disabled) {
-  border-color: var(--color-primary);
-  background: var(--color-primary-bg);
-}
-
-.findButton:disabled {
-  color: var(--color-text-muted);
-  cursor: default;
-  opacity: 0.5;
-}
-
+/* Geometry, hover and disabled all come from the shared `.icon-btn` utility, which every
+   other icon button in the app uses. Only the focus ring is added here — `.icon-btn` does
+   not define one. */
 .findButton:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 1px;
