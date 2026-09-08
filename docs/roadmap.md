@@ -506,6 +506,16 @@ Slices and acceptance criteria: [docs/phases/phase-51.md](phases/phase-51.md)
 
 ---
 
+## Phase 52 — Find in a transcript _(Not Started)_
+
+Search the transcript of the note you're reading. An hour-long meeting transcript is a wall of text in a single scrolling panel with no way to locate a mention; this phase adds an in-note find — a search box on the Transcript tab that highlights every case-insensitive match in place (the transcript stays whole, context intact), shows a "3 of 7" count, and steps between matches with next/previous or `Enter`/`Shift+Enter`, wrapping around. **Frontend-only — no commands, events, projections, endpoints, tables or CDK**: the transcript already arrives as a single string prop on `TranscriptTab`, so search state is local to that component and no shared prop or callback signature changes. Deliberately **not** an extension of [Phase 22](phases/phase-22.md) search, which still excludes transcript text from `NoteSearchView` by design — indexing transcripts into *global* search was considered and deferred by the user (2026-09-08), and is filed in [future-features.md](future-features.md). Matching is literal case-insensitive substring, not Phase 22's fuzzy ranking — find-in-page must be predictable or the highlight positions are meaningless. Two slices: **52-A** the search itself (highlight, count, step, wrap, `Escape` to clear — and the one real subtlety, suppressing the record-mode auto-scroll-to-bottom while a search is active so a live transcript doesn't yank the user off their match); **52-B** `Ctrl+F`/`Cmd+F` capture, separated because it takes over a browser shortcut and must only `preventDefault()` where the app genuinely has a better answer. Deploy-time impact: **neutral** (web-only; no route added, moved or renamed, so the 34-B frontend-only-deploy hazard does not apply).
+
+**Goal:** you can search the transcript of the note you're reading — type a word, see how many times it was said, and jump between each mention.
+
+Slices and acceptance criteria: [docs/phases/phase-52.md](phases/phase-52.md)
+
+---
+
 ## Standing tracks and planning docs
 
 Alongside the numbered phases above, work is tracked in five standing docs. The roadmap summarises them; each doc owns its content.
@@ -533,7 +543,7 @@ An unnumbered, standing phase for iterative improvements to the AI analysis — 
 
 ### Future Features
 
-Possible user-facing features not yet committed to a numbered phase. When one is picked up it becomes a numbered phase here and its entry is reduced to a graduated-to pointer. **Currently open (11):** scalable note loading (pagination) + server-side filtering, which is the home of server-side folder tag search · dynamic folders (saved tag-based views) · desktop app auto-update (Chrome-style) · in-app microphone selector · meeting-capture audio quality mode · connect to external transcript tools (Zoom, Teams) · advanced markdown (footnotes, KaTeX, definition lists) · distinguish raw meeting notes from AI-structured notes when browsing · per-note analysis "lens" · freeform structured note output.
+Possible user-facing features not yet committed to a numbered phase. When one is picked up it becomes a numbered phase here and its entry is reduced to a graduated-to pointer. **Currently open (12):** scalable note loading (pagination) + server-side filtering, which is the home of server-side folder tag search · dynamic folders (saved tag-based views) · desktop app auto-update (Chrome-style) · in-app microphone selector · meeting-capture audio quality mode · connect to external transcript tools (Zoom, Teams) · advanced markdown (footnotes, KaTeX, definition lists) · distinguish raw meeting notes from AI-structured notes when browsing · per-note analysis "lens" · freeform structured note output · gate live-transcript-as-saved-note on the higher-quality pass · include transcript text in global search (the deferred alternative to Phase 52's in-note find).
 
 → [docs/future-features.md](future-features.md)
 
