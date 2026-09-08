@@ -385,10 +385,13 @@ describe('NoteView', () => {
       await userEvent.click(screen.getByTestId('note-tab-transcript'))
       expect(screen.getByTestId('note-tab-transcript')).toHaveAttribute('aria-selected', 'true')
       expect(screen.getByTestId('transcription-text')).toHaveTextContent('spoken words here')
-      // Read-only: there is no editable control inside the transcript panel.
-      const panel = screen.getByTestId('note-tabpanel-transcript')
-      expect(panel.querySelector('textarea')).toBeNull()
-      expect(panel.querySelector('input')).toBeNull()
+      // Read-only: the transcript itself carries no editable control. Scoped to the transcript
+      // body rather than the whole panel since 52-A, because the panel also holds the find box,
+      // which is an input by design and sits outside the body.
+      const body = screen.getByTestId('transcription-body')
+      expect(body.querySelector('textarea')).toBeNull()
+      expect(body.querySelector('input')).toBeNull()
+      expect(body.querySelector('[contenteditable="true"]')).toBeNull()
     })
 
     it('switching to the Final notes tab shows the final-notes view', async () => {
