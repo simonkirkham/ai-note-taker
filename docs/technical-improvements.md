@@ -101,6 +101,8 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 | TI-92 | **A tracking item can be half-archived — copied into the archive but never deleted from the live list — and nothing notices, because the check that catches exactly this looks only at bugs** | 🔲 **Open** — raised 2026-08-13. **34 TI ids sit in both files today**, all pre-existing, so finished work reads as outstanding on the one column the human scans. Detail in [TI-92](#ti-92-half-archived-ti-items-are-invisible-because-the-live-vs-archive-check-covers-bugs-only) below. |
 | TI-94 | **A merge can quietly put back work someone deliberately deleted — no conflict, no marker, every check green — so a closed item reappears as open work and another session's finished change is undone** | 🔲 **Open** — raised 2026-08-13. **Three confirmed instances in one day; only one was visible to any existing check, and one sat on `main` for 10 straight commits.** Archiving is exactly the delete-versus-surrounding-context operation the `merge=union` driver resolves wrongly, so it will recur. Interim gate, usable today: zero deleted lines in the diff against the **merge base** on an append-only file — diffing against `origin/main` instead reads every line `main` gained since your branch point as your deletion (**86** falsely accused vs **0** real, same branch, measured). Detail in [TI-94](#ti-94-a-merge-silently-restores-a-deleted-section-and-nothing-detects-it) below. |
 
+| TI-95 | **Changes can sit undelivered for weeks while everything looks healthy — the last deployment failed, nothing since then triggered another, and nobody is told** | 🔲 **Open** — raised 2026-09-08. **Observed: main's last deploy failed 2026-08-14 and the next one ran 2026-09-08, a 25-day gap in which the app received nothing.** Every commit between touched only docs/scripts/`.claude`, which `deploy.yml` paths-ignores, so no run re-tested the red state and no signal existed to notice it. Detail in [TI-95](#ti-95-a-failed-deploy-can-go-unnoticed-for-weeks-because-nothing-re-runs-it) below. |
+
 **2026-06-17 deploy-gate stabilisation session:** proved **10 consecutive green deploys** (#595 ×10). Root-caused and fixed a **44-min E2E suite hang** (PR #291's fire-and-forget response-body read on the reload loop) → replaced with a hang-proof, sync-only diagnostic (PR #292) and a **hard 120 s per-test cap** (**TI-43 done**, PR #293). **TI-42** cards-list flake did not recur in 13+ runs (not reproduced ≠ fixed; diagnostic now in place). **BUG-31** turned out to be three stacked causes — original image-reappear symptom fixed, `SaveAndReturnAsync` cards-refetch sync fixed (PR #297, suite-wide win), and a residual stuck-note-detail-read layer carved out as **TI-44**. Full write-up: [docs/learnings/e2e-gate-hang-and-the-diagnostic-that-caused-it.md](learnings/e2e-gate-hang-and-the-diagnostic-that-caused-it.md).
 
 > Items carry stable IDs in claim order (the `ID` column above); each detailed section below repeats its ID. Do not cache the highest id here — it goes stale on every claim (it read `TI-71` when the table already held `TI-72`); read it off the table, or run the script. **Never hand-pick the next id — run `scripts/next-doc-id.sh ti`.** Reference an item as `TI-N`. The dep-audit `T#` tags are retained in parentheses for cross-reference with the audit report.
@@ -739,6 +741,27 @@ They overlapped and **both completed**. Under the old key the first — the one 
 **The generalisable bit:** adding a trigger to an existing workflow inherits every workflow-level setting, and `concurrency` is the one that can silently convert a new red into no red at all. Check the concurrency key against the *new* event's contexts, not the old one's — `github.head_ref` is empty on a push, which turns a per-branch key into a global one without changing a character of it.
 
 **Raised in:** [TI-80] implementation, 2026-08-11. **Fix:** PR [#471](https://github.com/simonkirkham/ai-note-taker/pull/471).
+**Depends on:** —
+
+---
+
+## TI-95. A failed deploy can go unnoticed for weeks because nothing re-runs it
+
+**What it costs:** work that merged successfully never reaches the app, and nothing says so. Every subsequent PR reports green, the roadmap says the slices are done, and the only symptom is the absence of the feature in production — which nobody looks for, because the merge appeared to succeed. When it is eventually noticed, the original failure's logs have expired, so the cause cannot be established.
+
+**Observed, 2026-09-08.** Deploy **#773 failed 2026-08-14** at the E2E gate. The next deploy of any kind was the one triggered on **2026-09-08** — a **25-day** window during which nothing was delivered. It surfaced only because slice 52-A's merge gate refused to open, not because anything reported it.
+
+**Why nothing re-ran it:** `deploy.yml` paths-ignores `docs/**`, `**/*.md`, `scripts/**` and `.claude/**`. Every commit that landed on `main` in that window touched only those paths, so no run was triggered, so the red state was never re-tested. The failure was also the chronic intermittent E2E flake ([BUG-38], [TI-39]) — it passed first time on a 2026-09-08 re-run of the identical commit — so a single automatic retry would have cleared it on the day.
+
+**Why the merge gate does not cover this:** it reads main's last deploy and blocks on red, which is correct, but it is only consulted when someone is *trying to merge*. In a quiet period nobody consults it, and the gate's silence is indistinguishable from health.
+
+**Candidate fixes, cheapest first:**
+1. Re-run a failed `deploy.yml` run once automatically before reporting failure — the flake it hit clears on a retry, and this alone would have closed the 25-day gap.
+2. A scheduled check that fails loudly when main's most recent `deploy.yml` run is not `success`, independent of anyone merging. Answers "is what I merged actually live?" without a human asking.
+3. Surface the age of the last successful deploy where it is already read — `scripts/deploy-status.sh` prints the run number but not that it is three weeks old.
+
+**Related:** [BUG-38] (the flake that caused this instance), [TI-39] (stabilising it). This item is about the *silence*, not the flake — a deterministic failure would have gone unnoticed exactly as long.
+
 **Depends on:** —
 
 ---
