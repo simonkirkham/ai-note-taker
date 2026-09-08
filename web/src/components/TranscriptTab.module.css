@@ -28,6 +28,82 @@
   font-style: italic;
 }
 
+/* 52-A: find in transcript. */
+.findBar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.findInput {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  font-family: inherit;
+  font-size: 0.85rem;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border-strong);
+  border-radius: var(--radius);
+}
+
+.findInput:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.findCount {
+  flex: none;
+  min-width: 6rem;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  text-align: right;
+}
+
+.findButton {
+  flex: none;
+  padding: var(--space-1) var(--space-3);
+  font-family: inherit;
+  font-size: 0.85rem;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border-strong);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color var(--transition), background-color var(--transition);
+}
+
+.findButton:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  background: var(--color-primary-bg);
+}
+
+.findButton:disabled {
+  color: var(--color-text-muted);
+  cursor: default;
+  opacity: 0.5;
+}
+
+.findButton:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+/* Both states keep the transcript's own text colour on the same tinted background, so the
+   current-match emphasis is an outline rather than a second colour pairing needing contrast
+   verification in all 17 themes. */
+.match,
+.currentMatch {
+  color: var(--color-text);
+  background: var(--color-primary-bg);
+  border-radius: 2px;
+}
+
+.currentMatch {
+  outline: 2px solid var(--color-primary);
+}
+
 .recordingBar {
   display: flex;
   align-items: center;

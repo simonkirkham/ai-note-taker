@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import styles from "./TranscriptTab.module.css";
 
 export type RecordingDownloadStatus = "none" | "uploading" | "available" | "failed";
@@ -6,6 +6,23 @@ export type RecordingDownloadStatus = "none" | "uploading" | "available" | "fail
 // 33-B1: the speaker-labelling chip state. 'refining' shows while the batch job runs; 'failed' is
 // a non-blocking notice (trigger error or timeout); 'none' hides it (idle or already diarized).
 export type DiarizationDisplayStatus = "none" | "refining" | "failed";
+
+// 52-A: literal, case-insensitive substring search — deliberately not the fuzzy ranking Phase 22
+// uses to order whole notes. Find-in-page needs exact offsets, or the highlights land in the wrong
+// place. An indexOf scan also sidesteps escaping user input into a regex.
+function findMatchOffsets(text: string, query: string): number[] {
+  if (query === "") return [];
+  const haystack = text.toLowerCase();
+  const needle = query.toLowerCase();
+  const offsets: number[] = [];
+  for (let from = 0; ; ) {
+    const at = haystack.indexOf(needle, from);
+    if (at === -1) break;
+    offsets.push(at);
+    from = at + needle.length;
+  }
+  return offsets;
+}
 
 export default function TranscriptTab({
   transcript,
@@ -21,13 +38,82 @@ export default function TranscriptTab({
   onDownloadRecording?: () => void;
 }) {
   const bodyRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const currentMarkRef = useRef<HTMLElement>(null);
+  const [query, setQuery] = useState("");
+  const [matchIndex, setMatchIndex] = useState(0);
   const hasTranscript = !!transcript && transcript.trim().length > 0;
 
+  const matches = useMemo(() => findMatchOffsets(transcript ?? "", query), [transcript, query]);
+
+  // A live transcript only ever grows, so clamping — rather than resetting — keeps the user on the
+  // match they were reading as new speech arrives. A replaced (shorter) transcript lands on the
+  // last remaining match instead of an index that no longer exists.
+  const currentIndex = matches.length === 0 ? -1 : Math.min(matchIndex, matches.length - 1);
+  const isSearching = query !== "";
+
   useEffect(() => {
-    if (isRecording && bodyRef.current) {
+    // An active search owns the scroll position: without this guard every incoming phrase would
+    // yank the user off the match they are reading and back to the bottom.
+    if (isRecording && !isSearching && bodyRef.current) {
       bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
     }
-  }, [transcript, isRecording]);
+  }, [transcript, isRecording, isSearching]);
+
+  useEffect(() => {
+    if (currentIndex < 0) return;
+    currentMarkRef.current?.scrollIntoView({ block: "center" });
+  }, [currentIndex, matches, transcript]);
+
+  function step(delta: number) {
+    if (matches.length === 0) return;
+    setMatchIndex((currentIndex + delta + matches.length) % matches.length);
+  }
+
+  function clearSearch() {
+    setQuery("");
+    setMatchIndex(0);
+    inputRef.current?.focus();
+  }
+
+  function handleSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      step(e.shiftKey ? -1 : 1);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      clearSearch();
+    }
+  }
+
+  function renderTranscript(text: string): ReactNode {
+    if (matches.length === 0) return text;
+    const parts: ReactNode[] = [];
+    let cursor = 0;
+    matches.forEach((at, i) => {
+      if (at > cursor) parts.push(text.slice(cursor, at));
+      const isCurrent = i === currentIndex;
+      parts.push(
+        <mark
+          key={at}
+          ref={isCurrent ? currentMarkRef : undefined}
+          aria-current={isCurrent ? "true" : undefined}
+          className={isCurrent ? styles.currentMatch : styles.match}
+        >
+          {text.slice(at, at + query.length)}
+        </mark>,
+      );
+      cursor = at + query.length;
+    });
+    if (cursor < text.length) parts.push(text.slice(cursor));
+    return parts;
+  }
+
+  const countLabel = !isSearching
+    ? ""
+    : matches.length === 0
+      ? "No matches"
+      : `${currentIndex + 1} of ${matches.length}`;
 
   return (
     <div className={styles.transcriptTab} data-testid="transcript-tab">
@@ -66,10 +152,61 @@ export default function TranscriptTab({
           </span>
         </div>
       ) : null}
+      {hasTranscript && (
+        <div className={styles.findBar} role="search" data-testid="transcript-find">
+          <input
+            ref={inputRef}
+            type="text"
+            className={styles.findInput}
+            data-testid="transcript-find-input"
+            aria-label="Find in transcript"
+            placeholder="Find in transcript"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setMatchIndex(0);
+            }}
+            onKeyDown={handleSearchKeyDown}
+          />
+          <span className={styles.findCount} data-testid="transcript-find-count" role="status">
+            {countLabel}
+          </span>
+          <button
+            type="button"
+            className={styles.findButton}
+            data-testid="transcript-find-prev"
+            aria-label="Previous match"
+            disabled={matches.length === 0}
+            onClick={() => step(-1)}
+          >
+            ‹
+          </button>
+          <button
+            type="button"
+            className={styles.findButton}
+            data-testid="transcript-find-next"
+            aria-label="Next match"
+            disabled={matches.length === 0}
+            onClick={() => step(1)}
+          >
+            ›
+          </button>
+          <button
+            type="button"
+            className={styles.findButton}
+            data-testid="transcript-find-clear"
+            aria-label="Clear search"
+            disabled={!isSearching}
+            onClick={clearSearch}
+          >
+            ✕
+          </button>
+        </div>
+      )}
       <div className={styles.body} ref={bodyRef} data-testid="transcription-body">
-        {hasTranscript ? (
+        {hasTranscript && transcript ? (
           <p className={styles.text} data-testid="transcription-text">
-            {transcript}
+            {renderTranscript(transcript)}
           </p>
         ) : isRecording ? (
           <p className={styles.placeholder} role="status">Listening…</p>

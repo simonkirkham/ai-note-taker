@@ -97,55 +97,55 @@ const findBox = () => screen.getByLabelText('Find in transcript')
 const marks = () => document.querySelectorAll('mark')
 const currentMark = () => document.querySelector('mark[aria-current="true"]')
 
-it.skip('Pip 52-A: offers no search box when there is no transcript', () => {
+it('52-A: offers no search box when there is no transcript', () => {
   render(<TranscriptTab transcript={null} />)
   expect(screen.queryByLabelText('Find in transcript')).toBeNull()
 })
 
-it.skip('Pip 52-A: offers no search box for a whitespace-only transcript', () => {
-  render(<TranscriptTab transcript="   \n  " />)
+it('52-A: offers no search box for a whitespace-only transcript', () => {
+  render(<TranscriptTab transcript={'   \n  '} />)
   expect(screen.queryByLabelText('Find in transcript')).toBeNull()
 })
 
-it.skip('Pip 52-A: offers a search box once there is a transcript', () => {
+it('52-A: offers a search box once there is a transcript', () => {
   render(<TranscriptTab transcript={THREE_HITS} />)
   expect(findBox()).toBeInTheDocument()
 })
 
-it.skip('Pip 52-A: highlights every match and reports the position', async () => {
+it('52-A: highlights every match and reports the position', async () => {
   render(<TranscriptTab transcript={THREE_HITS} />)
   await userEvent.type(findBox(), 'budget')
   expect(marks()).toHaveLength(3)
   expect(screen.getByTestId('transcript-find-count')).toHaveTextContent('1 of 3')
 })
 
-it.skip('Pip 52-A: announces the match count to screen readers', async () => {
+it('52-A: announces the match count to screen readers', async () => {
   render(<TranscriptTab transcript={THREE_HITS} />)
   await userEvent.type(findBox(), 'budget')
   expect(screen.getByTestId('transcript-find-count')).toHaveAttribute('role', 'status')
 })
 
-it.skip('Pip 52-A: leaves the transcript text itself untouched when highlighting', async () => {
+it('52-A: leaves the transcript text itself untouched when highlighting', async () => {
   render(<TranscriptTab transcript={THREE_HITS} />)
   await userEvent.type(findBox(), 'budget')
   expect(screen.getByTestId('transcription-text').textContent).toBe(THREE_HITS)
 })
 
-it.skip('Pip 52-A: matches regardless of capitals', async () => {
+it('52-A: matches regardless of capitals', async () => {
   render(<TranscriptTab transcript="Budget" />)
   await userEvent.type(findBox(), 'budget')
   expect(marks()).toHaveLength(1)
   expect(screen.getByTestId('transcript-find-count')).toHaveTextContent('1 of 1')
 })
 
-it.skip('Pip 52-A: steps to the next match', async () => {
+it('52-A: steps to the next match', async () => {
   render(<TranscriptTab transcript={THREE_HITS} />)
   await userEvent.type(findBox(), 'budget')
   await userEvent.click(screen.getByRole('button', { name: 'Next match' }))
   expect(screen.getByTestId('transcript-find-count')).toHaveTextContent('2 of 3')
 })
 
-it.skip('Pip 52-A: wraps around from the last match to the first', async () => {
+it('52-A: wraps around from the last match to the first', async () => {
   render(<TranscriptTab transcript={THREE_HITS} />)
   await userEvent.type(findBox(), 'budget')
   const next = screen.getByRole('button', { name: 'Next match' })
@@ -156,14 +156,14 @@ it.skip('Pip 52-A: wraps around from the last match to the first', async () => {
   expect(screen.getByTestId('transcript-find-count')).toHaveTextContent('1 of 3')
 })
 
-it.skip('Pip 52-A: wraps backwards from the first match to the last', async () => {
+it('52-A: wraps backwards from the first match to the last', async () => {
   render(<TranscriptTab transcript={THREE_HITS} />)
   await userEvent.type(findBox(), 'budget')
   await userEvent.click(screen.getByRole('button', { name: 'Previous match' }))
   expect(screen.getByTestId('transcript-find-count')).toHaveTextContent('3 of 3')
 })
 
-it.skip('Pip 52-A: marks only the current match as current', async () => {
+it('52-A: marks only the current match as current', async () => {
   render(<TranscriptTab transcript={THREE_HITS} />)
   await userEvent.type(findBox(), 'budget')
   expect(document.querySelectorAll('mark[aria-current="true"]')).toHaveLength(1)
@@ -172,14 +172,14 @@ it.skip('Pip 52-A: marks only the current match as current', async () => {
   expect(currentMark()).toBe(marks()[1])
 })
 
-it.skip('Pip 52-A: scrolls the current match into view', async () => {
+it('52-A: scrolls the current match into view', async () => {
   render(<TranscriptTab transcript={THREE_HITS} />)
   await userEvent.type(findBox(), 'budget')
   await userEvent.click(screen.getByRole('button', { name: 'Next match' }))
   expect(Element.prototype.scrollIntoView).toHaveBeenCalled()
 })
 
-it.skip('Pip 52-A: steps with Enter and Shift+Enter from the search box', async () => {
+it('52-A: steps with Enter and Shift+Enter from the search box', async () => {
   render(<TranscriptTab transcript={THREE_HITS} />)
   await userEvent.type(findBox(), 'budget')
   await userEvent.keyboard('{Enter}')
@@ -188,7 +188,7 @@ it.skip('Pip 52-A: steps with Enter and Shift+Enter from the search box', async 
   expect(screen.getByTestId('transcript-find-count')).toHaveTextContent('1 of 3')
 })
 
-it.skip('Pip 52-A: says so plainly when nothing matches, and disables stepping', async () => {
+it('52-A: says so plainly when nothing matches, and disables stepping', async () => {
   render(<TranscriptTab transcript={THREE_HITS} />)
   await userEvent.type(findBox(), 'pineapple')
   expect(screen.getByTestId('transcript-find-count')).toHaveTextContent('No matches')
@@ -198,7 +198,7 @@ it.skip('Pip 52-A: says so plainly when nothing matches, and disables stepping',
   expect(screen.getByTestId('transcription-text').textContent).toBe(THREE_HITS)
 })
 
-it.skip('Pip 52-A: clearing the search removes every highlight', async () => {
+it('52-A: clearing the search removes every highlight', async () => {
   render(<TranscriptTab transcript={THREE_HITS} />)
   await userEvent.type(findBox(), 'budget')
   expect(marks()).toHaveLength(3)
@@ -208,7 +208,7 @@ it.skip('Pip 52-A: clearing the search removes every highlight', async () => {
   expect(screen.getByTestId('transcription-text').textContent).toBe(THREE_HITS)
 })
 
-it.skip('Pip 52-A: Escape clears the search', async () => {
+it('52-A: Escape clears the search', async () => {
   render(<TranscriptTab transcript={THREE_HITS} />)
   await userEvent.type(findBox(), 'budget')
   await userEvent.keyboard('{Escape}')
@@ -216,27 +216,27 @@ it.skip('Pip 52-A: Escape clears the search', async () => {
   expect(marks()).toHaveLength(0)
 })
 
-it.skip('Pip 52-A: offers exactly one way to clear the search', async () => {
+it('52-A: offers exactly one way to clear the search', async () => {
   render(<TranscriptTab transcript={THREE_HITS} />)
   await userEvent.type(findBox(), 'budget')
   expect(screen.getAllByRole('button', { name: 'Clear search' })).toHaveLength(1)
   expect(findBox()).not.toHaveAttribute('type', 'search')
 })
 
-it.skip('Pip 52-A: treats regex metacharacters as literal text', async () => {
+it('52-A: treats regex metacharacters as literal text', async () => {
   render(<TranscriptTab transcript="cost a.b and cost axb" />)
   await userEvent.type(findBox(), 'a.b')
   expect(marks()).toHaveLength(1)
   expect(marks()[0]).toHaveTextContent('a.b')
 })
 
-it.skip('Pip 52-A: an unbalanced bracket does not throw', async () => {
+it('52-A: an unbalanced bracket does not throw', async () => {
   render(<TranscriptTab transcript="a (partial thought" />)
   await userEvent.type(findBox(), '(part')
   expect(marks()).toHaveLength(1)
 })
 
-it.skip('Pip 52-A: while recording, the view follows the speech when not searching', () => {
+it('52-A: while recording, the view follows the speech when not searching', () => {
   const { rerender } = render(<TranscriptTab transcript="first words" isRecording />)
   const body = screen.getByTestId('transcription-body')
   Object.defineProperty(body, 'scrollHeight', { value: 500, configurable: true })
@@ -245,7 +245,7 @@ it.skip('Pip 52-A: while recording, the view follows the speech when not searchi
   expect(body.scrollTop).toBe(500)
 })
 
-it.skip('Pip 52-A: while recording, an active search stops the view being pulled to the bottom', async () => {
+it('52-A: while recording, an active search stops the view being pulled to the bottom', async () => {
   const { rerender } = render(<TranscriptTab transcript="the budget words" isRecording />)
   await userEvent.type(findBox(), 'budget')
   const body = screen.getByTestId('transcription-body')
@@ -255,7 +255,7 @@ it.skip('Pip 52-A: while recording, an active search stops the view being pulled
   expect(body.scrollTop).toBe(0)
 })
 
-it.skip('Pip 52-A: a growing transcript does not reset which match the user is on', async () => {
+it('52-A: a growing transcript does not reset which match the user is on', async () => {
   const { rerender } = render(<TranscriptTab transcript="budget one budget two" isRecording />)
   await userEvent.type(findBox(), 'budget')
   await userEvent.click(screen.getByRole('button', { name: 'Next match' }))
@@ -264,7 +264,7 @@ it.skip('Pip 52-A: a growing transcript does not reset which match the user is o
   expect(screen.getByTestId('transcript-find-count')).toHaveTextContent('2 of 4')
 })
 
-it.skip('Pip 52-A: a replaced, shorter transcript clamps to the last remaining match', async () => {
+it('52-A: a replaced, shorter transcript clamps to the last remaining match', async () => {
   const { rerender } = render(<TranscriptTab transcript="budget one budget two budget three" />)
   await userEvent.type(findBox(), 'budget')
   const next = screen.getByRole('button', { name: 'Next match' })
