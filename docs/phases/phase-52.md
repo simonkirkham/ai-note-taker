@@ -1,4 +1,4 @@
-# Phase 52 — Find in a transcript _(Not Started)_
+# Phase 52 — Find in a transcript _(In Progress — 52-A done 2026-09-08 (#480, deploy #774))_
 
 **Goal:** you can search the transcript of the note you're reading — type a word, see how many times it was said, and jump between each mention.
 
@@ -6,7 +6,7 @@
 
 | Slice | What the user gets | Status | Depends on |
 |-------|--------------------|--------|------------|
-| 52-A  | I can search the open note's transcript and step through every match | Not Started | — |
+| 52-A  | I can search the open note's transcript and step through every match | Done | — |
 | 52-B  | `Ctrl+F` jumps straight into that search box when I'm reading a transcript | Not Started | 52-A |
 
 52-A is the whole capability and ships alone. 52-B is the ergonomics layer and is separable because it takes over a browser shortcut — a decision worth landing on its own so it can be reverted without losing the feature.
@@ -174,17 +174,17 @@ Frontend-only phase. **No new commands, events, projections, endpoints, tables o
   - `currentIndex` survives a transcript append (still on match 2 of 4, not reset)
   - **No new E2E journey.** No server contract is exercised, the deploy gate is already flake-sensitive (BUG-38, TI-39), and every assertion here is deterministic in RTL. Component tests are the regression net.
 - **Acceptance criteria:**
-  - [ ] A search box appears above the transcript only when there is a transcript
-  - [ ] Typing highlights every case-insensitive match in place, leaving the transcript text unchanged
-  - [ ] The current match is visually distinct from the others and scrolled into view
-  - [ ] A "N of M" count is shown and announced to screen readers
-  - [ ] Next/previous step between matches and wrap around in both directions
-  - [ ] `Enter` / `Shift+Enter` step; `Escape` clears the search
-  - [ ] No matches shows an explicit "No matches" state with the transcript unmodified
-  - [ ] Clearing the search restores the exact original rendering
-  - [ ] An active search suppresses record-mode auto-scroll; clearing it restores auto-scroll
-  - [ ] A growing transcript does not reset which match the user is on
-  - [ ] Search state is local to the transcript tab — no `NoteView` prop or callback signature changes
+  - [x] A search box appears above the transcript only when there is a transcript
+  - [x] Typing highlights every case-insensitive match in place, leaving the transcript text unchanged
+  - [x] The current match is visually distinct from the others and scrolled into view
+  - [x] A "N of M" count is shown and announced to screen readers
+  - [x] Next/previous step between matches and wrap around in both directions
+  - [x] `Enter` / `Shift+Enter` step; `Escape` clears the search
+  - [x] No matches shows an explicit "No matches" state with the transcript unmodified
+  - [x] Clearing the search restores the exact original rendering
+  - [x] An active search suppresses record-mode auto-scroll; clearing it restores auto-scroll
+  - [x] A growing transcript does not reset which match the user is on
+  - [x] Search state is local to the transcript tab — no `NoteView` prop or callback signature changes
 - **Decisions:**
   - **The highlight tint is `color-mix(in srgb, var(--color-primary) 35%, transparent)`, not `--color-primary-bg`.** That token is only a 6–12% wash: measured across all 17 themes it sits at **1.07:1** against the surface, so the highlight would have shipped invisible — the entire feature, defeated, with all 34 specs green (the test environment applies no CSS, and the specs assert the mark elements *exist*). At 35% the worst theme measures **5.44:1** for text on the highlight and **1.47:1** for the highlight against the surface. Both states share one background and the current match is distinguished by an outline, so no second colour pairing needs verifying per theme. Re-measure with `scripts/`-style arithmetic over `tokens.css` if the accent tokens change.
   - Previous/next/clear reuse the shared global `.icon-btn` utility rather than a bespoke control — consistent geometry, hover and disabled with every other icon button; only the focus ring is local, as `.icon-btn` defines none.
