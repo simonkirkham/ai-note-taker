@@ -105,6 +105,7 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 
 | TI-95 | **Changes can sit undelivered for weeks while everything looks healthy — the last deployment failed, nothing since then triggered another, and nobody is told** | 🔲 **Open** — raised 2026-09-08. **Observed: main's last deploy failed 2026-08-14 and the next one ran 2026-09-08, a 25-day gap in which the app received nothing.** Every commit between touched only docs/scripts/`.claude`, which `deploy.yml` paths-ignores, so no run re-tested the red state and no signal existed to notice it. Detail in [TI-95](#ti-95-a-failed-deploy-can-go-unnoticed-for-weeks-because-nothing-re-runs-it) below. |
 | TI-96 | **The nightly check on how good the app's meeting summaries are stopped running, and the reason is that the model doing the marking replied with something the tool could not read.** One unreadable reply aborts the whole night's run, so no scores are produced at all. | 🔲 **Open** — raised 2026-09-09. First failure after at least four consecutive good nights. Detail in [TI-96](#ti-96-one-unreadable-reply-from-the-marking-model-throws-away-the-whole-nights-quality-scores) below. |
+| TI-97 | **On a Windows machine, one of the repo's own checks says it has failed when it has not.** Running the checks before pushing reports a failure that the real build machine does not see, so the honest response — stop and investigate — is wasted every time, and the dishonest one is to learn to ignore a red check. | 🔲 **Open** — raised 2026-09-09. Detail in [TI-97](#ti-97-a-self-test-reports-a-false-failure-on-a-windows-machine-because-its-stand-in-for-github-is-invisible-there) below. |
 
 **2026-06-17 deploy-gate stabilisation session:** proved **10 consecutive green deploys** (#595 ×10). Root-caused and fixed a **44-min E2E suite hang** (PR #291's fire-and-forget response-body read on the reload loop) → replaced with a hang-proof, sync-only diagnostic (PR #292) and a **hard 120 s per-test cap** (**TI-43 done**, PR #293). **TI-42** cards-list flake did not recur in 13+ runs (not reproduced ≠ fixed; diagnostic now in place). **BUG-31** turned out to be three stacked causes — original image-reappear symptom fixed, `SaveAndReturnAsync` cards-refetch sync fixed (PR #297, suite-wide win), and a residual stuck-note-detail-read layer carved out as **TI-44**. Full write-up: [docs/learnings/e2e-gate-hang-and-the-diagnostic-that-caused-it.md](learnings/e2e-gate-hang-and-the-diagnostic-that-caused-it.md).
 
@@ -1062,3 +1063,24 @@ looks, and that is the right direction for a budget whose only job is to catch a
 **Fix direction.** A model reply is untrusted input, not a contract. `ParseVerdicts` should treat an unparseable or wrong-shaped reply as one unscored item — retried a bounded number of times, then recorded in the results as unscored with the raw reply attached — rather than as a fatal error for the run. The count of unscored items belongs in the report so a quietly degrading judge is visible instead of invisible. Same shape as the rule already applied to the backstop in [TI-90]: a response nobody can read is a third outcome, never silently folded into one of the other two.
 
 **Not yet established.** Whether the bad reply was a truncation (hit the output token cap), a refusal, or prose wrapped around the JSON — the run log carries the stack but not the offending text. Logging the raw reply on a parse failure is part of the fix, and is what makes the next occurrence diagnosable in one read.
+
+---
+
+## TI-97. A self-test reports a false failure on a Windows machine because its stand-in for GitHub is invisible there
+
+**Symptom.** `bash scripts/test-check-main-checked.sh` prints `CHECK-MAIN-CHECKED SELF-TEST: FAILED` with 13 failing cases on a native-Windows checkout (Git Bash). The same commit passes the `doc-ids` job on CI. Nothing is wrong with the code under test; the harness is not reaching it.
+
+**Severity:** Low for correctness, higher for trust — a check that cries wolf on one machine is a check that stops being read on every machine. That is the failure mode [TI-90] and [TI-93] are both about, arriving from the harness side.
+
+**Diagnosis — confirmed, not inferred.** The self-test writes a fake `gh` (a `#!/usr/bin/env bash` script, no file extension, `chmod +x`) into a temp directory it puts first on `PATH`. Bash honours that: `PATH="$D:$PATH" gh api foo` runs the fake. But `check-main-checked.sh` calls GitHub from inside Python — `subprocess.run(["gh", "api", path])` — and on Windows that goes through `CreateProcess`, which only resolves names carrying an extension listed in `PATHEXT`. The extensionless fake is skipped, the real `C:\Program Files\GitHub CLI\gh.EXE` further down `PATH` answers instead, and every fixture sha becomes a real API call against a commit that does not exist — which the script correctly reports as *could not determine*. Measured directly:
+
+```
+$ PATH="$D:$PATH" python3 -c "import shutil; print(shutil.which('gh'))"
+C:\Program Files\GitHub CLI\gh.EXE
+```
+
+**Fix direction.** Write a `gh.cmd` alongside the fake `gh` in the same temp directory, forwarding to the shell script via the absolute path of the running `bash` (`cygpath -w "$(command -v bash)"`). `CreateProcess` finds `.cmd`; Bash still prefers the extensionless file, so POSIX behaviour is unchanged and the extra file is inert on Linux and macOS. Gate the write on the platform only if the stray file is judged untidy — it does not need to be.
+
+**Scope.** Only this self-test is affected today, because it is the only harness that stubs a command consumed from inside Python. Any future stub used the same way inherits the same hole, so the fix belongs in whatever helper writes stubs rather than only in this one file.
+
+**Related:** the same machine needed [the Windows toolchain steps](new-machine-setup.md#steps) before any of this ran at all, including a `python3` that is not the Microsoft Store stub.
