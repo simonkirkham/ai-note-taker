@@ -184,6 +184,17 @@ jobs:
       - name: Cmdline-scan guard self-test
         run: bash ./scripts/test-check-cmdline-waits.sh
 
+      # TI-90. The OFFLINE half of check-main-checked.sh: a stubbed `gh`, no network,
+      # deterministic, ~2s. The live half runs on a schedule in main-checked.yml, because the
+      # thing it reconciles is what actually happened on main and that cannot be stubbed.
+      #
+      # The bulk of the cases are the third outcome — could-not-determine. A backstop that
+      # degrades into a pass when the API is unreachable is strictly worse than no backstop,
+      # and a 401, a rate limit, a proxy error page and a body missing total_count all look
+      # like "zero suites" to the obvious implementation.
+      - name: Main-checked self-test
+        run: bash ./scripts/test-check-main-checked.sh
+
   workflows:
     runs-on: ubuntu-latest
     timeout-minutes: 5
