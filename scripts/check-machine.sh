@@ -34,10 +34,31 @@ done
 
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 CANONICAL_PATH="/mnt/c/code/ai-note-taker"
+# The same directory on disk. WSL mounts the Windows C: drive at /mnt/c; Git Bash on
+# native Windows maps it to /c. A checkout at either is in the canonical location, so
+# only a third path is worth warning about.
+CANONICAL_PATH_ALT="/c/code/ai-note-taker"
 WORKTREE_DIR="$(dirname "$REPO_ROOT")/ai-note-taker-slices"
 MEMORY_KEY="$(printf '%s' "$REPO_ROOT" | tr '/' '-')"
 MEMORY_DIR="$HOME/.claude/projects/$MEMORY_KEY/memory"
-CHROME="/mnt/c/Program Files/Google/Chrome/Application/chrome.exe"
+# Git Bash exports LOCALAPPDATA in Windows form (C:\Users\...); convert it so the Chrome
+# candidates below can be tested with -f. Empty on WSL and Linux, which is harmless.
+LOCALAPPDATA_UNIX=""
+if [ -n "${LOCALAPPDATA:-}" ]; then
+  LOCALAPPDATA_UNIX="/$(printf '%s' "$LOCALAPPDATA" | sed 's|\\|/|g; s|^\([A-Za-z]\):|\L\1|')"
+fi
+# Chrome lives in a different place on each kind of machine this repo gets cloned to:
+# under /mnt/c on WSL, under /c in Git Bash on native Windows, and per-user rather than
+# in Program Files whenever it was installed without admin rights. Checking only the
+# first of those reports "no browser" on a machine that has one, which pushes CSS work
+# back to guesswork for no reason.
+CHROME_CANDIDATES=(
+  "/mnt/c/Program Files/Google/Chrome/Application/chrome.exe"
+  "/mnt/c/Program Files (x86)/Google/Chrome/Application/chrome.exe"
+  "/c/Program Files/Google/Chrome/Application/chrome.exe"
+  "/c/Program Files (x86)/Google/Chrome/Application/chrome.exe"
+  "$LOCALAPPDATA_UNIX/Google/Chrome/Application/chrome.exe"
+)
 EXPECT_PROD_ACCOUNT=642653037268
 EXPECT_TEST_ACCOUNT=739754704263
 EXPECT_REGION=eu-west-2
@@ -147,7 +168,7 @@ echo "MACHINE CHECK — $REPO_ROOT"
 echo
 
 # --- repo location ------------------------------------------------------------
-if [ "$REPO_ROOT" = "$CANONICAL_PATH" ]; then
+if [ "$REPO_ROOT" = "$CANONICAL_PATH" ] || [ "$REPO_ROOT" = "$CANONICAL_PATH_ALT" ]; then
   row PASS "repo path" "$REPO_ROOT"
 else
   row WARN "repo path" "$REPO_ROOT is not $CANONICAL_PATH — path-based permission rules in .claude/settings.json will not match, so you will be asked to approve things again. Either clone to $CANONICAL_PATH or edit those rules."
@@ -267,8 +288,11 @@ fi
 # Playwright installs for the browser tests. Google ships no Linux Chrome for
 # arm64, so on those machines Playwright's is the only one.
 BROWSER=""
-if [ -f "$CHROME" ]; then
-  BROWSER="$CHROME"
+for candidate in "${CHROME_CANDIDATES[@]}"; do
+  [ -n "$candidate" ] && [ -f "$candidate" ] && { BROWSER="$candidate"; break; }
+done
+if [ -n "$BROWSER" ]; then
+  :
 elif command -v google-chrome >/dev/null 2>&1; then
   BROWSER="$(command -v google-chrome)"
 elif command -v chromium >/dev/null 2>&1; then

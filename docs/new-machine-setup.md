@@ -41,9 +41,28 @@ The second script prints a PASS/WARN/FAIL row per item and a one-line verdict. E
    ```
    Writes one `.tar.gz` to your home directory, mode 600. With `--with-secrets` it contains live AWS keys — move it over an encrypted channel and delete it afterwards. Without the flag it carries no credentials, and you re-run `aws configure` on the other side instead.
 
-2. **Install the toolchain on the new machine.** On Ubuntu or WSL, `bash scripts/setup-machine.sh` installs the lot — .NET 10, Node 24, AWS CLI v2, CDK, GitHub CLI, Docker, Chrome, jq, shellcheck — and is safe to re-run. On Windows or macOS, install those by hand.
+2. **Install the toolchain on the new machine.** On Ubuntu or WSL, `bash scripts/setup-machine.sh` installs the lot — .NET 10, Node 24, AWS CLI v2, CDK, GitHub CLI, Docker, Chrome, jq, shellcheck — and is safe to re-run. On macOS, install those by hand.
 
-3. **Clone to the same path: `/mnt/c/code/ai-note-taker`.** Several permission rules in `.claude/settings.json` are absolute paths. A different path means those rules stop matching and you get asked to approve things again.
+   On **native Windows** (Git Bash, no WSL), `setup-machine.sh` does not apply. Run this in PowerShell instead — it works on x64 and ARM64, and each package is user-scoped where winget allows:
+
+   ```powershell
+   winget install --id Microsoft.DotNet.SDK.10 --exact --accept-package-agreements --accept-source-agreements --silent
+   winget install --id OpenJS.NodeJS.LTS     --exact --accept-package-agreements --accept-source-agreements --silent
+   winget install --id Amazon.AWSCLI         --exact --accept-package-agreements --accept-source-agreements --silent
+   winget install --id Python.Python.3.13    --exact --accept-package-agreements --accept-source-agreements --silent --scope user
+   npm install -g aws-cdk
+   ```
+
+   Then two Windows-only fix-ups, both needed before any helper script runs:
+
+   | Trap | Fix |
+   | --- | --- |
+   | `python3` resolves to a Microsoft Store stub that prints "Python was not found" and exits non-zero — even after a real Python is installed. Seven scripts, including `deploy-status.sh` and `merge-gate.sh`, die on it, and `deploy-status.sh` reports `NOT SAFE`, which reads as a red merge gate rather than a broken tool. | Turn off the `python` / `python3` aliases in **Settings → Apps → Advanced app settings → App execution aliases**. The winget install already puts the real Python ahead of the stub in the user PATH. |
+   | Python for Windows ships `python.exe` but no `python3.exe`, and every script invokes `python3`. | `cp "$LOCALAPPDATA/Programs/Python/Python313-arm64/python.exe" "$LOCALAPPDATA/Programs/Python/Python313-arm64/python3.exe"` (drop the `-arm64` suffix on an x64 machine). |
+
+   A PATH change from an installer does not reach an already-running terminal or Claude Code session — restart both before checking.
+
+3. **Clone to the same path: `/mnt/c/code/ai-note-taker`** — on native Windows that same directory is `C:\code\ai-note-taker`, which Git Bash sees as `/c/code/ai-note-taker`. Several permission rules in `.claude/settings.json` are absolute paths, and they are listed in all three forms so a slice worktree does not prompt on every edit. A path outside `code/ai-note-taker` means those rules stop matching and you get asked to approve things again.
 
 4. **Apply the bundle.**
    ```bash
