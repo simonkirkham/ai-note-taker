@@ -99,6 +99,8 @@ cd ai-note-taker
 
 ```
 
+Setting up a second machine (credentials, permissions, agent memory): [docs/new-machine-setup.md](docs/new-machine-setup.md).
+
 First-time AWS setup (once per account/region):
 
 ```bash

@@ -90,9 +90,8 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 | TI-74 | **Move the same note twice while the sync is stuck and the second move snaps back — the first move used up that note's protection** | 🔲 **Open** — raised 2026-08-11 (Hawk, PR #459 / [TI-65]). Detail in [TI-74](#ti-74-the-stale-list-guards-budget-is-keyed-by-note-not-by-write) below. |
 | TI-75 | **Switch workspace at the wrong moment and the app can show one workspace's notes under the other's name** | 🔲 **Open** — raised 2026-08-11 (Hawk, PR #459). Detail in [TI-75](#ti-75-gatedreads-retries-re-resolve-the-workspace-url-mid-gate) below. |
 | TI-80 | **A broken workflow committed straight to `main` still reaches everyone unchecked — the new lint only ever runs on pull requests** | ✅ **Done** — raised 2026-08-11 (reviewer, PR #464 / [TI-70]), fixed 2026-08-12 (PR [#471](https://github.com/simonkirkham/ai-note-taker/pull/471), squash `14c6c034`). Two independent Hawk reviews, both **Approved with minor comments**, no must-fix in either; their should-fixes are filed as [TI-83] and [TI-84] rather than taken as further rounds. [TI-70] closes the PR route; this is the other one. `docs-check.yml` declared `on: pull_request` only, and `CLAUDE.md` routes doc edits directly to `main`, so a workflow file changed by a direct push was linted by nothing — the same 162-red-X outcome [TI-69] produced. The prescribed fix held: `push: branches: [ main ]` with the same `paths:` list, both jobs, one file changed. **One thing the row did not predict** — the `concurrency` group had to change too; detail in [TI-80](#ti-80-the-push-trigger-needed-a-concurrency-change-the-row-did-not-predict) below. **Verified, not asserted:** six pushes on `proof/ti80-push` produced no run when the branch was outside the filter, green when clean, **red on TI-69's actual line** (`parser did not reach end of input ... "*", "INTEGER"`, run 31542276296), green again with the guard's exit code deliberately swallowed while `doc-ids` stayed unchanged, and red again on revert. Full evidence in the PR comment. **The one gap the PR recorded as unproven — `main` specifically — closed on merge:** the squash commit was itself the first push to `main` under the new trigger, producing run [31572859601](https://github.com/simonkirkham/ai-note-taker/actions/runs/31572859601), `event=push`, `branch=main`, `workflows: success` in 7s. Nothing was inferred; the run exists. |
-| TI-79 | **An agent waiting for a build or a test run to finish can hang forever without saying so, and stops answering anyone trying to reach it** | 🔲 **Open** — raised 2026-08-11 ([TI-70] session). Detail in [TI-79](#ti-79-a-wait-loop-that-scans-process-cmdlines-can-never-exit) below. |
+| TI-79 | **An agent waiting for a build or a test run to finish can hang forever without saying so, and stops answering anyone trying to reach it** | 🟡 **Partly done / mitigated** — PR [#479](https://github.com/simonkirkham/ai-note-taker/pull/479), open. CI now refuses this shape in any committed script; the ad-hoc case it actually happened in is covered by a written rule, not a check, and cannot be. Detail in [TI-79](#ti-79-a-wait-loop-that-scans-process-cmdlines-can-never-exit) below. |
 | TI-85 | **The check that proves our read-your-writes probe still works can be fooled by a read the previous page started, so it could one day pass while proving nothing** | 🔲 **Open** — raised 2026-08-12 (Hawk, PR #473 / [BUG-79], classified should-fix; not blocking, and the reviewer said so). `AppPage.ObserveActionsReadTokenAsync` clears the probe **before** reloading, so its sampling window includes any read the outgoing page starts between the route being installed and the reload. In the ungated arm such a read still carries the token, which would report the control as gated and fail the check for a reason unrelated to what it tests. **Why it is a should-fix and not a must-fix:** the ungated path has never once reported a token across ~25 recorded runs (batches of 6/10, 5/10 and 10/10); every observed failure was the *gated* arm losing its seed, which is fixed. So this is a latent hole, not an active one. **Fix:** take a sequence-number boundary just before the reload and ignore anything recorded below it. The same change closes the sibling race on the ungated arm's `ryw.*` delete, which is a live-page write with the same exposure — do that deletion in an init script too, added first so the gated arm's later seed still wins. **Why it matters beyond this one test:** it is the same class as the bug the probe was built for — a measurement that looks like a property of the system turning out to be a property of when it was taken. |
-| TI-83 | **A path added to `docs-check.yml`'s PR trigger but not its push trigger is guarded on pull requests and silently unguarded on direct commits to `main`, which is the route that has no other check** | 🔲 **Open** — raised 2026-08-11 (Hawk, PR #471 / [TI-80], classified should-fix). GitHub Actions has no YAML anchors, so the `paths:` list is necessarily typed twice; the two are in sync today (checked by hand at merge) and nothing but a comment keeps them so. The asymmetry is what makes it worth a check rather than a note: drift on the PR side is loud (a check stops appearing on PRs), drift on the push side is silent, and the push side is the one covering the route with no other guard. **A second reviewer found the better fix — subtraction, not a checker.** Drop `paths:` from the **push** trigger entirely. `actionlint` lints the whole tree regardless of which files changed, so the list never scoped the lint — it only gated whether the job ran at all. Removing it deletes the drift class rather than policing it, and costs ~25s of parallel runner time per push to `main`. **It also closes a live gap, filed here rather than separately because one fix closes both:** `scripts/check-doc-ids.sh` reads `docs/phases/phase-bugs-archive.md` for two of its checks (duplicate `## BUG-N` entries; a bug living in *both* the live doc and the archive), and that file is in **neither** `paths:` list — verified 2026-08-11. So a commit touching only the archive skips the check, and archiving is a **Scribe** step that commits straight to `main`, which is the route with no other guard. **Alternative if `paths:` is kept:** assert `push.paths ⊇ pull_request.paths` (modulo the self-referencing `docs-check.yml` entry) in a sibling of `scripts/test-merge-gate.sh`, on the [TI-77] precedent — plus add the archive path to both lists. **Raised by:** Hawk on PR #471, two independent reviews, findings 2 and 3. |
 | TI-82 | **247 merged branches sit on the remote because the documented merge step silently fails to delete them, and the docs said that failure was harmless** | 🔲 **Open** — raised 2026-08-11 ([TI-80] session, from the coordinator's measurement). Detail in [TI-82](#ti-82-the-documented-merge-step-deletes-neither-branch) below. |
 | TI-78 | **A browser fault that happens late in a long session still goes unreported, and nothing says so** | 🔲 **Open** — raised 2026-08-11 ([TI-67] review). The injected RUM snippet in `.github/workflows/deploy.yml` never sets `sessionEventLimit`, so the client default of **200** applies: `canRecord()` is `session.record && !isLimitExceeded()`, and `isLimitExceeded()` is `session.eventCount >= 200`. With `telemetries: ["errors","performance","http"]` at `sessionSampleRate: 1`, HTTP and performance events alone can exhaust that inside one 30-minute session — after which **every** custom event is dropped silently (`sessionLimitExceeded++`, nothing logged). This lands hardest on exactly the signals [TI-67] just enabled, because faults tend to happen *after* someone has been working a while, and it is the same self-concealing shape TI-67 existed to fix. **Fix:** set `sessionEventLimit` explicitly in the snippet (0 = unlimited), and confirm by reading an event back late in a session rather than by reading the config. |
 | TI-87 | **A dropped connection while installing dependencies paints a red X on a pull request that did nothing wrong** | 🔲 **Open** — raised 2026-08-13 (hit by [CHANGE-41], PR #475, run [31677449442](https://github.com/simonkirkham/ai-note-taker/actions/runs/31677449442)). The `desktop` job's `npm --prefix desktop ci` runs Electron's `postinstall`, which downloads the ~100 MB Electron binary from GitHub releases. One `RequestError: socket hang up` failed the job in 17 s; a plain re-run passed with nothing changed. **Same class as [TI-84]** — an unretried, uncached network fetch turning a transient blip into a red check — and the same two fixes apply: retries (`npm config set fetch-retries` does **not** cover Electron's own download; it reads `ELECTRON_GET_...` / needs a retry wrapper) and an `actions/cache` on the Electron download cache keyed by version, which also removes a ~60 s download from every run. **Worth fixing together with [TI-84]**, since one cache-and-retry pass covers both. **Bound the retry, don't just add one** — [TI-84]'s review found that a naive retry delay is a lower bound, not an upper one: a rate-limited response carrying `Retry-After: 120` makes the client wait the longer of the two and blow the job's timeout, converting a 6-second red X that *names the failed download* into a timeout that names nothing. Whatever retry this uses needs an explicit total-time cap. |
@@ -102,6 +101,9 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 | TI-92 | **A tracking item can be half-archived — copied into the archive but never deleted from the live list — and nothing notices, because the check that catches exactly this looks only at bugs** | 🔲 **Open** — raised 2026-08-13. **34 TI ids sit in both files today**, all pre-existing, so finished work reads as outstanding on the one column the human scans. Detail in [TI-92](#ti-92-half-archived-ti-items-are-invisible-because-the-live-vs-archive-check-covers-bugs-only) below. |
 | TI-90 | **A change can land in the main codebase with nothing checked against it at all, and nothing anywhere reports it** | 🟡 **In Progress** — raised 2026-08-13. Measured: commit `4727672f` carries **zero** check-suites from **any** app, while `14a4a48f`, `fb286458` and `c12fa2c9` around it each carry two. A daily backstop now reconciles `main` against its check-suites and names any such commit; the cause of the undelivered push event is still unknown. **Nothing watches the backstop itself, so on merge run `gh workflow list \| grep -i main-checked` (fails if nothing prints) and `gh workflow run main-checked.yml -f count=50` (fails on HTTP 422) — see the three-command table in the detail section.** Detail in [TI-90](#ti-90-a-commit-can-reach-main-with-no-check-suite-from-any-app-and-the-absence-is-why-nobody-noticed) below. |
 | TI-93 | **The backstop that catches an unchecked commit accepts any robot's answer, so a commit whose build pipeline never ran can still be reported as checked** | 🔲 **Open** — raised 2026-08-13 ([TI-90] review, PR #478). Detail in [TI-93](#ti-93-the-backstop-accepts-any-apps-check-suite-so-a-commit-the-build-pipeline-never-saw-still-reads-as-checked) below. |
+| TI-94 | **A merge can quietly put back work someone deliberately deleted — no conflict, no marker, every check green — so a closed item reappears as open work and another session's finished change is undone** | 🔲 **Open** — raised 2026-08-13. **Three confirmed instances in one day; only one was visible to any existing check, and one sat on `main` for 10 straight commits.** Archiving is exactly the delete-versus-surrounding-context operation the `merge=union` driver resolves wrongly, so it will recur. Interim gate, usable today: zero deleted lines in the diff against the **merge base** on an append-only file — diffing against `origin/main` instead reads every line `main` gained since your branch point as your deletion (**86** falsely accused vs **0** real, same branch, measured). Detail in [TI-94](#ti-94-a-merge-silently-restores-a-deleted-section-and-nothing-detects-it) below. |
+
+| TI-95 | **Changes can sit undelivered for weeks while everything looks healthy — the last deployment failed, nothing since then triggered another, and nobody is told** | 🔲 **Open** — raised 2026-09-08. **Observed: main's last deploy failed 2026-08-14 and the next one ran 2026-09-08, a 25-day gap in which the app received nothing.** Every commit between touched only docs/scripts/`.claude`, which `deploy.yml` paths-ignores, so no run re-tested the red state and no signal existed to notice it. Detail in [TI-95](#ti-95-a-failed-deploy-can-go-unnoticed-for-weeks-because-nothing-re-runs-it) below. |
 
 **2026-06-17 deploy-gate stabilisation session:** proved **10 consecutive green deploys** (#595 ×10). Root-caused and fixed a **44-min E2E suite hang** (PR #291's fire-and-forget response-body read on the reload loop) → replaced with a hang-proof, sync-only diagnostic (PR #292) and a **hard 120 s per-test cap** (**TI-43 done**, PR #293). **TI-42** cards-list flake did not recur in 13+ runs (not reproduced ≠ fixed; diagnostic now in place). **BUG-31** turned out to be three stacked causes — original image-reappear symptom fixed, `SaveAndReturnAsync` cards-refetch sync fixed (PR #297, suite-wide win), and a residual stuck-note-detail-read layer carved out as **TI-44**. Full write-up: [docs/learnings/e2e-gate-hang-and-the-diagnostic-that-caused-it.md](learnings/e2e-gate-hang-and-the-diagnostic-that-caused-it.md).
 
@@ -519,6 +521,124 @@ TI-1, 2, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 19, 21, 22, 26, 27, 28, 
 
 ---
 
+## TI-94. A merge silently restores a deleted section, and nothing detects it
+
+**What it costs:** a merge can undo a deletion someone made on purpose. The content comes back, git reports no conflict, no marker is written, and every check passes — so a finished item reappears on the outstanding list carrying advice that no longer applies, and the session that deleted it is never told. One instance below reached `main` and stayed live for hours before a human spotted it by eye.
+
+**Why it will keep happening:** `.gitattributes` sets `merge=union` on the three tracking tables so concurrent *appends* resolve instead of conflicting. CLAUDE.md documents union's bad case as "two branches editing the same row". **There is a second bad case with no guard: a deletion on one branch against surrounding context on another.** Union keeps both sides, so the deleted content is restored. Archiving is precisely that operation — delete a row and its section from the live doc while other branches hold context around them — so every archive action is an opportunity for this.
+
+### The gate to use today, before any of the below is built
+
+**On a file you are only appending to, the diff against the MERGE BASE must contain zero deleted lines.** One reading, no set arithmetic, no regex to get wrong. It catches a resurrection and an accidental clobber of someone else's work together, and unlike the heading-set diff it cannot be defeated by a padding mistake:
+
+```bash
+git fetch origin
+MB=$(git merge-base origin/main HEAD)
+git diff $MB HEAD -- docs/technical-improvements.md | grep '^-' | grep -v '^---'
+```
+
+**Against `origin/main` instead of the merge base the gate gives the WRONG answer, and the wrong form is the one you reach for first.** `git diff origin/main HEAD` reports every line `main` has gained since your branch point as a deletion *by you* — so a branch that deleted nothing is accused of deleting other people's work. Measured on `slice/ti-90-main-checked`, the same branch, same file, both forms:
+
+| Form | Reading |
+| --- | --- |
+| `git diff origin/main <branch>`, `origin/main` = `0ea857c7` | **60 added / 86 removed** |
+| `git diff $(git merge-base origin/main <branch>) <branch>` | **71 added / 0 removed** |
+
+Every one of the 86 was TI-94's own filing landing on `main` after that branch point. Re-measured 2026-08-13 with `origin/main` one commit further on (`4fbf7286`) the wrong form reads **130 removed** — the false accusation *grows* with unrelated activity on `main`, which is the tell. The row's own closing warning applies to the row: **a check that accuses wrongly gets switched off**, and this one accused wrongly on its first real use.
+
+**`git fetch origin` first is part of the gate, not hygiene.** A stale `origin/main` moves the merge base and gives a false pass — the same input-staleness that made `scripts/next-doc-id.sh` report a taken id as free when the local `origin/main` predated the claim. The script was right; its input was old. Fetch, then check, then commit, with nothing in between.
+
+This filing was verified that way: the commit adding it shows **66 insertions and 0 deletions**.
+
+**When you are revising your own earlier text the count is not zero, and the gate still works** — it just becomes "zero deletions of lines *someone else* wrote". Clear it by proving every deleted line came from your own prior commit, which is mechanical:
+
+```bash
+MB=$(git merge-base origin/main HEAD)
+git diff $MB HEAD -- <file> | grep '^-' | grep -v '^---' | sed 's/^-//' > /tmp/del.txt
+git show <your-sha> -- <file> | grep '^+' | grep -v '^+++' | sed 's/^+//' > /tmp/added.txt
+while IFS= read -r l; do [ -n "$l" ] && grep -qxF "$l" /tmp/added.txt || echo "NOT MINE: $l"; done < /tmp/del.txt
+```
+
+The follow-up commit to this row deleted 7 lines and printed nothing — all 7 were its own. Do not weaken the gate to "deletions are fine when I expect them"; the expectation is the thing being tested.
+
+**Do not read that escape hatch as escaping the ancestry constraint below — it inherits it.** "Traced to your own prior commit" is an ancestry question wearing different clothes: `<your-sha>` has to be an ancestor of `HEAD` and not of the merge base, or the trace proves nothing. What it escapes is *pattern-matching* — it never asks whether a line looks like a resurrection, it asks where the line came from — and that is why it is worth leading with. It does not escape needing the history.
+
+Keep the heading-set diff below as the *diagnostic* — it names **what** came back — but lead with the deletion count, which answers **whether** anything did.
+
+### The fix — an orphan-section check
+
+**A `## TI-N` section in the live doc with no matching `| TI-N |` row is an orphan.** Two of the instances below were exactly that shape. One `comm -23`, no network, runs beside the existing checks in `scripts/check-doc-ids.sh`:
+
+```bash
+comm -23 \
+  <(grep -oE '^## TI-[0-9]+' docs/technical-improvements.md | grep -oE 'TI-[0-9]+' | sort -u) \
+  <(grep -oE '^\| *TI-[0-9]+ +\|' docs/technical-improvements.md | grep -oE 'TI-[0-9]+' | sort -u)
+```
+
+Four constraints on the implementation, each measured rather than assumed:
+
+1. **It must run against the LIVE docs only, never the archives.** Measured on `origin/main` 2026-08-13: `technical-improvements-archive.md` has **42 `## TI-` sections and 0 table rows**; `phase-bugs-archive.md` has **73 `## BUG-` sections and 0 table rows**. The archives carry no table at all, so a rule written generically over "the doc pair" — the obvious way to write it, since the live-vs-archive check beside it takes both files — fires on **all 115 archive entries** and is red from birth. A check that is red from birth gets commented out, not fixed.
+2. **The row pattern must tolerate column padding** — `^\| *TI-[0-9]+ +\|`, not the existing BUG check's single-space `^\| BUG-[0-9]+ \|`. Single-digit ids are written `| TI-1  |`, with two spaces, and the single-space pattern does not match them, so it reports a *false orphan* for every one of TI-1 through TI-9. Same blind spot [TI-92](#ti-92-half-archived-ti-items-are-invisible-because-the-live-vs-archive-check-covers-bugs-only) measures at seven ids.
+   **This is not hypothetical — it happened while filing this item.** The first measurement of the baseline below used the single-space pattern and reported **2 orphan sections on `origin/main` (TI-3 and TI-7)**. Both were false: the rows exist, padded. The correct count is zero. So the instrument written to catch a check that cannot see what it seeks was itself, on its first run, a check that could not see what it sought — and it reported a confident number rather than an error. Treat the padded pattern as the requirement, not the preference, and re-read [`docs/learnings/a-mechanism-nobody-has-watched-work-is-not-working.md`](learnings/a-mechanism-nobody-has-watched-work-is-not-working.md) before trusting any count this check prints.
+3. **It is disjoint from [TI-92](#ti-92-half-archived-ti-items-are-invisible-because-the-live-vs-archive-check-covers-bugs-only) part 2, not a variation of it.** They take different inputs: live-vs-archive compares **two files**; the orphan check compares **two structures within one file**. TI-92 part 2 is necessary but not sufficient here — it catches a section present in both files and misses an orphan whose archive entry is absent, which is what instance 1 was.
+4. **Apply the same shape to `phase-bugs.md` and `phase-minor-changes.md`** — all three carry `merge=union` and all three are archived the same way.
+
+**It must be seen red before it is trusted.** Baseline measured on `origin/main` at `b2acbfb1` with the command above: **zero orphan sections**. So it goes green on day one, and a check whose only observed output is green is untested.
+
+**The positive control is a git blob, not a reconstruction.** `git show 4727672f:docs/technical-improvements.md` **is** the defect — the real file, at the real sha, on `main`. Run the check against that blob and it must print `TI-73` and nothing else. It is immutable, so it cannot rot. **Do not tidy it into a synthetic fixture:** a hand-written fixture is strictly weaker, because it proves the check matches something someone wrote to be matched rather than the shape a merge actually produced.
+
+### Three confirmed instances, one of them visible to an existing check
+
+All verified 2026-08-13 by measuring the repository, not quoted from a report. A fourth was reported and **could not be reproduced** — see the note at the end of this section.
+
+**Instance 1 — shipped to `main` and stayed there for 10 consecutive commits.** Squash merge [`4727672f`](https://github.com/simonkirkham/ai-note-taker/commit/4727672f) (the [TI-81] merge, PR #469) **added `## TI-73. The pre-commit gate is unbounded across sessions` back** to `docs/technical-improvements.md`; the diff shows it as an added heading. TI-73 had been archived on 2026-08-11 and its section deleted, and union restored it during one of that branch's merges of `main`. Confirmed: **no live row for TI-73 at that commit** (`grep -c '^| TI-73 |'` = 0), so it sat as an orphan section — a closed item presented as open work, prescribing a fix for a pre-commit gate that no longer exists (`.githooks/` was deleted from `main` on 2026-08-11).
+
+Measured span, by walking `git rev-list 4727672f~1..b2acbfb1` and testing each commit for section-present/row-absent: the orphan was on `main` in **10 successive commits over 55 minutes**, `4727672f` (08:34) through `f3218a71` (09:25), removed at `b2acbfb1` (09:29). Every one of those commits was green. It also propagated: both open slice branches picked it up from `main`, so a single silent restoration seeded ten commits and two branches. TI-73 is now absent from the live doc and present in the archive — the correct end state.
+
+**Instance 2 — caught before it shipped, by eye.** PR [#477](https://github.com/simonkirkham/ai-note-taker/pull/477) rebased onto `main` twice. The first rebase produced duplicate TI-83 **and** TI-84 rows (2 of each) and `scripts/check-doc-ids.sh` caught it. `main` then moved to `10957a81`, which archived TI-84 — deleting both its row and its `## TI-84.` detail section. The second rebase, an hour later, **silently restored the entire `## TI-84.` section**: the resulting commit carries the section with **no matching row**, and only one TI-83 row, so the duplicate check printed OK. Nothing caught it; it was found by diffing section headings against `origin/main` by hand, and removed in a later amend. Pushing it would have undone another session's completed archive with every check green.
+
+**Instance 3 — the only one an existing check would have caught, and only by luck.** The [TI-90] worktree (PR [#478](https://github.com/simonkirkham/ai-note-taker/pull/478)) reached commit `12cb3076` carrying **two `| TI-90 |` rows**. `scripts/check-doc-ids.sh`'s duplicate-id check catches this — but only because the restored content happened to be a *row*, which duplicates an id. Restore a *section* instead, as instances 1 and 2 did, and the same driver on the same file produces nothing for any check to see. **One in three, and the one is an accident of which half of the item came back.**
+
+> **Durability of the controls.** Instances 2 and 3 live only in their worktrees' reflogs and **will expire**; instance 1's blob is on `main` and is permanent. Test against `4727672f`, and do not substitute a fixture for it.
+
+**A fourth instance was reported and does not survive checking.** The report was a resurrected `| TI-84 |` row on the two open slice branches. Every commit carrying that row was tested with `git merge-base --is-ancestor 10957a81 <sha>`, and **none is a descendant of the archive commit** — so each is legitimate pre-archive ancestry, not a restoration. Likewise the TI-73 orphans on those branches are inherited from instance 1's span on `main`, not independent events. Recorded because the near-miss is the point: **a resurrection and ordinary pre-archive ancestry look identical in a `grep`, and only an ancestry test separates them.** Any check built here must test ancestry before it accuses, or it will generate false reports of exactly this kind — and a check that accuses wrongly gets switched off.
+
+**Run the ancestry test PER BRANCH. It does not generalise, and the two branches in that fourth report split on it** — same artefact, opposite diagnosis, decided entirely by ancestry (re-run 2026-08-13, `git merge-base --is-ancestor 10957a81 <ref>`):
+
+| Branch | Descends from `10957a81` (the TI-84 archive)? | Diagnosis |
+| --- | --- | --- |
+| `slice/ti-79-cmdline-wait-guard` (PR #479) | **NO** | pre-archive history — an inherited TI-84 row is legitimate, not a resurrection |
+| `slice/ti-90-main-checked` (PR #478) | **YES** | post-archive — an inherited TI-84 row there **would** have been a resurrection |
+
+**The failure mode, recorded because it happened here: a per-branch test cannot support a cross-branch conclusion.** One branch was tested and the verdict was stated for both. It came out right by luck — neither carried the row in the end — which is the worst way for it to come out, because it earns the method trust it has not got. Test every ref you name, or name only the ref you tested.
+
+### Why nothing catches it today
+
+`scripts/check-doc-ids.sh` has two checks and neither sees this shape:
+
+- The **duplicate-id** check (`uniq -d` over rows) covers all three prefixes, but a resurrected *section* adds no row, so there is nothing to duplicate. Instance 2 passed it.
+- The **live-vs-archive** `comm -12` check compares **BUG ids only** (script lines 45–55) — verified by reading the script. A resurrected `TI` section is invisible to it, and instance 1's TI-73 had no archive-side row to compare anyway.
+
+It printed `doc ids OK` throughout instances 1 and 2, and caught instance 3 only because that one restored a row rather than a section.
+
+### Other directions, as options not decisions
+
+- **Extend the live-vs-archive check to TI and CHANGE** — this is **[TI-92](#ti-92-half-archived-ti-items-are-invisible-because-the-live-vs-archive-check-covers-bugs-only) part 2**, already specced there. Do not duplicate it. Necessary but not sufficient, per constraint 3 above.
+- **Reconsider `merge=union` on these files, or narrow where it applies** — union was adopted because PR #414 re-conflicted three times in one day. Removing it trades silent restoration for frequent conflicts; narrowing it (union on the table region only, normal merge on the detail sections) keeps the benefit where appends happen and restores conflict markers where deletions happen. Unmeasured.
+- **Correct the `merge=union` comment in `.gitattributes` in the same change** — it currently states that `scripts/check-doc-ids.sh` "runs in the pre-commit hook", so a reader concludes union's bad case is caught before a local commit. It is not: `.githooks/` was deleted from `main` on 2026-08-11 (`dba8fce8`, "Remove the pre-commit hook entirely, and every reference to it") and `git ls-tree -r origin/main` lists **0** files under `.githooks/`. Name `.github/workflows/docs-check.yml` as the only enforcement point. This is the documentation of the exact mechanism TI-94 is about, which is why it is here and not a row of its own.
+
+### Sequencing
+
+TI-94's check is **independent of TI-92's sweep and can land at any time** — it touches only `scripts/check-doc-ids.sh`, goes green on the current tree, and needs no doc rewrite. TI-92's 27+ row sweep must still wait behind PRs **#477**, **#478** and **#479**.
+
+### A related current reading, recorded here to place it correctly
+
+Three ids have a `## TI-` section in **both** the live doc and the archive: **TI-19, TI-42, TI-44**. All three trace to `8b3b0d15` (2026-06-29, `Revert "docs(scout): add per-slice Value statements to Phase 43"`), which re-added all three headings — pre-existing, not fresh resurrections. **This belongs to [TI-92](#ti-92-half-archived-ti-items-are-invisible-because-the-live-vs-archive-check-covers-bugs-only)'s sweep scope, not TI-94's**, and it is a different measurement from TI-92's headline 34: that 34 counts live *rows* against archive *sections*; this 3 counts live *sections* against archive *sections*. Both were re-measured 2026-08-13 and both are correct.
+
+**Raised in:** 2026-08-13, from two observed instances — one on `main`, one on a branch.
+
+---
+
 ## TI-89. The merge gate's self-test blames the merge gate when the machine's `date` command is the problem
 
 **What it costs:** someone on a Mac runs the self-test that guards every merge, sees it red, and is pointed at the orphaned-run-record logic — which is fine. The real cause is two `date: illegal option -- d` lines printed far above the failures, with nothing connecting them. Time spent chasing a phantom bug in the one script every session has to pass. Costs nobody today: CI is `ubuntu-latest`.
@@ -696,9 +816,32 @@ They overlapped and **both completed**. Under the old key the first — the one 
 
 ---
 
+## TI-95. A failed deploy can go unnoticed for weeks because nothing re-runs it
+
+**What it costs:** work that merged successfully never reaches the app, and nothing says so. Every subsequent PR reports green, the roadmap says the slices are done, and the only symptom is the absence of the feature in production — which nobody looks for, because the merge appeared to succeed. When it is eventually noticed, the original failure's logs have expired, so the cause cannot be established.
+
+**Observed, 2026-09-08.** Deploy **#773 failed 2026-08-14** at the E2E gate. The next deploy of any kind was the one triggered on **2026-09-08** — a **25-day** window during which nothing was delivered. It surfaced only because slice 52-A's merge gate refused to open, not because anything reported it.
+
+**Why nothing re-ran it:** `deploy.yml` paths-ignores `docs/**`, `**/*.md`, `scripts/**` and `.claude/**`. Every commit that landed on `main` in that window touched only those paths, so no run was triggered, so the red state was never re-tested. The failure was also the chronic intermittent E2E flake ([BUG-38], [TI-39]) — it passed first time on a 2026-09-08 re-run of the identical commit — so a single automatic retry would have cleared it on the day.
+
+**Why the merge gate does not cover this:** it reads main's last deploy and blocks on red, which is correct, but it is only consulted when someone is *trying to merge*. In a quiet period nobody consults it, and the gate's silence is indistinguishable from health.
+
+**Candidate fixes, cheapest first:**
+1. Re-run a failed `deploy.yml` run once automatically before reporting failure — the flake it hit clears on a retry, and this alone would have closed the 25-day gap.
+2. A scheduled check that fails loudly when main's most recent `deploy.yml` run is not `success`, independent of anyone merging. Answers "is what I merged actually live?" without a human asking.
+3. Surface the age of the last successful deploy where it is already read — `scripts/deploy-status.sh` prints the run number but not that it is three weeks old.
+
+**Related:** [BUG-38] (the flake that caused this instance), [TI-39] (stabilising it). This item is about the *silence*, not the flake — a deterministic failure would have gone unnoticed exactly as long.
+
+**Depends on:** —
+
+---
+
 ## TI-79. A wait loop that scans process cmdlines can never exit
 
 **What it costs:** the session goes quiet mid-task and stays quiet. Nobody is told it is stuck, it never reaches another tool round, and **queued messages cannot reach it** — so a peer or the human asking "are you alive?" gets nothing back. Recovery is killing the wrapper pid by hand. Adjacent to [TI-70]: both are guards over code `pr.yml` cannot see.
+
+**The tell, before any of the mechanism.** A process-list match whose **`etime` is 0-2 seconds**, when the job should have been running for minutes, is your own command — not the job. Check the age before believing the match: `ps -eo pid,etimes,args | grep -F '<fragment>' | grep -vF 'grep -F'`. This is the most useful line here because it fires on the evidence in front of you rather than needing a rule remembered in advance. Related trap: **`ps -eo … -p <pid>` does not filter to that pid** — `-e` selects everything and overrides `-p`, so the output looks pid-scoped and is not.
 
 **Mechanism.** A wait built on scanning process command lines for a literal — `pgrep -f "<pattern>"`, or any `ps` / `/proc/*/cmdline` equivalent — **self-matches**. This harness runs each Bash tool call as `/bin/bash -c … && eval '<the entire command text>'`, so the wrapper's own cmdline contains whatever pattern was typed, and the scan always finds itself.
 
@@ -709,17 +852,72 @@ They overlapped and **both completed**. Under the old key the first — the one 
 
 So `until ! pgrep -f "bin/eslint"; do sleep 15; done` never exits, whatever eslint does.
 
-**Happened for real on 2026-08-11:** a reviewer agent wrote exactly that loop, the lint step finished, and the loop would have spun indefinitely.
+**Reported from 2026-08-11** — recalled from the report of the session it happened to, and a second one a day later; not measured here. A reviewer agent wrote exactly that loop, the lint step finished, and the loop would have spun indefinitely. The self-matching itself *is* measured here, and is what the probe table above and the fixtures assert.
 
 **The one-shot form fails differently and worse.** It returns a plausible phantom — "the job is running" — when nothing is. The tell is an `etime` of 0-2 seconds against a job that should have been alive for minutes.
 
 **`pgrep -f` is legitimate inside a committed script run as a bare path**, because no wrapper then carries the pattern. It is the *invocation* that is broken, not pgrep — see the same analysis under [TI-73](#ti-73-the-pre-commit-gate-is-unbounded-across-sessions), which needs a working process/load probe and is where this was first characterised. **Any check must therefore not reject hook-internal use.**
 
-**Fix direction:** grep committed scripts for process-scanning waits **in `docs-check.yml`**, on the same terms as `check-doc-ids.sh`. Note the pre-commit hook was removed on 2026-08-11, so CI is now the only place such a check can live — there is no local hook to put it in.
+**It is not a `pgrep` problem, and banning `pgrep -f` would not have held.** Any scan over `ps` output or `/proc/*/cmdline` self-matches on any literal typed in the same tool call. Confirmed by a session walking into it **while checking for it**: a loop written specifically to avoid `pgrep -f` — `for p in $(pgrep -P <session>); do … case "$c" in *"while true"*460*461*)` — reported two matches, the real watcher plus the wrapper running the `case` statement, because the pattern literals sat in its own cmdline.
 
-**What it cannot cover, stated rather than implied.** The ad-hoc case: an agent typing the loop straight into a Bash call. No committed-file check reaches that, and **that is exactly where this happened**. A guard over `scripts/` is worth having, but the durable fix for the ad-hoc case is a written rule (wait on a pid, an exit status, a sentinel polled with `until grep -q … ; do sleep 20; done`, or a sha changing) plus this row to point at. Note also that `timeout N tail -f FILE | grep -m1 SENTINEL` does **not** return when the file stops growing.
+**The count cannot be corrected, so never wait on one.** The inflation is not a constant — it is one match per concurrent agent wrapper carrying the literal (a real count of 31 seen as 34 on a three-session box — reported by that session, not measured here). "Subtract one" is wrong and gets more wrong the busier the machine is. Never trust a count, only a pid. The `[b]racket` trick narrows the artefact — the wrapper that *typed* the pattern stops matching — but a **peer session's** wrapper that typed the plain word still does, so it is not a basis for a wait either. And the two forms **cannot be A/B tested on one command line**: both literals then sit in the wrapper's cmdline and both match.
 
-**Related:** [docs/learnings/a-mechanism-nobody-has-watched-work-is-not-working.md](learnings/a-mechanism-nobody-has-watched-work-is-not-working.md) carries this as instance 2 and its live recurrence.
+**Fix, as shipped** (PR [#479](https://github.com/simonkirkham/ai-note-taker/pull/479))**:** `scripts/check-cmdline-waits.sh`, run by `.github/workflows/docs-check.yml` on the same terms as `check-doc-ids.sh` and `lint-workflows.sh`. It refuses the **shape** — a loop that waits (the scan is in its exit condition, or it scans and sleeps) and whose exit turns on a cmdline scan by any means — not the tool. A one-shot scan, a name-only `pgrep`, a pid-scoped `ps -p`, and a `for` loop over one snapshot of results all stay green, so hook-internal and bare-path use is untouched. A deliberate exception takes `# cmdline-wait-ok: <reason>`; the reason is required. `scripts/test-check-cmdline-waits.sh` holds 32 fixtures — 19 that must go red, 13 that must stay green — plus a repo-wide scan, and runs in the same job as the injected-defect check made permanent. The trigger is `**/*.sh`, not the two new files, or a bad loop added to any other script would be ungated. The pre-commit hook was removed on 2026-08-11, so CI is the only place this can live.
+
+**What it cannot cover, stated rather than implied.** The ad-hoc case: an agent typing the loop straight into a Bash call. No committed-file check reaches that, and **that is exactly where this happened, both times**. A guard over committed scripts is worth having, but the durable fix for the ad-hoc case is the written rule in [docs/learnings/waiting-without-scanning-process-cmdlines.md](learnings/waiting-without-scanning-process-cmdlines.md) — wait on a pid (`wait <pid>`, `tail --pid=<pid> -f /dev/null`), on an exit status, on a sha changing, or poll a sentinel with `until grep -q SENTINEL <file>; do sleep 20; done`. Two traps in the substitutes themselves: `timeout N tail -f FILE | grep -m1 SENTINEL` does **not** return when the file stops growing (`tail -f` only learns its reader is gone on its next write, and a finished job writes nothing more); and a sentinel poll **outlives its own condition** — an agent slept out three full 570-second rounds on a deploy that had already finished (reported by that session, not measured here), and from outside a late wait is indistinguishable from a stuck one.
+
+**Review round 1 (PR #479, CHANGES REQUESTED) — the guard did not catch the thing it exists to catch.** The reviewer wrote seven genuine dangerous loops and **all seven passed**. Three causes, all now fixture-pinned:
+
+| Miss | Cause | Closed by |
+| --- | --- | --- |
+| `ps aux`, `ps ax`, `ps aux \| grep -c` | The `aux`/`ax` alternative sat behind a `[[:space:]]+` that had already consumed the only separating space, so it needed a *second* one — `ps  aux` matched, `ps aux` did not. The branch was advertised in a comment, reviewed, and **never once executed** | Split into its own branch; `red-ps-aux.sh`, `red-ps-ax.sh`, `red-ps-aux-count.sh` |
+| `pgrep -c -f X`, `pgrep -u "$USER" -f X` | `-f` was only detected as the **first** option. The first case is the existing `red-count.sh` with one space added | `-f` matched in any option position; `red-pgrep-f-not-first.sh`, `red-pgrep-f-after-arg.sh` |
+| A scan in a `for`-header inside a waiting loop | The for branch attributed the scan to nothing, when a waiting loop was already open around it | Mark already-open enclosing loops only; `red-for-header.sh` |
+| A `cmdline-wait-ok:` named in prose deep inside a loop body | The exemption was bounded downward (exact at 3 lines) but **unbounded upward** | Bounded in both directions; `red-marker-inside-loop.sh` plus `ok-marker-just-inside.sh` to pin the other side |
+
+**A fifth defect surfaced only by running it.** Bracing the two new branches exposed a dangling `else`: unbraced, `for (…) if (…) …` followed by `else` binds that `else` to the **inner** `if`, so awk silently swallowed the body-scan branch and every scan inside a loop body went undetected — while the file still parsed and `bash -n` stayed clean. Caught because the seven loops were re-run against the *existing* fixtures rather than on their own; six went red and one stayed green, and that one green was the tell.
+
+**Evidence for the round:** all seven loops verbatim, green before and red after, under gawk 5.2.1 **and** a mawk 1.3.4 shim (`ubuntu-latest` resolves `awk` to mawk); the eight new fixtures seen **red against the pre-fix checker** and green after, with the 19 pre-existing cases unmoved in both directions; and a positive control on the default `git ls-files` path — a `ps aux` loop appended to a tracked script named the file and line, and the revert returned `OK`.
+
+**Round 2 closed three more, two of them false positives.** The pattern worth keeping: a guard that refuses legitimate work is not a lesser bug than one that misses the defect, because the response to it is to switch the guard off.
+
+| Missed / wrongly refused | Cause | Fix, and the fixture that pins it |
+| --- | --- | --- |
+| An exempted **inner** loop reddened the loop around it, naming the very line the author had exempted | The upward exemption bound stopped the marker covering the outer loop, but `close_loop` still exported the inner scan outward | An exempted loop no longer exports its scan; `ok-marker-nested.sh` and its `while` variant |
+| `ps -aux`, `ps -ax` | Branch (b) needed the `aux`/`ax` word to follow whitespace and the hyphen blocked it; branch (a) needs an `e` or capital `A`, which neither form has | `-?` before the word; `red-ps-hyphen-aux.sh`, `red-ps-hyphen-ax.sh` — one per spelling, so neither regresses alone |
+| `pgrep node-fetch` — a **name-only** `pgrep`, which the header explicitly promises stays green | The option scan ran into the argument, so any process name carrying a hyphen-then-`f` read as an option bearing `-f` | The option must start at whitespace, which a name cannot; `ok-pgrep-hyphenated-name.sh` |
+
+The first was a regression introduced by the round-1 fix — green before it, red after — which is why the seven loops are re-run against the *existing* fixtures every round rather than on their own.
+
+**The `else`/`}` invariant is now stated where an editor will look.** Every `else` in the awk program must be immediately preceded by `}`; an unbraced body re-binds the `else` to the inner `if` and awk swallows the next branch whole, with a clean parse and a clean `bash -n`. It was a site-local comment and is now in `EDITING THIS FILE` beside the apostrophe trap.
+
+**A resurrected row the repo's own id check could not see.** Rebasing onto `main` let the `merge=union` driver restore the `TI-83` row that `main` had just archived — no conflict, no markers. `scripts/check-doc-ids.sh` returned `doc ids OK` throughout, because its live-vs-archive check matches `## TI-N` **headings** and a resurrected table row has no heading ([TI-92] covers that gap). Only a set comparison against the **merge base** caught it, which is the check to run — `git diff $(git merge-base origin/main HEAD) HEAD -- <file>` must show only lines you deleted yourself.
+
+**Also from that round:** `.githooks/**` was dropped from the trigger (0 files on `main` since 2026-08-11 — dead config, and the script's own `git ls-files -- '.githooks/*'` already covers reinstatement), and the five `scripts/*.sh` entries listed by name were replaced by `**/*.sh`, a net deletion — all five are inside the glob.
+
+### OPEN CONTROL — the wildcard trigger has not been watched matching on a pull request
+
+**If `**/*.sh` under-matches, the repo's own guards stop being checked and nothing reports it.** The five entries it replaced were `check-doc-ids.sh`, `lint-workflows.sh`, `merge-gate.sh`, `deploy-status.sh` and `test-merge-gate.sh` — so the failure mode is the guards' own guard quietly switching off. A filter that stops matching produces no run, no error and no annotation, which is the same self-concealing shape as [TI-69].
+
+Evidence, separated by strength rather than merged into one claim:
+
+| Claim | Strength |
+| --- | --- |
+| The `pull_request` trigger fires at all | **Observed** repeatedly, incl. PR #477 and #478 |
+| `**/*.sh` in a `paths:` list matches a nested `scripts/*.sh` | **Observed** on GitHub's own matcher — throwaway branch `proof/ti79-sh-glob`, two temporary workflows each with a single-entry `paths:` list; a push changing only `scripts/sessions.sh` ran the `**/*.sh` one (run `31685559621`, `total_count=1` by full sha) and never ran the `**/*.no-such-extension-xyz` control |
+| `**/*.md` matches a nested path in a `paths-ignore` list | **Observed** in real history — `39e19fb5` changed only `desktop/MANUAL-VERIFICATION.md`, which matches only `**/*.md` in `deploy.yml`, and no Deploy run exists; `fb286458` is the positive control |
+| The same holds on the **`pull_request`** trigger specifically | **INFERRED, not observed.** `paths` and `paths-ignore` share one matching implementation across triggers, so the transfer is sound — but it is an inference |
+
+**Why the last one could not be closed before merging.** A `pull_request` filter is evaluated against the **whole PR diff**, and PR #479 also changes `docs/technical-improvements.md` and `.github/workflows/**` — both matching other entries — so any control run inside #479 is vacuous: its outcome is fixed regardless of the glob. A push to `main` is equally vacuous, since the `push:` trigger has had no `paths:` key since #477.
+
+**The control to run, once, after this merges.** Open a PR whose entire diff is a one-line comment change to `scripts/sessions.sh` or `scripts/next-doc-id.sh` — verified mechanically against the post-change list: every `.sh` file in the repo is matched by `**/*.sh` and by **no other entry**.
+
+- **Pass:** `gh pr checks <n>` lists `doc-ids` and `workflows`.
+- **Fail:** an empty check list. That is the coverage regression, and the fix is to restore the five enumerated entries alongside the glob.
+
+**Tooling trap that makes "nothing ran" unfalsifiable:** a short sha silently returns zero rows on **both** routes — `gh run list --commit <short>` gave 0 and `gh api …/actions/runs?head_sha=<short>` gave `total_count=0` on a commit that has exactly one run, while the full 40-character sha gave 1 on both. Always pass `$(git rev-parse <ref>)`.
+
+**Related:** [docs/learnings/waiting-without-scanning-process-cmdlines.md](learnings/waiting-without-scanning-process-cmdlines.md) is the written rule. [docs/learnings/a-mechanism-nobody-has-watched-work-is-not-working.md](learnings/a-mechanism-nobody-has-watched-work-is-not-working.md) carries this as instance 2 and its live recurrence.
 
 ---
 

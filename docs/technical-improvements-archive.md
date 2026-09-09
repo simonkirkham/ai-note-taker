@@ -255,3 +255,25 @@ box. Counting runner processes is the sound instrument; load average is corrobor
 **Not done, deliberately:** a permanent hermetic self-test of the retry (the [TI-77] `scripts/test-merge-gate.sh` precedent). Stubbing the pinned checksums as well as the download is a larger surface than the one line it guards, plus a step on every push to `main`. File it as its own row if wanted.
 
 **Still open, same class:** [TI-87] — an unretried Electron download that drops a connection and reds a pull request.
+
+## TI-83. Why subtraction beat keeping two lists in step
+
+✅ **Done** — raised 2026-08-11 (Hawk, PR [#471](https://github.com/simonkirkham/ai-note-taker/pull/471) / [TI-80], should-fix), fixed 2026-08-13 (PR [#477](https://github.com/simonkirkham/ai-note-taker/pull/477), squash `4fbf7286`).
+
+**What it would have cost:** a bug filed away as fixed while its row still sits in the open list — half-closed, with nothing saying so. `scripts/check-doc-ids.sh` reads `docs/phases/phase-bugs-archive.md` for two of its checks (duplicate `## BUG-N` entries; a bug living in *both* the live doc and the archive), and that file was in **neither** of `docs-check.yml`'s two `paths:` filters. A commit touching only the archive therefore matched neither trigger and ran no check at all — and archive-only is exactly the shape of a half-done close. Archiving is a Scribe step that commits straight to `main`, the route with no other guard.
+
+**Latent, not observed.** All **11** commits that have ever touched the archive on `main` also touched `phase-bugs.md`, which was already in the `pull_request` list, so every one of them matched; and the `push:` trigger did not exist until `14c6c034` (2026-08-12, [TI-80]), after the newest of them (`bb4c5611`, 2026-08-11). A hole, not a miss.
+
+**Fix — subtraction, not a checker.** The `paths:` list is deleted from the **push** trigger; `pull_request` keeps its list and gains the archive path. The list never scoped what got *checked* — actionlint lints every workflow and `check-doc-ids.sh` greps every tracking doc whatever a commit touched — it only decided whether the check *ran*, which made it pure drift surface with no upside. Deleting it closes every future instance rather than the one found. Cost: deploy wall clock unchanged (these jobs do not gate `deploy.yml`), `doc-ids` 19–23s and `workflows` 5–10s in parallel, £0 recurring (public repo, free standard-runner minutes).
+
+**The asymmetry is why the fix is one-sided.** Drift on the `pull_request` list is loud — a check visibly stops appearing on PRs. Drift on the `push` list is silent, and the push route is the one with no other guard. So the push list went and the PR list stayed.
+
+**Evidence:** `proof/ti83-paths` commit `1cf9468d` changed only the archive and added a duplicate `## BUG-1`, and produced **no run at all**; that branch's only run is [`31623178252`](https://github.com/simonkirkham/ai-note-taker/actions/runs/31623178252), on its parent. The branch is deleted, so the run id is the durable record.
+
+**Still unobserved on merge, deliberately recorded as such:** a push to `main` firing this workflow with **no** `paths:` at all. Both the proof run and the merge commit touch files that were in the old list, so neither proves it. Confirm on the next push to `main` whose files all fall outside that list (`gh run list --workflow docs-check.yml --event push --branch main --limit 5 --json headSha,createdAt,conclusion`); an absent sha means the trigger did not fire. Full account in [ti-83-subtraction-over-drift](learnings/ti-83-subtraction-over-drift.md).
+
+**Since observed — the paragraph above is superseded. First observed firing 2026-08-13:** sha `b12dc532`, run [`31685095607`](https://github.com/simonkirkham/ai-note-taker/actions/runs/31685095607), both jobs green (`workflows`, `doc-ids`). That commit touched **only** `docs/learnings/a-mechanism-nobody-has-watched-work-is-not-working.md` — a path the old `paths:` list did not cover, so it could not have run under the old filter. **Limit, in the same breath:** this proves the removal is not inert and that one previously-uncovered path is now covered; it does not prove every one is. The general claim still rests on reading the file (no `paths:` key at all), not on observed behaviour.
+
+**Second observation, 2026-08-13 — the named hole itself:** sha `917d7361`, run [`31685381389`](https://github.com/simonkirkham/ai-note-taker/actions/runs/31685381389), both jobs green. That commit touched **only** `docs/technical-improvements-archive.md` — an **archive-only** commit, the exact shape this row named as the latent hole, and it would have run nothing under the old `paths:` list. Stronger than the first arm, which landed on a path nobody had claimed was at risk; this one demonstrates the hole closed on the path the row was written about, rather than inferring it from the absence of a `paths:` key. **The limit above is unchanged:** two previously-uncovered paths are now observed covered — not all of them.
+
+**Depends on:** [TI-84] (PR #474, `608c882e`) — the unretried actionlint download, landed first so more runs on `main` could not mean more false red X's.

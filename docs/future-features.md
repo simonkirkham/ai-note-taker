@@ -210,3 +210,16 @@ _(Folder administration via the MCP graduated to **[Phase 47](phases/phase-47.md
 **Natural trigger:** once BUG-65's `rtf` measurement lands. If the live path is comfortably fast the tuning could simply be relaxed, which shrinks the problem; if threads become the next lever, the accuracy trade stays and this matters more.
 
 **Raised in:** BUG-65 review (2026-08-08).
+
+## Include transcript text in global search
+
+**What:** Extend the Phase 22 home-screen search so it also finds notes by **what was said** in them, not just title, Quick notes, Final Notes, tags and action-item text. Today the `NoteSearchView` projection deliberately excludes raw transcript text ([phase-22.md](phases/phase-22.md), "Transcript text is not searched"), so a phrase that only ever appears in a transcript is unfindable from the notes list. Scope when broken down:
+- Fold transcript text into the searchable document (or a second, transcript-only field so it can be ranked/weighted differently from user-authored text).
+- A **projection backfill** — a new/changed projection ships empty, so every existing note needs `POST /admin/projections/rebuild` after the deploy.
+- **Ranking and snippets** — a transcript is 10–100× the length of the rest of a note's document, so it will dominate a naive fuzzy score; results need a "matched in transcript" affordance and a snippet showing the surrounding speech, not just a title hit.
+- **Cost/latency** — Phase 22 ranks fuzzily *in-Lambda* over a `UserId`-scoped read of every document. Adding transcripts multiplies the bytes scanned per query; this is the point on the curve Phase 22 predicted would bend, and it likely wants pagination/server-side filtering (see [[#scalable-note-loading-pagination-server-side-folder-tag-search]]) or a different index first.
+- Whether diarized transcripts should be searchable **by speaker** ("what did Speaker 2 say about X").
+
+**Why it isn't scheduled yet:** Deferred by the user on 2026-09-08 when scoping the "search in a transcript" request — the immediate need was **find-within-the-open-transcript**, which became **[Phase 52](phases/phase-52.md)** (frontend-only, no backend). This one is the opposite shape: a projection change, a mandatory backfill, and a real ranking/cost problem. Best sequenced after (or with) scalable note loading, which is where the search-at-scale rework already lives.
+
+**Raised in:** User feature request "search in a transcript", 2026-09-08 — the in-note reading of it graduated to Phase 52; this global reading was the explicitly-not-chosen alternative. Related: [[#scalable-note-loading-pagination-server-side-folder-tag-search]].

@@ -5,6 +5,9 @@
     "DOTNET_SKIP_FIRST_TIME_EXPERIENCE": "1"
   },
   "permissions": {
+    "additionalDirectories": [
+      "/mnt/c/code/ai-note-taker-slices/"
+    ],
     "allow": [
       "Bash(git *)",
       "Bash(gh *)",
