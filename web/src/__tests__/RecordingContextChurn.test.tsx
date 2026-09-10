@@ -45,6 +45,7 @@ vi.mock('../hooks/useTranscription', () => ({
 // is a lint gate here, and an effect with no dependency array runs once per commit — which is
 // what "how many times did this re-render?" actually means.
 let outsideRenders = 0
+let otherNoteRenders = 0
 let otherNoteViews = 0
 let recordingStarted = false
 
@@ -74,10 +75,13 @@ function TheRecordingNote({ noteId }: { noteId: string }) {
 /** Stands in for a note you are reading while another one records. */
 function AnotherNote({ noteId }: { noteId: string }) {
   const transcription = useNoteRecording(noteId)
-  // Counts how many DISTINCT objects this note was handed, not how many times React ran the
-  // component. A new object on every partial is what re-runs a note's effects and re-renders
-  // its memoised children, so identity is the cost that matters — and keying the effect on
-  // `transcription` measures exactly that.
+  // BOTH counts, because they fail separately and an earlier version of this spec had only the
+  // second — which is why it reported the boundary as fixed while this note was still being
+  // re-rendered 25 times for 25 partial results. Object identity was already stable; React was
+  // waking the component anyway, because a hook cannot subscribe to a context conditionally.
+  useEffect(() => {
+    otherNoteRenders += 1
+  })
   useEffect(() => {
     otherNoteViews += 1
   }, [transcription])
@@ -86,6 +90,7 @@ function AnotherNote({ noteId }: { noteId: string }) {
 
 function mount() {
   outsideRenders = 0
+  otherNoteRenders = 0
   otherNoteViews = 0
   recordingStarted = false
   return render(
@@ -106,7 +111,8 @@ describe('51-C — a live recording does not re-render the rest of the app', () 
     expect(screen.getByTestId('outside-recording-note')).toHaveTextContent('note-1')
 
     const outsideBefore = outsideRenders
-    const otherNoteBefore = otherNoteViews
+    const otherNoteRendersBefore = otherNoteRenders
+    const otherNoteViewsBefore = otherNoteViews
 
     // A meeting's worth of partial results, in the shape the speech service delivers them —
     // one commit each, not one batched commit, which is what makes this a churn test.
@@ -119,6 +125,9 @@ describe('51-C — a live recording does not re-render the rest of the app', () 
     expect(screen.getByTestId('note-transcript')).toHaveTextContent('partial result 24')
 
     expect(outsideRenders).toBe(outsideBefore)
-    expect(otherNoteViews).toBe(otherNoteBefore)
+    // The note you are READING while another one records. This is the biggest consumer of the
+    // two — it is a whole note screen, editor included — and the one the first attempt missed.
+    expect(otherNoteRenders).toBe(otherNoteRendersBefore)
+    expect(otherNoteViews).toBe(otherNoteViewsBefore)
   })
 })

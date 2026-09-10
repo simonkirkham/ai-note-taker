@@ -28,7 +28,12 @@ import { useToast } from "./components/toastContext";
 import { UNFILED_ID } from "./constants";
 import { findNode, findPath } from "./folderTree";
 import { RecordingSessionProvider } from "./hooks/recordingSession";
-import { useClearSessionLeave, useGuardLeave, useRecordingNoteId } from "./hooks/recordingSessionContext";
+import {
+  useBusyNoteId,
+  useClearSessionLeave,
+  useGuardLeave,
+  useRecordingNoteId,
+} from "./hooks/recordingSessionContext";
 import {
   useCreateFolder,
   useRenameFolder,
@@ -190,6 +195,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
   const { tabs, openTab, closeTab } = useOpenNoteTabs(wsId);
   // 51-C: which note is capturing, so the bar can mark it. Null unless something is.
   const recordingNoteId = useRecordingNoteId();
+  const busyNoteId = useBusyNoteId();
   // 51-C review follow-up: the session's own leave guard, used whenever the recording note is
   // not the one mounted. See requestLeave below.
   const guardLeave = useGuardLeave();
@@ -350,7 +356,13 @@ function AppContent({ signOut }: { signOut: () => void }) {
     // meant closing the recording note's tab from a different tab took the unguarded branch —
     // no confirm, and the capture left running with no tab left to mark it. That hole opened
     // the moment 51-C let the user be somewhere else while recording.
-    if (noteId === activeNoteId || noteId === recordingNoteId) {
+    // Gated on BUSY, not on recording. `recordingNoteId` clears at Stop, but the transcript
+    // commit, the audio upload and the speaker-labelling run on for minutes afterwards — and
+    // through that window this tab is the only handle the user has on a note still being
+    // written. Closing it unguarded takes that away with no prompt and no marker left anywhere
+    // on screen. Narrowing the marker to the live capture is what re-opened this; the guard has
+    // to stay wide.
+    if (noteId === activeNoteId || noteId === busyNoteId) {
       requestLeave(doClose, "close this tab");
     } else doClose();
   }
@@ -571,6 +583,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
             homeIsCurrentPage={!activeNoteId && !activeFolderId}
             reconciled={cardsLoaded}
             recordingNoteId={recordingNoteId}
+            savingNoteId={busyNoteId}
             onSelect={handleSelectTab}
             onSelectHome={handleHome}
             onClose={handleCloseTab}

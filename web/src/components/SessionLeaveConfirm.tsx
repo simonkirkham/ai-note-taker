@@ -44,6 +44,9 @@ export default function SessionLeaveConfirm({
           {/* Correct only by coincidence when hardcoded: `finishing` is driven by the
               wait-for-the-save flag, which today only sign-out passes. Say what the caller
               actually asked for, so it stays true the first time another destination waits. */}
+          {/* The fallback is not decoration: `finishingDestination` is cleared when the leave
+              completes, and this banner can render for a frame either side of that. Sign-out is
+              the only destination that waits today, so it is the honest default. */}
           Finishing the transcript — we&rsquo;ll {finishingDestination ?? "sign out"} once
           it&rsquo;s saved&hellip;
         </span>

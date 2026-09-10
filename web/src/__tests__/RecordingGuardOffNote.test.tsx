@@ -256,11 +256,21 @@ describe('the leave guard follows the recording, not the note on screen', () => 
 
     expect(screen.queryByTestId('confirm-leave-button')).toBeNull()
 
-    // And the sign-out it was holding is gone with it, rather than waiting to fire on its own
-    // when the recording ends. Back on the recording note, its own guard raises exactly one
-    // confirm — `getBy` throws on a duplicate, which is the stacked-banner assertion.
+    // And the sign-out it was holding is gone with it, rather than firing on its own when the
+    // recording ends.
+    //
+    // The "still signed in" check below CANNOT carry that on its own, and a first version of
+    // this test leaned on it and passed against the broken build: the armed sign-out did fire,
+    // and then parked forever on the transcript commit, which this file holds open with a
+    // promise it never resolves. Still signed in — for the wrong reason entirely.
+    //
+    // The "finishing the transcript" banner is what tells the two apart. It renders only while
+    // a confirmed leave is waiting on that commit, so its ABSENCE is the proof nothing was
+    // still armed. Verified by deleting the ref-clearing effect: this line goes red, the other
+    // nine stay green.
     await userEvent.click(screen.getByTestId('mock-stop-recording'))
     await waitFor(() => expect(screen.getByTestId('mock-status')).toHaveTextContent('stopped'))
+    await waitFor(() => expect(screen.queryByTestId('finishing-transcript')).toBeNull())
     expect(screen.queryByRole('button', { name: /sign in with google/i })).toBeNull()
   })
 

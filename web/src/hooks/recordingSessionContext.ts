@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo } from 'react'
+import { createContext, useCallback, useContext, useMemo, useSyncExternalStore } from 'react'
 import type { UseTranscriptionResult } from './useTranscription'
 
 // 51-C: the context and its readers, split from the provider component.
@@ -40,6 +40,11 @@ export type NoteRecording = UseTranscriptionResult & {
    * falls back to the control's own local latch.
    */
   claimAutoAnalyse?: () => boolean
+  /**
+   * Hand the claim back after a failed write-up, so the next attempt is allowed. Without it a
+   * write-up that errors can never retry — the claim is taken before the request goes out.
+   */
+  releaseAutoAnalyse?: () => void
 }
 
 /**
@@ -83,6 +88,8 @@ export interface RecordingControlValue {
   autoAnalyseChoice: boolean
   /** Claim this capture's one automatic write-up; see `NoteRecording.claimAutoAnalyse`. */
   claimAutoAnalyse: () => boolean
+  /** Hand it back after a failure; see `NoteRecording.releaseAutoAnalyse`. */
+  releaseAutoAnalyse: () => void
   /** Claim the session for `noteId` and start it. */
   startIn: (noteId: string, ...args: StartArgs) => void
   /**
@@ -105,14 +112,37 @@ export interface RecordingControlValue {
 export const RecordingControlContext = createContext<RecordingControlValue | null>(null)
 
 /**
- * The live transcription session — the half that changes on every partial result. Read only by
- * the note that owns it, through `useNoteRecording`.
+ * The live transcription session — the half that changes on every partial result.
+ *
+ * Deliberately NOT the session itself. A context carrying the session re-renders every consumer
+ * whenever it changes, and a hook cannot subscribe conditionally, so the note you are READING
+ * re-rendered on every word of the other note's transcript — measured at 25 re-renders for 25
+ * partial results. Publishing a stable store instead means the context value never changes, and
+ * `useSyncExternalStore` re-renders only the reader whose own snapshot moved: the owning note
+ * gets the session, everyone else gets `IDLE` and stays put.
  */
-export const RecordingLiveContext = createContext<UseTranscriptionResult | null>(null)
+export interface RecordingLiveStore {
+  /** Called after every commit in which the session changed. */
+  subscribe: (listener: () => void) => () => void
+  /** The session as it stands. Stable between notifications, as `useSyncExternalStore` requires. */
+  getSession: () => UseTranscriptionResult
+}
+
+export const RecordingLiveContext = createContext<RecordingLiveStore | null>(null)
 
 /** Which note is currently recording, for the tab bar. Null when nothing is. */
 export function useRecordingNoteId(): string | null {
   return useContext(RecordingControlContext)?.recordingNoteId ?? null
+}
+
+/**
+ * The note that is recording OR still saving afterwards, for the tab bar and the close-tab
+ * guard. Wider than `useRecordingNoteId` on purpose: the marker follows the live capture, but
+ * everything that PROTECTS the note has to cover the whole busy period — Stop is not the end of
+ * the work, and the audio upload and speaker-labelling run on for minutes after it.
+ */
+export function useBusyNoteId(): string | null {
+  return useContext(RecordingControlContext)?.busyNoteId ?? null
 }
 
 /**
@@ -132,6 +162,9 @@ export function useClearSessionLeave(): () => void {
 
 // What a note that does NOT own the session sees. Every field is the idle value, so a note off
 // the recording path renders exactly as it did before this slice.
+/** No provider above us, so there is nothing to be woken by. */
+const subscribeToNothing = () => () => {}
+
 const IDLE: Omit<UseTranscriptionResult, 'startRecording'> = {
   status: 'idle',
   transcript: '',
@@ -151,7 +184,7 @@ const IDLE: Omit<UseTranscriptionResult, 'startRecording'> = {
  */
 export function useNoteRecording(noteId: string): NoteRecording {
   const ctx = useContext(RecordingControlContext)
-  const live = useContext(RecordingLiveContext)
+  const store = useContext(RecordingLiveContext)
   // Ownership follows the BINDING, not the capture: a note that has just stopped still owns
   // the session while its transcript commits and its recording uploads, and must keep seeing
   // the real status ('stopped'/'finalising') rather than being handed the idle view.
@@ -165,11 +198,17 @@ export function useNoteRecording(noteId: string): NoteRecording {
       ? 'recording'
       : 'saving'
   const startIn = ctx?.startIn
-  // Only the owning note looks at the live session. Resolving it to the module-level IDLE here
-  // rather than inside the memo below is what keeps the returned object STABLE for every other
-  // note: IDLE never changes identity, so a note off the recording path gets the same object
-  // back on every partial result, and its effects and memoised children stay put.
-  const view = owns && live ? live : IDLE
+  // Only the owning note follows the live session, and — because this is a store subscription
+  // rather than a context read — only the owning note RE-RENDERS for it. A note that does not
+  // own the session has a snapshot of `IDLE`, which never changes, so it is not woken at all.
+  //
+  // `IDLE` being a module constant is load-bearing twice over: it is the unchanging snapshot
+  // that keeps a non-owner asleep, and it keeps the object returned below stable so that note's
+  // effects and memoised children stay put too.
+  const view = useSyncExternalStore(
+    store?.subscribe ?? subscribeToNothing,
+    () => (owns && store ? store.getSession() : IDLE),
+  )
 
   const startRecording = useCallback<UseTranscriptionResult['startRecording']>(
     (...args) => startIn?.(noteId, ...args),
@@ -179,6 +218,7 @@ export function useNoteRecording(noteId: string): NoteRecording {
   const hasRecordedThisSession = ctx?.recordedNoteId === noteId
   const autoAnalyseChoice = ctx?.autoAnalyseChoice ?? true
   const claimAutoAnalyse = ctx?.claimAutoAnalyse
+  const releaseAutoAnalyse = ctx?.releaseAutoAnalyse
 
   return useMemo(
     () => ({
@@ -189,6 +229,7 @@ export function useNoteRecording(noteId: string): NoteRecording {
       hasRecordedThisSession,
       autoAnalyseChoice,
       claimAutoAnalyse,
+      releaseAutoAnalyse,
     }),
     [
       view,
@@ -198,6 +239,7 @@ export function useNoteRecording(noteId: string): NoteRecording {
       hasRecordedThisSession,
       autoAnalyseChoice,
       claimAutoAnalyse,
+      releaseAutoAnalyse,
     ],
   )
 }

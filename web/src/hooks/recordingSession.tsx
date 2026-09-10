@@ -6,6 +6,7 @@ import {
   RecordingControlContext,
   type RecordingControlValue,
   RecordingLiveContext,
+  type RecordingLiveStore,
   type StartArgs,
 } from './recordingSessionContext'
 import { useTranscription } from './useTranscription'
@@ -76,6 +77,10 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
     return true
   }, [])
 
+  const releaseAutoAnalyse = useCallback(() => {
+    analyseClaimedRef.current = false
+  }, [])
+
   const isCapturing =
     session.status === 'requestingCredentials' ||
     session.status === 'recording' ||
@@ -116,9 +121,33 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
   // Read through a ref so `startIn` does not take a dependency on the live session. Depending on
   // it directly gave `startIn` a new identity on every partial transcript result, which flowed
   // into the context value and re-rendered every consumer several times a second.
+  //
+  // The same ref is what the live STORE serves. Publishing a stable store rather than the session
+  // itself is what lets a note that does not own the session sleep through the whole meeting —
+  // see `RecordingLiveStore`. The listener set is a plain ref: it must survive re-renders without
+  // causing one.
   const sessionRef = useRef(session)
+  const liveListenersRef = useRef(new Set<() => void>())
+  // `useMemo` with no dependencies rather than a ref: the store must be created once and never
+  // change identity — a store that changed would re-subscribe every consumer on every render,
+  // which is the cost this exists to remove — and a ref may not be read while rendering, which
+  // handing it to the context below would be. The refs it closes over are only touched inside
+  // these callbacks, which is not during render.
+  const liveStore = useMemo<RecordingLiveStore>(
+    () => ({
+      subscribe: (listener) => {
+        liveListenersRef.current.add(listener)
+        return () => liveListenersRef.current.delete(listener)
+      },
+      getSession: () => sessionRef.current,
+    }),
+    [],
+  )
   useEffect(() => {
     sessionRef.current = session
+    // After commit, so a subscriber reading the snapshot mid-render can never see a session
+    // newer than the one this render was built from.
+    for (const listener of liveListenersRef.current) listener()
   }, [session])
   const boundNoteIdRef = useRef(boundNoteId)
   useEffect(() => {
@@ -133,11 +162,18 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
     // Single-recorder rule: a LIVE capture is never silently displaced. A merely-bound note
     // (stopped, committing) does not block another note from starting.
     //
-    // Phrased against `recordingNoteId`, not `isCapturing && boundNoteId !== noteId`: the
+    // Phrased against `busyNoteId`, not `isCapturing && boundNoteId !== noteId`: the
     // latter refuses EVERY claim whenever the status is non-idle while no note is bound —
     // a state production cannot reach, but one the refusal permanently locks up if it ever
     // does, because nothing can then acquire the binding. The question being asked is "is
-    // another note holding a live capture?", so ask that.
+    // another note still working?", so ask that. NOT `recordingNoteId`, which since the
+    // marker fix covers only the live capture — a second note starting mid-save is exactly
+    // the overlap the comment above says waiting exists to prevent.
+    //
+    // Read through refs. Safe because this only runs from a click handler, and React flushes
+    // pending passive effects at the start of a discrete event, so both are current by then —
+    // and the button is independently disabled from render-derived state. The refs exist so
+    // `startIn` does not take a dependency on the live session and churn every consumer.
     if (busyNoteIdRef.current !== null && busyNoteIdRef.current !== noteId) return
 
     // Already bound to this note — start now rather than via the ref. Routing this through
@@ -312,6 +348,10 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
     }
     leavingRef.current = false
     proceed?.()
+    // Cleared last, and only after the wait: the banner reads it for the whole time it is up,
+    // so clearing it earlier would blank the sentence mid-save. Leaving it set instead would
+    // have the next leave's banner briefly naming the previous destination.
+    setFinishingDestination(null)
   }, [session])
 
   // C2: the session's confirm must stand down the moment the note's own guard takes over,
@@ -321,6 +361,7 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
     pendingLeaveRef.current = null
     pendingAwaitTranscriptRef.current = false
     setLeaveDestination(null)
+    setFinishingDestination(null)
   }, [])
 
   // The slice's regression detector. If this provider ever unmounts while a capture is still
@@ -362,6 +403,7 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
       recordedNoteId: recording?.noteId ?? null,
       autoAnalyseChoice: recording?.autoAnalyse ?? true,
       claimAutoAnalyse,
+      releaseAutoAnalyse,
       startIn,
       guardLeave,
       clearSessionLeave: cancelLeave,
@@ -372,6 +414,7 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
       busyNoteId,
       recording,
       claimAutoAnalyse,
+      releaseAutoAnalyse,
       startIn,
       guardLeave,
       cancelLeave,
@@ -380,7 +423,7 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
 
   return (
     <RecordingControlContext value={control}>
-      <RecordingLiveContext value={session}>
+      <RecordingLiveContext value={liveStore}>
         {children}
         <SessionLeaveConfirm
           destination={leaveDestination}

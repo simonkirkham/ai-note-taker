@@ -32,7 +32,7 @@ export default function RecordControl({
   const { status, transcript, elapsedSeconds, error, startRecording, stopRecording, reset } =
     transcription;
   const otherNoteRecording = transcription.otherNoteRecording ?? false;
-  const { autoAnalyseChoice, claimAutoAnalyse } = transcription;
+  const { autoAnalyseChoice, claimAutoAnalyse, releaseAutoAnalyse } = transcription;
   // Say which it is. "Another note is recording" is wrong and confusing when the other note
   // has already stopped and is only finishing its save — the user sees nothing recording
   // anywhere and is told something is.
@@ -100,11 +100,17 @@ export default function RecordControl({
         onAnalysisComplete?.();
       } catch (err) {
         setAnalyseError(reportAnalyseFailure(err, { noteId, trigger, startedAt }).message);
+        // Hand the one-shot claim back. It is taken before the request goes out, so without
+        // this a failed automatic write-up could never be retried: the error message is local
+        // state and dies with the next tab switch, and the claim would already be spent — so
+        // the note is left un-analysed with nothing on screen saying the manual button needs
+        // pressing. Releasing it lets the next Stop, or a re-record, try again.
+        releaseAutoAnalyse?.();
       } finally {
         setIsAnalysing(false);
       }
     },
-    [noteId, onAnalysisComplete],
+    [noteId, onAnalysisComplete, releaseAutoAnalyse],
   );
 
   useEffect(() => {

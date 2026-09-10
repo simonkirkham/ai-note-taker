@@ -293,6 +293,20 @@
   50% { opacity: 0.3; }
 }
 
+/* The same dot, not pulsing and not red: a meeting that has STOPPED and is still writing itself
+   away. It has to stay visible — that tab is the only handle on a note still being saved, and
+   closing it is still guarded — but it must not claim to be recording, which is what the pulsing
+   red dot did for the minutes on-device saving takes. */
+.savingDot {
+  display: inline-block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-right: 0.375rem;
+  border-radius: 50%;
+  background: var(--color-text-muted);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .recordingDot {
     animation: none;
