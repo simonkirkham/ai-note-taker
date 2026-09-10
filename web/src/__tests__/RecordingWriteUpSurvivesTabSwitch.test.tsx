@@ -203,6 +203,36 @@ describe('51-C — the write-up still runs after looking at another note', () =>
     await openTab('Standup')
 
     await waitFor(() => expect(analysed).toEqual(['note-1', 'note-1']))
+
+    // And the retry, having SUCCEEDED, holds the claim — otherwise every further glance at
+    // another note would write the meeting up again.
+    await openTab('Client call')
+    await openTab('Standup')
+    await waitFor(() => expect(screen.getByTestId('record-control')).toBeInTheDocument())
+    expect(analysed).toEqual(['note-1', 'note-1'])
+  })
+
+  // The app's own remedy path, and the last way the one-shot claim leaked: the automatic
+  // write-up fails, the error message invites you to press Analyse, you do, and it works. The
+  // failure had handed the claim back and the manual success never took it, so the next glance
+  // at another note wrote the meeting up a third time — over the summary just produced.
+  it('does not write it up again after I fix a failed write-up with the Analyse button', async () => {
+    renderApp()
+    failNextAnalyse = true
+    await recordInStandup()
+    await userEvent.click(screen.getByTestId('transcription-stop-button'))
+    await waitFor(() => expect(analysed).toEqual(['note-1']))
+    expect(await screen.findByTestId('transcription-analyse-error')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByTestId('transcription-analyse-button'))
+    await waitFor(() => expect(analysed).toEqual(['note-1', 'note-1']))
+    await waitFor(() => expect(screen.queryByTestId('transcription-analyse-error')).toBeNull())
+
+    await openTab('Client call')
+    await openTab('Standup')
+
+    await waitFor(() => expect(screen.getByTestId('record-control')).toBeInTheDocument())
+    expect(analysed).toEqual(['note-1', 'note-1'])
   })
 
   // The mirror of that: handing the claim back is only ever right for the AUTOMATIC path. The

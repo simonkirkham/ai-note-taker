@@ -156,7 +156,11 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
     //
     // This effect is declared ABOVE the one that fires the parked start, so it runs first and
     // publishes `null`; the start then clears the transcript and re-runs this with the binding
-    // live. Keep them in that order.
+    // live. Keep them in that order — swapping them reddens the ownership spec, alone.
+    //
+    // The transient this creates, named rather than left to be found: for that one commit the
+    // note owns nothing, so it renders the idle control and deregisters its leave guard. Inert,
+    // because no user input is possible inside a single commit — but it is real.
     const parkedFor = pendingStartRef.current?.noteId
     liveRef.current = {
       noteId: parkedFor === boundNoteId ? null : boundNoteId,
@@ -382,16 +386,20 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
   // or both render at once — two red banners stacked, and the stale one still holding an
   // armed sign-out that the effect above would then fire.
   const cancelLeave = useCallback(() => {
+    // Only an UNANSWERED confirm stands down. Once a leave is confirmed it is already running —
+    // the transcript is committing and the destination fires when it lands — and the banner
+    // saying so is the only thing on screen telling the user a sign-out is still coming.
+    // Clearing it here signed people out with no warning at all: confirm the sign-out, click
+    // back to the recording note, close its tab, and the banner vanished while the sign-out
+    // stayed armed. Two truthful banners beat one silent sign-out.
+    //
+    // This also leaves `leavingRef` latched, which is what it is for: it stops a second confirm
+    // arming over a leave already in progress.
+    if (leavingRef.current) return
     pendingLeaveRef.current = null
     pendingAwaitTranscriptRef.current = false
     setLeaveDestination(null)
     setFinishingDestination(null)
-    // The banner too, not just the destination. `App` calls this immediately before handing the
-    // leave to the mounted note's guard, so a session leave already parked on the commit would
-    // otherwise leave "Finishing the transcript…" sitting underneath the note's own confirm —
-    // the two-banners-at-once state the rest of this file exists to prevent.
-    setFinishingTranscript(false)
-    leavingRef.current = false
   }, [])
 
   // The slice's regression detector. If this provider ever unmounts while a capture is still

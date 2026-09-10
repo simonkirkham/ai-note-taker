@@ -7,7 +7,7 @@ import { clearToken } from '../auth/tokenStore'
 import { ToastProvider } from '../components/ToastProvider'
 import type { NoteRecording } from '../hooks/recordingSessionContext'
 import type { TranscriptionStatus, UseTranscriptionResult } from '../hooks/useTranscription'
-import { render, screen, waitFor, within } from '../test/render'
+import { act, render, screen, waitFor, within } from '../test/render'
 import { server } from '../test/setup'
 
 // 51-C review follow-up — the leave guard must belong to the SESSION, not to whichever note
@@ -45,10 +45,16 @@ let commitAwaited = 0
 // Held open so a test can prove the sign-out WAITS, rather than merely that it asked.
 let releaseCommit: (() => void) | null = null
 
+/** Set by the mocked hook; ends the minutes-long save that follows Stop. */
+let finishSaving: () => void = () => {}
+
 vi.mock('../hooks/useTranscription', () => ({
   useTranscription: (): UseTranscriptionResult => {
     const [status, setStatus] = useState<TranscriptionStatus>('idle')
     const [transcript, setTranscript] = useState('')
+    // Ends the post-Stop save on demand, from outside the note — the note's tab may well have
+    // been closed by then, so there is no control on screen to drive it.
+    finishSaving = () => setStatus('stopped')
     return {
       status,
       transcript,
@@ -57,7 +63,12 @@ vi.mock('../hooks/useTranscription', () => ({
       recordingUpload: 'idle',
       diarization: 'idle',
       startRecording: () => { setStatus('recording'); setTranscript('live words') },
-      stopRecording: () => setStatus('stopped'),
+      // 'finalising', not 'stopped' — this is the on-device shape, where the stop-time pass and
+      // the speaker-labelling run for minutes before anything is committed. It matters here
+      // because the note stays "still working" through that window, so its own leave guard
+      // stays registered; a mock that jumps straight to 'stopped' cannot reach the paths where
+      // the mounted note's guard takes over from the session's.
+      stopRecording: () => setStatus('finalising'),
       awaitCommit: async () => {
         commitAwaited += 1
         await new Promise<void>((resolve) => { releaseCommit = resolve })
@@ -269,9 +280,40 @@ describe('the leave guard follows the recording, not the note on screen', () => 
     // still armed. Verified by deleting the ref-clearing effect: this line goes red, the other
     // nine stay green.
     await userEvent.click(screen.getByTestId('mock-stop-recording'))
-    await waitFor(() => expect(screen.getByTestId('mock-status')).toHaveTextContent('stopped'))
+    await waitFor(() => expect(screen.getByTestId('mock-status')).toHaveTextContent('finalising'))
     await waitFor(() => expect(screen.queryByTestId('finishing-transcript')).toBeNull())
     expect(screen.queryByRole('button', { name: /sign in with google/i })).toBeNull()
+  })
+
+  // The warning must survive everything until the sign-out actually happens.
+  //
+  // "Finishing the transcript — we'll sign out once it's saved…" is the only thing on screen
+  // saying a sign-out is still coming; the token is deliberately held until the transcript
+  // lands. Standing the session's confirm down used to clear that banner too, so navigating
+  // back to the recording note and closing its tab made the warning vanish while the sign-out
+  // stayed armed — signed out moments later with nothing having said so.
+  it('keeps saying a sign-out is coming, even if I go and do something else', async () => {
+    renderApp()
+    await recordInStandupThenLeaveIt()
+
+    await userEvent.click(screen.getByTestId('sign-out-button'))
+    await userEvent.click(await screen.findByTestId('confirm-leave-button'))
+    await waitFor(() => expect(commitAwaited).toBe(1))
+    expect(await screen.findByTestId('finishing-transcript')).toBeInTheDocument()
+
+    // Back to the recording note and close its tab — which hands the leave to that note's own
+    // guard, and used to clear the banner on the way past.
+    await userEvent.click(within(tab('Standup')).getByTestId('open-note-tab-label'))
+    await waitFor(() => expect(window.location.pathname).toBe('/w/__default__/notes/note-1'))
+    await userEvent.click(within(tab('Standup')).getByTestId('open-note-tab-close'))
+
+    // Still saving, still signed in, and still SAYING both.
+    expect(screen.getByTestId('finishing-transcript')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /sign in with google/i })).toBeNull()
+
+    // And when the save lands, the sign-out it was warning about actually happens.
+    releaseCommit?.()
+    expect(await screen.findByRole('button', { name: /sign in with google/i })).toBeInTheDocument()
   })
 
   it('asks before closing the recording tab from a different tab', async () => {
@@ -343,7 +385,7 @@ describe('the leave guard follows the recording, not the note on screen', () => 
 
   // The guard must not fire when nothing is capturing — every one of these is an ordinary
   // action the rest of the time, and a stale guard would block the app.
-  it('does not ask once the recording has stopped', async () => {
+  it('does not ask once the recording has stopped AND finished saving', async () => {
     renderApp()
     await recordInStandupThenLeaveIt()
     // Stop it from where it is: close its tab and confirm.
@@ -351,8 +393,17 @@ describe('the leave guard follows the recording, not the note on screen', () => 
     await userEvent.click(await screen.findByTestId('confirm-leave-button'))
     await waitFor(() => expect(screen.queryByTestId('open-note-tab-recording')).toBeNull())
 
+    // Stop is not the end of the work, and until the save lands there is still something to
+    // protect — the guard is deliberately still up here. The test used to end at the line
+    // above and call that "stopped", which is the confusion the whole post-Stop window exists
+    // to correct.
     await userEvent.click(screen.getByTestId('sign-out-button'))
+    expect(await screen.findByTestId('confirm-leave-button')).toBeInTheDocument()
+    await userEvent.click(screen.getByTestId('cancel-leave-button'))
 
+    await act(async () => finishSaving())
+
+    await userEvent.click(screen.getByTestId('sign-out-button'))
     expect(screen.queryByTestId('confirm-leave-button')).toBeNull()
   })
 })

@@ -97,6 +97,13 @@ export default function RecordControl({
       const startedAt = Date.now();
       try {
         await analyseNote(noteId);
+        // Take the claim on ANY success, not just the automatic one. The manual button is the
+        // remedy the error message points at, so the sequence "automatic write-up fails →
+        // press Analyse → it works → glance at another note" is the normal path, not an edge:
+        // the failure had handed the claim back, the manual success never re-took it, and the
+        // remount then wrote the meeting up a THIRD time over the summary just produced.
+        // Idempotent — the automatic path already holds it by here and this returns false.
+        claimAutoAnalyse?.();
         onAnalysisComplete?.();
       } catch (err) {
         setAnalyseError(reportAnalyseFailure(err, { noteId, trigger, startedAt }).message);
@@ -117,7 +124,7 @@ export default function RecordControl({
         setIsAnalysing(false);
       }
     },
-    [noteId, onAnalysisComplete, releaseAutoAnalyse],
+    [noteId, onAnalysisComplete, claimAutoAnalyse, releaseAutoAnalyse],
   );
 
   useEffect(() => {

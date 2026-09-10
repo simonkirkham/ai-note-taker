@@ -319,7 +319,14 @@ function AppContent({ signOut }: { signOut: () => void }) {
     //
     // `guardLeave` returns false when nothing is capturing, which is the ordinary case for
     // every one of these callers.
-    const guard = leaveGuardRef.current;
+    // The mounted note's guard only ever registers while THAT note is recording, so a leave
+    // naming a different note is not its business — it would raise a confirm about a note it is
+    // not protecting. True by construction today (the only callers that name a note can only
+    // name the active one in that state), but unenforced invariants are exactly how the
+    // unrelated-tab-close defect happened, so check it rather than rely on it.
+    const guard = opts?.noteId === undefined || opts.noteId === activeNoteId
+      ? leaveGuardRef.current
+      : null;
     if (guard) {
       // Stand the session's confirm down first. Without this both can be live at once: the
       // session raises one while the recording note is off-screen, the user then navigates TO
@@ -331,7 +338,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
     }
     if (guardLeave(proceed, destination, opts?.awaitTranscript ?? false, opts?.noteId)) return;
     proceed();
-  }, [guardLeave, clearSessionLeave]);
+  }, [guardLeave, clearSessionLeave, activeNoteId]);
 
   function handleSelectTab(noteId: string) {
     if (noteId === activeNoteId) return;
