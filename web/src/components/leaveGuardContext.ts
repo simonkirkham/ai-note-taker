@@ -26,7 +26,19 @@ import { createContext, useContext } from "react";
  * awaiting on every destination would hang ordinary navigation for no benefit. Every other
  * destination is safe already: the request outlives a route change.
  */
-export type LeaveOptions = { awaitTranscript?: boolean };
+export type LeaveOptions = {
+  awaitTranscript?: boolean;
+  /**
+   * The note this leave would destroy the capture of, when the leave only affects ONE note —
+   * closing that note's tab, moving that note. Omit for a leave that destroys any capture
+   * whatever (signing out, switching workspace).
+   *
+   * Without it the session's guard asks only "is anything busy?", so closing an unrelated tab
+   * while another note recorded raised "Still recording — close this tab?", and confirming it
+   * stopped a meeting the user had never referred to.
+   */
+  noteId?: string;
+};
 
 export type RequestLeave = (proceed: () => void, destination: string, opts?: LeaveOptions) => void;
 

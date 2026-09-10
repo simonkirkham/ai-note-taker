@@ -186,4 +186,22 @@ describe('51-C — the minutes after Stop, while the meeting is still being save
     // Not closed behind the confirm — the tab is still there to answer for.
     expect(tab('Standup')).toBeInTheDocument()
   })
+
+  // The other half of the pair, and the one that pins the actual property. Without it the test
+  // above passes for a much weaker reason: it cannot tell "guarded because THIS note is busy"
+  // from "guarded because SOMETHING is busy" — which is what the code did, and which turned an
+  // unrelated tab close into "Still recording — close this tab?" over a meeting the user had
+  // never referred to. Confirming that stopped it.
+  it('does not ask when I close an unrelated tab, and leaves the other meeting alone', async () => {
+    renderApp()
+    await stopInStandupThenLeaveIt()
+
+    // Client call is on screen and has nothing to do with the meeting saving in Standup.
+    await userEvent.click(within(tab('Client call')).getByTestId('open-note-tab-close'))
+
+    await waitFor(() => expect(screen.queryByText('Client call')).toBeNull())
+    expect(screen.queryByTestId('confirm-leave-button')).toBeNull()
+    // And the meeting is untouched — still saving, still marked.
+    expect(within(tab('Standup')).getByTestId('open-note-tab-saving')).toBeInTheDocument()
+  })
 })

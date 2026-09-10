@@ -33,7 +33,13 @@ vi.mock('../hooks/useTranscription', () => ({
       error: undefined,
       recordingUpload: 'idle',
       diarization: 'idle',
-      startRecording: () => setStatus('recording'),
+      // Clears the transcript, as the real hook does — a new meeting does not inherit the last
+      // one's words. Load-bearing for the ownership test below: without it the previous note's
+      // transcript lingers in the session and the stale-commit defect is invisible.
+      startRecording: () => {
+        setStatus('recording')
+        setTranscript('')
+      },
       stopRecording: () => setStatus('stopped'),
       awaitCommit: async () => {},
       reset: () => setStatus('idle'),
@@ -48,6 +54,8 @@ let outsideRenders = 0
 let otherNoteRenders = 0
 let otherNoteViews = 0
 let recordingStarted = false
+/** Every transcript each note was shown, in order, across every render. */
+let shown: Record<string, string[]> = {}
 
 /** Stands in for everything outside the note screen: reads the session, not the transcript. */
 function OutsideTheNote() {
@@ -88,11 +96,47 @@ function AnotherNote({ noteId }: { noteId: string }) {
   return null
 }
 
+/**
+ * Records every transcript this note is handed, and exposes a button to claim the session.
+ * Nothing is asserted from the final state — the defect being pinned is visible only in the
+ * intermediate commits, so the whole sequence is kept.
+ */
+function WatchedNote({ noteId }: { noteId: string }) {
+  const transcription = useNoteRecording(noteId)
+  const { transcript, startRecording, stopRecording } = transcription
+  useEffect(() => {
+    ;(shown[noteId] ??= []).push(transcript)
+  })
+  return (
+    <>
+      <button data-testid={`start-${noteId}`} onClick={() => startRecording(true, true)}>
+        record
+      </button>
+      <button data-testid={`stop-${noteId}`} onClick={() => stopRecording()}>
+        stop
+      </button>
+    </>
+  )
+}
+
+function mountTwoNotes() {
+  shown = {}
+  return render(
+    <MemoryRouter>
+      <RecordingSessionProvider>
+        <WatchedNote noteId="note-1" />
+        <WatchedNote noteId="note-2" />
+      </RecordingSessionProvider>
+    </MemoryRouter>,
+  )
+}
+
 function mount() {
   outsideRenders = 0
   otherNoteRenders = 0
   otherNoteViews = 0
   recordingStarted = false
+  shown = {}
   return render(
     <MemoryRouter>
       <RecordingSessionProvider>
@@ -129,5 +173,33 @@ describe('51-C — a live recording does not re-render the rest of the app', () 
     // two — it is a whole note screen, editor included — and the one the first attempt missed.
     expect(otherNoteRenders).toBe(otherNoteRendersBefore)
     expect(otherNoteViews).toBe(otherNoteViewsBefore)
+  })
+
+  // Ownership and the session it selects have to move together.
+  //
+  // They stopped being atomic when the transcript moved out of the context: ownership was read
+  // from the context (updated while the provider renders) and the session from the store
+  // (updated after commit). For one commit the note you had just pressed Record in was shown
+  // the PREVIOUS note's transcript and status — and effects run child-first, so the record
+  // control acted on that commit before the provider corrected it.
+  //
+  // Nothing about the final state shows this, which is why the assertion is over every value
+  // each note was handed rather than the last one.
+  it('never shows a note the previous note\'s transcript, not even for one render', async () => {
+    mountTwoNotes()
+
+    await act(async () => screen.getByTestId('start-note-1').click())
+    act(() => emitPartial('what the first meeting said'))
+    expect(shown['note-1']).toContain('what the first meeting said')
+
+    // Stop first — one meeting at a time is the rule, and this is the realistic sequence: the
+    // first note is stopped but still BOUND, still holding its transcript, when the second
+    // note claims the session.
+    await act(async () => screen.getByTestId('stop-note-1').click())
+    await act(async () => screen.getByTestId('start-note-2').click())
+    act(() => emitPartial('what the second meeting said'))
+
+    expect(shown['note-2']).not.toContain('what the first meeting said')
+    expect(shown['note-2']).toContain('what the second meeting said')
   })
 })

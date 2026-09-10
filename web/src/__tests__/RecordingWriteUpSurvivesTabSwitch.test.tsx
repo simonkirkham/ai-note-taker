@@ -84,6 +84,8 @@ const CLIENT_CALL = card('note-2', 'Client call')
 
 /** Every note the write-up was requested for, in order. */
 let analysed: string[] = []
+/** Makes the next write-up request fail, once. */
+let failNextAnalyse = false
 
 const renderApp = () =>
   render(
@@ -96,6 +98,7 @@ const renderApp = () =>
 
 beforeEach(() => {
   analysed = []
+  failNextAnalyse = false
   window.history.replaceState({}, '', '/')
   server.use(
     http.get('/api/w/:wsId/notes/cards', () => HttpResponse.json({ cards: [STANDUP, CLIENT_CALL] })),
@@ -112,6 +115,10 @@ beforeEach(() => {
     ),
     http.post('/api/w/:wsId/notes/:noteId/analyse', ({ params }) => {
       analysed.push(String(params.noteId))
+      if (failNextAnalyse) {
+        failNextAnalyse = false
+        return new HttpResponse(null, { status: 500 })
+      }
       return new HttpResponse(null, { status: 204 })
     }),
   )
@@ -179,6 +186,45 @@ describe('51-C — the write-up still runs after looking at another note', () =>
 
     await waitFor(() => expect(screen.getByTestId('record-control')).toBeInTheDocument())
     expect(analysed).toEqual(['note-1'])
+  })
+
+  // The one-shot claim is taken BEFORE the request goes out, so a write-up that fails has to
+  // hand it back or it can never be retried — the error message is local to the control and
+  // dies with the next tab switch, leaving the meeting un-analysed and nothing saying so.
+  it('can try again when the automatic write-up fails', async () => {
+    renderApp()
+    failNextAnalyse = true
+    await recordInStandup()
+    await userEvent.click(screen.getByTestId('transcription-stop-button'))
+    await waitFor(() => expect(analysed).toEqual(['note-1']))
+    expect(await screen.findByTestId('transcription-analyse-error')).toBeInTheDocument()
+
+    await openTab('Client call')
+    await openTab('Standup')
+
+    await waitFor(() => expect(analysed).toEqual(['note-1', 'note-1']))
+  })
+
+  // The mirror of that: handing the claim back is only ever right for the AUTOMATIC path. The
+  // manual Analyse button shares the same code, and a manual failure releasing a claim it never
+  // took wrote the meeting up a second time — over the top of a summary that had already
+  // succeeded. Three requests where there should be two.
+  it('does not write it up again when a manual retry fails after a successful one', async () => {
+    renderApp()
+    await recordInStandup()
+    await userEvent.click(screen.getByTestId('transcription-stop-button'))
+    await waitFor(() => expect(analysed).toEqual(['note-1']))
+
+    failNextAnalyse = true
+    await userEvent.click(screen.getByTestId('transcription-analyse-button'))
+    await waitFor(() => expect(analysed).toEqual(['note-1', 'note-1']))
+    expect(await screen.findByTestId('transcription-analyse-error')).toBeInTheDocument()
+
+    await openTab('Client call')
+    await openTab('Standup')
+
+    await waitFor(() => expect(screen.getByTestId('record-control')).toBeInTheDocument())
+    expect(analysed).toEqual(['note-1', 'note-1'])
   })
 
   it('does not write it up when I turned the automatic write-up off before recording', async () => {

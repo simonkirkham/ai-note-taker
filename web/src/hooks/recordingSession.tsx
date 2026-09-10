@@ -127,6 +127,8 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
   // see `RecordingLiveStore`. The listener set is a plain ref: it must survive re-renders without
   // causing one.
   const sessionRef = useRef(session)
+  // The session and its binding, published as ONE value — see `RecordingLiveStore.getLive`.
+  const liveRef = useRef({ noteId: boundNoteId, session })
   const liveListenersRef = useRef(new Set<() => void>())
   // `useMemo` with no dependencies rather than a ref: the store must be created once and never
   // change identity — a store that changed would re-subscribe every consumer on every render,
@@ -139,16 +141,31 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
         liveListenersRef.current.add(listener)
         return () => liveListenersRef.current.delete(listener)
       },
-      getSession: () => sessionRef.current,
+      getLive: () => liveRef.current,
     }),
     [],
   )
   useEffect(() => {
     sessionRef.current = session
+    // Withheld while a start is still parked for this note. `useTranscription` is ONE instance
+    // whose transcript survives a binding change until `startRecording` clears it, so handing
+    // the session over the moment the binding moves showed the new note the PREVIOUS meeting's
+    // words and its 'stopped' status — for the commit between the claim and the start actually
+    // firing. Child effects run first, so the record control acted on that commit: it saw a
+    // stopped meeting with a transcript and wrote up the wrong, empty note.
+    //
+    // This effect is declared ABOVE the one that fires the parked start, so it runs first and
+    // publishes `null`; the start then clears the transcript and re-runs this with the binding
+    // live. Keep them in that order.
+    const parkedFor = pendingStartRef.current?.noteId
+    liveRef.current = {
+      noteId: parkedFor === boundNoteId ? null : boundNoteId,
+      session,
+    }
     // After commit, so a subscriber reading the snapshot mid-render can never see a session
     // newer than the one this render was built from.
     for (const listener of liveListenersRef.current) listener()
-  }, [session])
+  }, [session, boundNoteId])
   const boundNoteIdRef = useRef(boundNoteId)
   useEffect(() => {
     boundNoteIdRef.current = boundNoteId
@@ -230,7 +247,7 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
   const leavingRef = useRef(false)
 
   const guardLeave = useCallback(
-    (proceed: () => void, destination: string, awaitTranscript: boolean) => {
+    (proceed: () => void, destination: string, awaitTranscript: boolean, noteId?: string) => {
       // Nothing in flight → nothing to protect.
       //
       // Gated on BUSY, not on capturing. An earlier version asked only "is it recording?",
@@ -239,6 +256,13 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
       // dispatched after awaits — so signing out mid-upload lost the audio file and the
       // speaker labels with no warning at all.
       if (busyNoteId === null) return false
+      // Scoped to the note being left, when the caller names one. Asking only "is anything
+      // busy?" meant closing an UNRELATED tab while another note recorded raised "Still
+      // recording — close this tab?", and confirming it called stopRecording on a session the
+      // user had never referred to: the rest of the meeting lost, under a message saying it had
+      // been saved. Callers that genuinely destroy any capture (sign out, switch workspace)
+      // name no note and still guard.
+      if (noteId !== undefined && noteId !== busyNoteId) return false
       if (leavingRef.current) return true
       pendingLeaveRef.current = proceed
       pendingAwaitTranscriptRef.current = awaitTranscript
@@ -362,6 +386,12 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
     pendingAwaitTranscriptRef.current = false
     setLeaveDestination(null)
     setFinishingDestination(null)
+    // The banner too, not just the destination. `App` calls this immediately before handing the
+    // leave to the mounted note's guard, so a session leave already parked on the commit would
+    // otherwise leave "Finishing the transcript…" sitting underneath the note's own confirm —
+    // the two-banners-at-once state the rest of this file exists to prevent.
+    setFinishingTranscript(false)
+    leavingRef.current = false
   }, [])
 
   // The slice's regression detector. If this provider ever unmounts while a capture is still

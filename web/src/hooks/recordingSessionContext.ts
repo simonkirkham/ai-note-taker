@@ -101,7 +101,13 @@ export interface RecordingControlValue {
    * capture outlives the note screen — a note-owned guard is absent in exactly the positions
    * this slice creates.
    */
-  guardLeave: (proceed: () => void, destination: string, awaitTranscript: boolean) => boolean
+  guardLeave: (
+    proceed: () => void,
+    destination: string,
+    awaitTranscript: boolean,
+    /** Only guard if THIS note is the busy one; omit to guard against any capture at all. */
+    noteId?: string,
+  ) => boolean
   /**
    * Stand the session's confirm down. Called when the mounted note's own guard takes the
    * leave instead, so the two can never be on screen together.
@@ -122,10 +128,26 @@ export const RecordingControlContext = createContext<RecordingControlValue | nul
  * gets the session, everyone else gets `IDLE` and stays put.
  */
 export interface RecordingLiveStore {
-  /** Called after every commit in which the session changed. */
+  /** Called after every commit in which the session or its binding changed. */
   subscribe: (listener: () => void) => () => void
-  /** The session as it stands. Stable between notifications, as `useSyncExternalStore` requires. */
-  getSession: () => UseTranscriptionResult
+  /**
+   * The session AND the note it belongs to, together in one snapshot.
+   *
+   * Together is the whole point. Reading ownership from the control context (updated during
+   * the provider's render) and the session from here (updated in a passive effect) made them
+   * one commit out of step: pressing Record in a second note showed that note the FIRST note's
+   * status and transcript for one commit, and child effects — which run before the provider's —
+   * acted on it. One snapshot cannot be half-updated.
+   *
+   * The returned object is replaced only in the effect that notifies, so it is stable between
+   * notifications as `useSyncExternalStore` requires.
+   *
+   * That is NOT the same as "the owner only wakes for real transcript changes". `useTranscription`
+   * returns a fresh object every provider render, so the owning note is woken whenever the
+   * provider renders at all — including for a leave confirm or a route change. Correct, and no
+   * worse than the context this replaced, but do not read it as finer-grained than it is.
+   */
+  getLive: () => { noteId: string | null; session: UseTranscriptionResult }
 }
 
 export const RecordingLiveContext = createContext<RecordingLiveStore | null>(null)
@@ -188,7 +210,10 @@ export function useNoteRecording(noteId: string): NoteRecording {
   // Ownership follows the BINDING, not the capture: a note that has just stopped still owns
   // the session while its transcript commits and its recording uploads, and must keep seeing
   // the real status ('stopped'/'finalising') rather than being handed the idle view.
-  const owns = ctx?.boundNoteId === noteId
+  //
+  // Read from the STORE below rather than from `ctx.boundNoteId` here, so ownership and the
+  // session it selects can never be one commit apart — see `RecordingLiveStore.getLive`.
+  //
   // The lockout follows the CAPTURE. Keying it off the binding instead is what left the app
   // recordable-once: the binding never clears, so every other note stayed disabled forever.
   const otherNoteRecording = ctx != null && ctx.busyNoteId !== null && ctx.busyNoteId !== noteId
@@ -205,10 +230,10 @@ export function useNoteRecording(noteId: string): NoteRecording {
   // `IDLE` being a module constant is load-bearing twice over: it is the unchanging snapshot
   // that keeps a non-owner asleep, and it keeps the object returned below stable so that note's
   // effects and memoised children stay put too.
-  const view = useSyncExternalStore(
-    store?.subscribe ?? subscribeToNothing,
-    () => (owns && store ? store.getSession() : IDLE),
-  )
+  const view = useSyncExternalStore(store?.subscribe ?? subscribeToNothing, () => {
+    const live = store?.getLive()
+    return live && live.noteId === noteId ? live.session : IDLE
+  })
 
   const startRecording = useCallback<UseTranscriptionResult['startRecording']>(
     (...args) => startIn?.(noteId, ...args),

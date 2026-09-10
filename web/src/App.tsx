@@ -301,8 +301,9 @@ function AppContent({ signOut }: { signOut: () => void }) {
   // 49-A: switching or closing a tab is an in-app navigate, which does NOT fire the popstate
   // trap that protects a recording (BUG-34) — so the mounted note gets to intercept the leave
   // first. The guard takes ownership of `proceed` and runs it once the user confirms.
-  // Stable identity: it reads a ref, so it never needs to change — and it is a context
-  // value, so a new one each render would re-render every consumer.
+  // Not stable any more: it depends on `guardLeave`, which is re-created whenever `busyNoteId`
+  // changes. That is twice a recording, so the cost is nil — but it is no longer the
+  // never-changes callback an earlier version of this comment described.
   const requestLeave = useCallback((proceed: () => void, destination: string, opts?: LeaveOptions) => {
     // Two guards, and never both at once.
     //
@@ -328,7 +329,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
       guard(proceed, destination, opts);
       return;
     }
-    if (guardLeave(proceed, destination, opts?.awaitTranscript ?? false)) return;
+    if (guardLeave(proceed, destination, opts?.awaitTranscript ?? false, opts?.noteId)) return;
     proceed();
   }, [guardLeave, clearSessionLeave]);
 
@@ -363,7 +364,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
     // on screen. Narrowing the marker to the live capture is what re-opened this; the guard has
     // to stay wide.
     if (noteId === activeNoteId || noteId === busyNoteId) {
-      requestLeave(doClose, "close this tab");
+      requestLeave(doClose, "close this tab", { noteId });
     } else doClose();
   }
 
@@ -674,10 +675,16 @@ function NoteRoute({
       // transcript to it is pure loss, and the move waits for the leave confirmation.
       onMoveToWorkspace={(workspaceId) => {
         const target = otherWorkspaces.find((ws) => ws.workspaceId === workspaceId)?.name ?? "";
-        requestLeave(() => {
-          onMoveNoteToWorkspace(noteId, workspaceId);
-          void navigate(`/w/${wsId}`);
-        }, `move this note to ${destinationName(target, "another workspace")}`);
+        requestLeave(
+          () => {
+            onMoveNoteToWorkspace(noteId, workspaceId);
+            void navigate(`/w/${wsId}`);
+          },
+          `move this note to ${destinationName(target, "another workspace")}`,
+          // Only this note's own capture is at stake — moving it cannot disturb a recording
+          // running in a different note.
+          { noteId },
+        );
       }}
     />
   );

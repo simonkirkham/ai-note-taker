@@ -100,12 +100,19 @@ export default function RecordControl({
         onAnalysisComplete?.();
       } catch (err) {
         setAnalyseError(reportAnalyseFailure(err, { noteId, trigger, startedAt }).message);
-        // Hand the one-shot claim back. It is taken before the request goes out, so without
-        // this a failed automatic write-up could never be retried: the error message is local
-        // state and dies with the next tab switch, and the claim would already be spent — so
-        // the note is left un-analysed with nothing on screen saying the manual button needs
-        // pressing. Releasing it lets the next Stop, or a re-record, try again.
-        releaseAutoAnalyse?.();
+        // Hand the one-shot claim back — but ONLY for the automatic path, which is the only
+        // one that took it. This function is shared with the manual Analyse button, and a
+        // manual failure releasing a claim it never held wrote the meeting up a SECOND time:
+        // the automatic write-up had already succeeded, the manual retry failed, and the next
+        // tab switch remounted this control with the claim free and the note still 'stopped',
+        // so it analysed again over the top of the first summary. Measured at 3 analyse calls
+        // where there should be 2.
+        //
+        // Why release at all: the claim is taken before the request goes out, so a failed
+        // automatic write-up could otherwise never retry — the error message is local state
+        // and dies with the next tab switch, leaving the note un-analysed with nothing on
+        // screen saying the manual button needs pressing.
+        if (trigger === "auto") releaseAutoAnalyse?.();
       } finally {
         setIsAnalysing(false);
       }
