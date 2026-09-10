@@ -82,7 +82,7 @@ Testing
 Linting & formatting
 
 - ESLint flat config (`web/eslint.config.js`) using `typescript-eslint@^8`. Do not add `.eslintrc.*` files.
-- Use Prettier for formatting and keep ESLint for semantics. Run both in pre-commit via `lint-staged` (wired through `.githooks/pre-commit` — no husky).
+- Use Prettier for formatting and keep ESLint for semantics. Run both locally on changed files (there is no pre-commit hook; wired through `.githooks/pre-commit` — no husky).
 
 Performance & bundling
 
@@ -126,7 +126,7 @@ Prettier (`.prettierrc`) minimal:
 How to apply
 
 1. Add or update `.editorconfig` and `.prettierrc` in `web/`.
-2. Wire `lint-staged` in `package.json` and ensure the pre-commit hook runs it (this project uses `.githooks/pre-commit`, not husky).
+2. Run ESLint and Prettier on changed files yourself — this project has **no** pre-commit hook (no husky, no lint-staged); lint is enforced in CI.
 3. CI should run `npm --prefix web run lint` and `npm --prefix web run build`.
 4. Review PRs for accessibility, stable hooks usage, and E2E coverage for new journeys.
 

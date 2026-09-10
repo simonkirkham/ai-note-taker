@@ -193,3 +193,87 @@ Live doc (open items + the index): [technical-improvements.md](technical-improve
 1. **`scripts/test-merge-gate.sh` exists because `pr.yml` paths-ignores `scripts/**`** — CI had never once exercised these scripts, so every past edit shipped unverified and a green PR proved nothing. Now wired into `docs-check.yml`, the workflow that exists for exactly the paths `pr.yml` ignores. 23 stub-driven cases, ~16s, no network.
 2. **It paid for itself on its first CI run**, catching a defect no local run could see: `merge-gate.sh` executed `deploy-status.sh` directly, but `scripts/` is committed `100644`, so gate 3 died with `Permission denied` on any Linux checkout — invisible on the author's drvfs mount, where every file reports executable.
 3. **Injecting the defect is what found the tests that were not testing anything.** Two assertions passed with the fix reverted — the gate-3 stand-in was unreachable because `deploy-status.sh`'s own guards always print something, and both gate-3 cases asserted on output while discarding the exit code, so `fail=1` → `true` left the suite green while the gate printed `safe to merge` on a broken main. Neither would have been found by reading a green.
+
+## TI-73. The pre-commit gate is unbounded across sessions
+
+✅ **Closed 2026-08-11 — obsolete, not fixed.** Committing while another session was also
+committing could fail your commit on tests you never touched, because the pre-commit gate
+ran the full suite with no idea anything else was running. The hook was removed entirely on
+2026-08-11 (build and test moved to CI), so there is no longer a gate to contend for. The
+proposed fix — make the hook wait on a load gate — was never built, and its stated direction
+was wrong anyway: `load1` was measured reading 0.28 with three suites live, because it lags
+about 90 seconds. Had it been built, it would have waved commits straight into a saturated
+box. Counting runner processes is the sound instrument; load average is corroboration only.
+
+
+## TI-81. An orphaned run record blocks the merge gate for tens of minutes
+
+✅ PR [#469](https://github.com/simonkirkham/ai-note-taker/pull/469), merged 2026-08-13 (`4727672f`), Hawk approved at round 5. Nobody could merge anything for the best part of an hour: the check that answers "is it safe to merge?" reported a deploy still running that had actually finished successfully 51 minutes earlier. It clears on its own, so the cost was a long false red on the one gate every session has to pass — and the workarounds it invites, merging past the gate or cancelling a run that succeeded, are both worse than the wait.
+
+**Why:** GitHub stopped updating the run's own record while its jobs carried on and finished. On deploy #762 all five jobs were `completed`+`success` (`deploy-production` at 14:25:21Z) while the run still read `in_progress`, its `updated_at` frozen at 14:24:22Z — 59 seconds *before* its last job finished. The gate enforces quiescence across the last 5 runs, which is load-bearing and stays (a `completed` run can be re-run, flipping back to `in_progress`), and a stalled record satisfies "still running" for as long as it stays stalled.
+
+**Fix:** an allow-list of the two states that mean safe, instead of a list of the ways a run can be unsafe. (1) `status == completed` and `conclusion == success`; or (2) a **known** not-finished status where the jobs response is complete, every job is `completed`+`success`, `pending_deployments` is empty, and **both** `updated_at` and the newest job completion are older than 10 minutes. Everything else blocks and prints the raw values it saw. A genuinely failed job is reported `NOT SAFE` naming the job, never discounted; `cancelled`/`action_required` block without a failure verdict, since the busy `deploy` concurrency group cancels rather than queues. The discount is printed on the verdict line, never silent.
+
+**The form is the lesson, not the fix.** Six separate clauses of the condition moved rather than closed while it was being written — a job count; pending environment approvals; job conclusions (where "terminal" silently admits `failure`, which would have reported GREEN on a run whose `deploy-production` failed); the run status, never inspected, so a **suspended** run printed `GREEN — safe to merge`; jobs-API pagination, page 1 read as the whole set; and the staleness clock, keyed on the one field the incident proved unreliable. One shape six times: a value absent, unexamined, or admitting more than its name suggests. Enumerating the unsafe states means anticipating everything that can go wrong, and that enumeration failed six times in a day; an allow-list fails **closed** on anything unanticipated, which is the property a merge gate wants. Four of the six were caught by review or by injecting a defect — **none** by reading the code and believing it.
+
+**Evidence, because `pr.yml` paths-ignores `scripts/**` and a green PR proves nothing here:** `scripts/test-merge-gate.sh` at **54 cases** (31 added here; `main` had 23, 0 removed), run by name from `docs-check.yml` since [TI-77], plus **fifteen injected defects**, each flipping only the cases that claim it. Three of those injections exist because review found guards that were shipping untested — and in each round the defects were in code the *previous* round had just added, so re-run every injection after every change and never carry one forward as evidence.
+
+**Two limits worth carrying forward:** the second clock is belt-and-braces, not an independent guard — GitHub carries a re-run's already-successful jobs into the new attempt with their **original** `completed_at`, so on a re-run `updated_at` is doing the work alone. And `filter=latest` on the jobs call is load-bearing: `filter=all` returns every *attempt*, and a superseded attempt's failed job records arrive as if current, reporting a re-run that passed as `did not succeed`.
+
+**Learnings:** [ti-81-orphaned-deploy-run](learnings/ti-81-orphaned-deploy-run.md) — the discriminator between orphaned and slow-but-alive had to be measured (job records are created at **eligibility**, not dispatch, so the no-record window is ~0s); "all jobs terminal" admits `failure`, and injecting exactly that reported a **failed** deploy as safe to merge; four permissive-direction injections went red, three flipping exit 0→1; and a `min()` tidy-up that would turn a run which never reported a completion into a green, pinned by a test. Follow-up [TI-89](technical-improvements.md#ti-89-the-merge-gates-self-test-blames-the-merge-gate-when-the-machines-date-command-is-the-problem).
+
+**Same shape as TI-88** (a merge waved through as safe and refused seconds later): a gate reporting a state that was true a moment ago and is not true now. TI-81 was a stale run record, TI-88 a stale mergeability flag — different gates, different scripts, one shape. The shape is the reusable part; see [technical-improvements.md](technical-improvements.md#ti-88-a-gate-verdict-has-an-expiry-and-the-window-between-reading-it-and-acting-on-it-is-where-it-fails).
+
+## TI-86. Nothing could be merged: every pull request's build failed on a security advisory in a package no code here calls
+
+✅ **Done** — raised and fixed 2026-08-13 (PR [#476](https://github.com/simonkirkham/ai-note-taker/pull/476), deploy #770), same day, in ~40 minutes.
+
+**What it cost:** every pull request in the repo that runs a .NET build went red and could not merge — including [CHANGE-41], a frontend-only change that touches no .NET at all. It surfaced as an unexplained `backend` failure on a PR whose author had no reason to look at NuGet.
+
+**Why:** GitHub published GHSA-q939-rpr3-3284 against **SSH.NET 2025.1.0** (high — a malicious SCP server can write arbitrary files during a recursive download). It arrives transitively via `Testcontainers.DynamoDb`, and `NuGetAudit` + `TreatWarningsAsErrors` promotes it to **NU1903**, which fails `dotnet build ai-note-taker.sln`. Nothing in this repo calls SSH.NET; the dependency exists only because Testcontainers ships an SSH transport.
+
+**Fix:** a direct `PackageReference` to **SSH.NET 2026.0.0** in `tests/EventStore.Integration`. `Testcontainers` 4.12.0 and 4.13.0 both still pin 2025.1.0 — checked against their published nuspecs — so upgrading it does not help, and a direct reference is the only way to lift a transitive version. The line carries a comment to delete it once Testcontainers ships the patch itself.
+
+**The generalisable part:** a **dated, external** trigger can turn a repo red with no commit behind it, and it lands on whichever PR happens to run next — so the first person to see it has no reason to suspect their own change. Read the failing step rather than the failing job name; `NU1903` names the package, and the package named a library the diff had never heard of.
+
+**Two flakes were separated from it in the same session, not folded in:** an unretried Electron download that dropped a connection ([TI-87], open), and a merge gate that reported CLEAN three seconds before the merge was refused ([TI-88], open, another session's reading).
+
+## TI-84. A momentary GitHub outage paints a red X on a `main` commit that did nothing wrong
+
+✅ **Done** — raised 2026-08-12 (Hawk, PR [#471](https://github.com/simonkirkham/ai-note-taker/pull/471) / [TI-80], should-fix), fixed 2026-08-12 (PR [#474](https://github.com/simonkirkham/ai-note-taker/pull/474), squash `608c882e`).
+
+**What it cost:** a red X on a `main` commit that was fine, put there by a network blip rather than by anything in the change. That is the worst possible signal in this repo — a red X that means nothing trains everyone to stop reading them, and [TI-69] already produced 162 of them with a real failure hiding among them. The guard against false red X's had acquired a false-red-X failure mode of its own.
+
+**Why:** `scripts/lint-workflows.sh` downloaded actionlint with a single `curl` attempt and no `--retry`, and every CI run re-fetched it from GitHub releases. One transient response exited 1 via the script's own `download failed` path. Confined to pull requests until [TI-80] added the push trigger; after that it landed on `main`.
+
+**Fix:** the fetch retries, and the retry is **bounded** — `--retry-max-time` plus a per-attempt `--max-time`, so a rate-limited runner still fails as a clean, attributable red inside the job's 5-minute budget rather than being killed as an unexplained job timeout. `--retry-all-errors` covers resets, TLS failures and DNS misses, which plain `--retry` does not; the checksum sits outside the retry and is untouched, so retries cannot launder bad bytes.
+
+**The `actions/cache` half of the prescription was measured and rejected.** The whole script is 2.09s cold; a cache restore is a service round-trip plus a tar extract, routinely 1–3s — at best break-even, and it substitutes one network dependency for another. Worse, a corrupt restored binary hits the `tampered` path, which exits 1 by design and deliberately does not re-download, so a transient becomes a red X that stays red until a human busts the key.
+
+**The generalisable part:** *a timeout you compute from your own flags is a hypothesis; only a flag that refuses makes it a bound.* The first version's retry made the symptom worse — 360.3s and exit 0 against a server sending `Retry-After: 120`, past the job's timeout — and review caught it by measuring rather than reasoning. Full account in [ti-84-bounded-retry](learnings/ti-84-bounded-retry.md).
+
+**Not done, deliberately:** a permanent hermetic self-test of the retry (the [TI-77] `scripts/test-merge-gate.sh` precedent). Stubbing the pinned checksums as well as the download is a larger surface than the one line it guards, plus a step on every push to `main`. File it as its own row if wanted.
+
+**Still open, same class:** [TI-87] — an unretried Electron download that drops a connection and reds a pull request.
+
+## TI-83. Why subtraction beat keeping two lists in step
+
+✅ **Done** — raised 2026-08-11 (Hawk, PR [#471](https://github.com/simonkirkham/ai-note-taker/pull/471) / [TI-80], should-fix), fixed 2026-08-13 (PR [#477](https://github.com/simonkirkham/ai-note-taker/pull/477), squash `4fbf7286`).
+
+**What it would have cost:** a bug filed away as fixed while its row still sits in the open list — half-closed, with nothing saying so. `scripts/check-doc-ids.sh` reads `docs/phases/phase-bugs-archive.md` for two of its checks (duplicate `## BUG-N` entries; a bug living in *both* the live doc and the archive), and that file was in **neither** of `docs-check.yml`'s two `paths:` filters. A commit touching only the archive therefore matched neither trigger and ran no check at all — and archive-only is exactly the shape of a half-done close. Archiving is a Scribe step that commits straight to `main`, the route with no other guard.
+
+**Latent, not observed.** All **11** commits that have ever touched the archive on `main` also touched `phase-bugs.md`, which was already in the `pull_request` list, so every one of them matched; and the `push:` trigger did not exist until `14c6c034` (2026-08-12, [TI-80]), after the newest of them (`bb4c5611`, 2026-08-11). A hole, not a miss.
+
+**Fix — subtraction, not a checker.** The `paths:` list is deleted from the **push** trigger; `pull_request` keeps its list and gains the archive path. The list never scoped what got *checked* — actionlint lints every workflow and `check-doc-ids.sh` greps every tracking doc whatever a commit touched — it only decided whether the check *ran*, which made it pure drift surface with no upside. Deleting it closes every future instance rather than the one found. Cost: deploy wall clock unchanged (these jobs do not gate `deploy.yml`), `doc-ids` 19–23s and `workflows` 5–10s in parallel, £0 recurring (public repo, free standard-runner minutes).
+
+**The asymmetry is why the fix is one-sided.** Drift on the `pull_request` list is loud — a check visibly stops appearing on PRs. Drift on the `push` list is silent, and the push route is the one with no other guard. So the push list went and the PR list stayed.
+
+**Evidence:** `proof/ti83-paths` commit `1cf9468d` changed only the archive and added a duplicate `## BUG-1`, and produced **no run at all**; that branch's only run is [`31623178252`](https://github.com/simonkirkham/ai-note-taker/actions/runs/31623178252), on its parent. The branch is deleted, so the run id is the durable record.
+
+**Still unobserved on merge, deliberately recorded as such:** a push to `main` firing this workflow with **no** `paths:` at all. Both the proof run and the merge commit touch files that were in the old list, so neither proves it. Confirm on the next push to `main` whose files all fall outside that list (`gh run list --workflow docs-check.yml --event push --branch main --limit 5 --json headSha,createdAt,conclusion`); an absent sha means the trigger did not fire. Full account in [ti-83-subtraction-over-drift](learnings/ti-83-subtraction-over-drift.md).
+
+**Since observed — the paragraph above is superseded. First observed firing 2026-08-13:** sha `b12dc532`, run [`31685095607`](https://github.com/simonkirkham/ai-note-taker/actions/runs/31685095607), both jobs green (`workflows`, `doc-ids`). That commit touched **only** `docs/learnings/a-mechanism-nobody-has-watched-work-is-not-working.md` — a path the old `paths:` list did not cover, so it could not have run under the old filter. **Limit, in the same breath:** this proves the removal is not inert and that one previously-uncovered path is now covered; it does not prove every one is. The general claim still rests on reading the file (no `paths:` key at all), not on observed behaviour.
+
+**Second observation, 2026-08-13 — the named hole itself:** sha `917d7361`, run [`31685381389`](https://github.com/simonkirkham/ai-note-taker/actions/runs/31685381389), both jobs green. That commit touched **only** `docs/technical-improvements-archive.md` — an **archive-only** commit, the exact shape this row named as the latent hole, and it would have run nothing under the old `paths:` list. Stronger than the first arm, which landed on a path nobody had claimed was at risk; this one demonstrates the hole closed on the path the row was written about, rather than inferring it from the absence of a `paths:` key. **The limit above is unchanged:** two previously-uncovered paths are now observed covered — not all of them.
+
+**Depends on:** [TI-84] (PR #474, `608c882e`) — the unretried actionlint download, landed first so more runs on `main` could not mean more false red X's.

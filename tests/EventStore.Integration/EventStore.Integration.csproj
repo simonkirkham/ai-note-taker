@@ -10,6 +10,14 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.5.1" />
     <PackageReference Include="Testcontainers.DynamoDb" Version="4.11.0" />
+    <!-- TI-86. Testcontainers drags in SSH.NET 2025.1.0, which carries a high-severity
+         advisory (GHSA-q939-rpr3-3284 — a malicious SCP server can write arbitrary files
+         during a recursive download). NuGetAudit + TreatWarningsAsErrors turns that into
+         NU1903, failing `dotnet build ai-note-taker.sln` — every PR and every deploy — on a
+         package nothing in this repo calls. Testcontainers 4.12 and 4.13 both still pin
+         2025.1.0, so bumping it does not help; a direct reference is the only way to lift
+         the transitive version. Drop this line once Testcontainers ships >= 2026.0.0. -->
+    <PackageReference Include="SSH.NET" Version="2026.0.0" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
   </ItemGroup>

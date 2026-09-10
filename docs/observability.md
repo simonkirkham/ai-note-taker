@@ -16,6 +16,7 @@ Region is **eu-west-2**; everything below is in the account the stack is deploye
 | Why is it slow? | X-Ray service map & traces; Lambda p50/p99 widget | 12-C, 12-D |
 | Are commands failing / conflicting? | Domain metrics on the dashboard + saved query | 12-B, 12-D |
 | Did the browser crash? | CloudWatch RUM console (`notetaker-rum`) | 12-F |
+| Why did a note's analysis fail? | RUM log group → the `analyseFailed` custom event | BUG-77 |
 | Did something breach a threshold? | SNS email (`notetaker-alarms`) | 12-E |
 
 ## Stack outputs (how to find the URLs)
@@ -87,6 +88,45 @@ To trace a request:
 **CloudWatch RUM → App monitors → `notetaker-rum`** (or use the `RumMonitorId` output). Tabs: **Errors** (JS errors with stack traces), **Performance** (Core Web Vitals), **Sessions**, **Browsers & Devices**. RUM also writes events to the log group `/aws/vendedlogs/RUMService_notetaker-rum<first-8-of-RumMonitorId>`, which the dashboard's combined error widget already queries. With X-Ray enabled on the monitor, a frontend error links to its backend trace via the propagated trace id (12-C).
 
 > The RUM web client loads from the **global** CDN `client.rum.us-east-1.amazonaws.com` (not regional); only the data plane is regional. If RUM shows "no data", first confirm the snippet is in the deployed `index.html` and `PutRumEvents` → `dataplane.rum.eu-west-2.amazonaws.com` returns 200. (See `docs/learnings/_archive.md` / BUG-6.)
+
+## Why did a note's analysis fail?
+
+**Establish WHICH of the two analysers ran first** — they fail into different places, and only one is covered by the browser event.
+
+| Who ran it | Where its failure shows |
+|---|---|
+| The browser — the *Analyse note* button, the *Generate final notes* button, or the analyse that runs on its own after a recording stops | The `analyseFailed` custom event, below. All three route through `reportAnalyseFailure`; there is no fourth caller of `analyseNote` in `web/src` |
+| The server — the transcript-completion Lambda re-analyses when auto-analyse was on and a speaker-separation job was in play, and in that case the browser **deliberately does not analyse at all** | The **TranscribeCompletion** Lambda's log group. **No `analyseFailed` event exists for this path**, by construction — nothing failed in the browser |
+
+**The log group is the discriminator, never the message.** `Analysis failed for note {NoteId}` comes from the shared analysis service, so it appears in whichever Lambda ran the analysis — the Api Lambda's group for a browser-initiated analyse, the TranscribeCompletion group for a server-side one. The string alone cannot tell you which analyser ran.
+
+In the TranscribeCompletion group, read the outcome line, not just the error level:
+
+| Line | Level | Means |
+|---|---|---|
+| `transcribe: re-analysed note {Note} → ServiceUnavailable` | **Information** | The common failure. Bedrock or the deadline failed, the service returned rather than threw, and the wording reads like a success. `Analysis failed for note {NoteId}` sits alongside it at Error, from the shared service |
+| `transcribe: re-analysis failed for note {Note} (transcript already updated)` | Error | An *unexpected* fault only — the outer catch. Absent for the common case above |
+| `transcribe: re-analysed note {Note} → Analysed` | Information | Genuinely succeeded |
+
+For a browser-side failure, `analyseFailed` is the only record when the request never reaches the gateway — exactly the case that left the first live occurrence undiagnosable (BUG-77).
+
+**Two things stop the browser event being conclusive, and both are open.** It has never yet been seen arriving in prod (the channel itself was proven by [TI-67], with a different event). And until [TI-78] lands, the RUM client's default 200-event session cap drops custom events late in a long session — which is exactly when a post-recording analyse happens. So an absent record is not evidence the failure did not occur.
+
+```bash
+aws logs filter-log-events --region eu-west-2 --profile prod \
+  --log-group-name "/aws/vendedlogs/RUMService_notetaker-rum5a2b155e" \
+  --start-time $(( ($(date +%s) - 86400) * 1000 )) \
+  --filter-pattern '"analyseFailed"' --query 'events[].message' --output text
+```
+
+The payload lands **directly** under `event_details` — not `event_details.data`, despite the client being called with `{type, data}`. Read off a real record in this log group (`authStorageBlocked` → `"event_details":{"at":"signIn"}`), because a wrong field path returns empty columns and reads exactly like no failures.
+
+| Field | Reads |
+|---|---|
+| `kind` | `auth` / `forbidden` / `notFound` / `rateLimited` / `server` / `network` / `request` / `unknown` |
+| `sent` | `false` means the browser refused the request before dispatching it — nothing left the machine, so no gateway metric or Lambda log will ever mention it |
+| `elapsedMs` | Separates an instant refusal from a request that ran and gave up |
+| `trigger` | `auto` = the analyse that runs on its own after a recording; `manual` = the Analyse note button; `finalNotes` = the Generate final notes button |
 
 ## Did something breach a threshold?
 

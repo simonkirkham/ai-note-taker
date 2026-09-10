@@ -386,10 +386,13 @@ describe('NoteView', () => {
       await userEvent.click(screen.getByTestId('note-tab-transcript'))
       expect(screen.getByTestId('note-tab-transcript')).toHaveAttribute('aria-selected', 'true')
       expect(screen.getByTestId('transcription-text')).toHaveTextContent('spoken words here')
-      // Read-only: there is no editable control inside the transcript panel.
-      const panel = screen.getByTestId('note-tabpanel-transcript')
-      expect(panel.querySelector('textarea')).toBeNull()
-      expect(panel.querySelector('input')).toBeNull()
+      // Read-only: the transcript itself carries no editable control. Scoped to the transcript
+      // body rather than the whole panel since 52-A, because the panel also holds the find box,
+      // which is an input by design and sits outside the body.
+      const body = screen.getByTestId('transcription-body')
+      expect(body.querySelector('textarea')).toBeNull()
+      expect(body.querySelector('input')).toBeNull()
+      expect(body.querySelector('[contenteditable="true"]')).toBeNull()
     })
 
     it('switching to the Final notes tab shows the final-notes view', async () => {
@@ -1339,6 +1342,25 @@ describe('NoteView', () => {
       renderNoteView({ otherWorkspaces: [], onMoveToWorkspace: noop })
       await screen.findByLabelText('Note content')
       expect(screen.queryByRole('button', { name: /Move "Test Note"/ })).not.toBeInTheDocument()
+    })
+  })
+
+  // BUG-77. "Generate final notes" is the app's second way of asking for an analysis, and it had
+  // the same catch-all sentence as the first — "Couldn't generate final notes. Please try again."
+  // whatever went wrong, with nothing recorded. Both entry points now route through the shared
+  // reporter, so the user is told what actually stopped it and the failure leaves a record.
+  describe('a failed "Generate final notes" (BUG-77)', () => {
+    it('names the real failure instead of the old catch-all sentence', async () => {
+      server.use(http.post('/api/notes/:noteId/analyse', () => new HttpResponse(null, { status: 500 })))
+      renderNoteView()
+      await screen.findByLabelText('Note content')
+
+      await userEvent.click(screen.getByTestId('note-tab-final'))
+      await userEvent.click(await screen.findByTestId('generate-final-notes-button'))
+
+      const alert = await screen.findByRole('alert')
+      expect(alert).toHaveTextContent(/temporarily unavailable/i)
+      expect(alert).not.toHaveTextContent(/Couldn't generate final notes/i)
     })
   })
 })

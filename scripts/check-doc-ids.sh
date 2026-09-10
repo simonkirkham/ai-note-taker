@@ -10,7 +10,7 @@
 #     (e.g. both flip a status) it keeps both copies, leaving two rows with one id.
 #     That is silent in a diff and obvious here.
 #
-# Runs in the pre-commit hook. Cheap: pure grep, no network.
+# Runs in CI (.github/workflows/docs-check.yml). Cheap: pure grep, no network.
 set -uo pipefail
 cd "$(git rev-parse --show-toplevel)" || exit 1
 

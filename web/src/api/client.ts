@@ -106,6 +106,15 @@ async function fetchWithRetry(url: string, requestInit: RequestInit, init: Reque
   }
 }
 
+// BUG-77: the pre-flight refusal below synthesises a 401 the caller cannot tell apart from one the
+// server sent — yet the two need different diagnosis, because in the first case no request ever left
+// the browser and no server-side log, metric or access record will ever mention it. Marked by
+// identity rather than by a header: `/api` is same-origin, so a header would be both readable and
+// settable on the wire, and a server or intermediary could make a genuine 401 masquerade as one that
+// was never sent — corrupting the exact distinction this exists to draw. A WeakSet is unreachable
+// from outside this module and releases the entry when the response is collected.
+const notSentResponses = new WeakSet<Response>()
+
 export async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
   let token = getToken()
   if (token && token.split('.').length === 3 && jwtExpired(token)) {
@@ -113,7 +122,9 @@ export async function apiFetch(url: string, init?: RequestInit): Promise<Respons
     token = await refreshOnce()
     if (!token) {
       triggerUnauthorized()
-      return new Response(null, { status: 401 })
+      const refused = new Response(null, { status: 401 })
+      notSentResponses.add(refused)
+      return refused
     }
   }
   const res = await fetchWithRetry(url, withAuth(init, token), init)
@@ -143,6 +154,10 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    // BUG-77: true when the request was refused inside the browser and never dispatched, so the
+    // status was synthesised here rather than returned by the server. Defaults to false so every
+    // existing construction keeps its meaning.
+    readonly notSent: boolean = false,
   ) {
     super(message)
     this.name = "ApiError"
@@ -151,7 +166,11 @@ export class ApiError extends Error {
 
 function ensureOk(res: Response, path: string, init: RequestInit | undefined, okStatuses?: number[]): void {
   if (res.ok || okStatuses?.includes(res.status)) return
-  throw new ApiError(res.status, `${init?.method ?? 'GET'} ${path} failed: ${res.status}`)
+  throw new ApiError(
+    res.status,
+    `${init?.method ?? 'GET'} ${path} failed: ${res.status}`,
+    notSentResponses.has(res),
+  )
 }
 
 export async function request<T>(path: string, init?: RequestInit, okStatuses?: number[]): Promise<T> {

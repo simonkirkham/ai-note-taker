@@ -33,6 +33,12 @@ export default function FinalNotesView({
     setGenerateError(null);
     try {
       await onGenerate();
+      // BUG-77: this catch is UNREACHABLE from the only caller. NoteView's handleGenerateFinalNotes
+      // reports the failure itself and never rethrows, so these two sentences cannot appear — the
+      // toast the user sees comes from there. Left in place as the guard for any future caller that
+      // does rethrow, but do not read it as "this path is handled here": a dead catch that looks
+      // live is the same reading error that let a second analyse entry point go unnoticed through
+      // the whole of BUG-77.
     } catch {
       if (hasContent) {
         showError("Couldn't re-process final notes. Please try again.");

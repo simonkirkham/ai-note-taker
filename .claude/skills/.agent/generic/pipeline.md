@@ -57,7 +57,7 @@ Only stop for genuinely destructive or ambiguous calls (reverting someone's slic
 | `deploy.yml` | **push to `main` only** | `detect-changes` → `validate-frontend` / `validate-backend` → `deploy-test` (**E2E lives here**) → `deploy-production` |
 | `e2e.yml` | manual — `gh workflow run e2e.yml -f runs=N [-f filter=X]` | N E2E runs against the deployed test env, no deploy |
 
-**A green PR does not predict a green deploy — E2E runs only in the deploy gate.** `pr.yml` also `paths-ignore`s `docs/**`, `**/*.md`, `.githooks/**`, `.claude/**` and `scripts/**`, so a docs-only PR runs no checks at all except `docs-check.yml`.
+**A green PR does not predict a green deploy — E2E runs only in the deploy gate.** `pr.yml` also `paths-ignore`s `docs/**`, `**/*.md`, `.claude/**` and `scripts/**`, so a docs-only PR runs no checks at all except `docs-check.yml`.
 
 Three consequences worth knowing before you trust a green:
 

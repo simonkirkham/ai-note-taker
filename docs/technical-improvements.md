@@ -78,21 +78,34 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 | TI-58 | Desktop specs run in the PR gate (headless + Electron under xvfb) | ✅ **Done** — this slice. Nothing ran `desktop/tests/` before: `pr.yml` had no desktop job and `publish-desktop.yml` packages without testing. BUG-52/53/56 all reached a user's machine as a result. |
 | TI-59 | Windows desktop CI job — packaging + a REAL whisper-server smoke test | 🔲 **Open** — raised 2026-08-07 ([BUG-56]). Un-gate `whisperServer.integration.spec.ts` on `windows-latest` with a cached `base.en` + a fixed WAV, resolving the binary through the production resolver (`whisperServerBinPath()`, added by [BUG-56] / #426) exactly as production does. This is the tier that proves the live engine actually transcribes. |
 | TI-60 | Packaged-installer journey with injected audio | 🔲 **Open** — raised 2026-08-07 ([BUG-56]). Drive the *packaged* app end to end with a known WAV pushed through a test seam (not a virtual-audio driver) and assert live transcript text appears within a latency budget. The only tier that would catch a live-latency regression. |
-| TI-61 | `Routing.test.tsx > Forward reopens the note` fails under CPU contention during a local full-suite run | 🔲 **Open** — raised 2026-08-06 (49-B verification). **Second observation of the same failure with the same cause**, previously seen on 34-C (`docs/token-log.md:166`) and never filed. Both times a `dotnet build` ran concurrently with `vitest run`; the test passes in isolation and on a clean full-suite run, so it is load-induced, not a regression. Mechanism: the assertion after `window.history.forward()` is `findByTestId('note-title-input')`, whose default 1000 ms timeout is short relative to this file's ~1.8 s under contention — the `waitFor` on `window.location.pathname` before it already succeeded, so it is the *render* that misses the window, not the navigation. It is **not** a deploy-gate flake (CI runs the frontend job alone), so it costs only local verification time — but it costs it every time, and re-deriving "not a regression" from scratch is the expensive part. Fix options: raise this file's async timeout explicitly, or await the route transition rather than racing the default. Low urgency; the cheap win is that this row exists so the next person does not re-investigate. |
+| TI-61 | **A routing test fails on a busy machine even though nothing is wrong with it**, costing a thrown-away run and — the expensive part — a fresh investigation to re-establish that it is not a regression | 🟡 **In Progress** — mitigated, not closed. PR #470 raised the local-only budgets; the test ran to **5780 ms against a 5000 ms ceiling** under contention where unloaded it is 293 ms. **Stays open because two other files are predicted to exceed the new budget** — see [TI-61](#ti-61-a-routing-test-fails-on-a-busy-machine) |
 | TI-62 | `deploy.yml` still carries its own inline copy of the projector warm/drain bash | 🔲 **Open** — raised 2026-08-07 (alongside the on-demand E2E workflow). The warm-and-drain logic now lives in `scripts/warm-projector.sh`, used by `.github/workflows/e2e.yml`; `deploy.yml`'s `Warm the API + projector before E2E` step is a byte-for-byte duplicate of it. Deliberately NOT switched over in the same change: the merge queue was mid-flight through that exact workflow and a broken `deploy.yml` reds the shared gate for every slice and session. Two copies of a guardrail-critical step will drift — the drain is precisely what stops a cold projector red-gating the suite. Fix: replace the inline step with `bash scripts/warm-projector.sh` (same `API_URL`/`TOKEN` env), and verify on the next deploy that the step still logs `projector caught up to head`. Low risk, but do it on a quiet gate. |
 | TI-63 | Move note analysis off the synchronous request path | 🔲 **Open** — raised 2026-08-07 (BUG-58). Analysis runs inside the **29s** Command Lambda: 90d of prod data shows command-hosted Converse calls at median 2.6s but 17.9 / 21.5 / 23.6 / 26.4s in the tail, with a further **3.0-5.9s** of sequential post-Bedrock appends (`TagNote` per tag, `AddActionItem` per action, each re-reading an 89KB stream). Four invocations hit exactly 29.0s in 14 days — killed. BUG-58's 23s client deadline converts those kills into a visible 503, but it cannot create budget that isn't there: **any analysis needing >23s+tail simply cannot complete synchronously**, and a kill part-way through the appends leaves a note with a new summary and tags but no action items, with no event marking it incomplete. Fix: run analysis asynchronously (job + poll, or a dedicated Lambda off a queue with a longer timeout, mirroring the TranscribeCompletion path that already has 60s), so duration stops being bounded by the API request. Medium urgency — the deadline makes the failure visible and retriable, so this is about the ~12-19% of analyses that are near or over budget, not about data loss. |
 | TI-65 | **An action list, folder tree or workspace list can still snap back to an older copy moments after the user changes it** | 🟡 **Partly done** — raised 2026-08-08 (Hawk, PR #436 / [BUG-48]). The home note list shipped 2026-08-11 (PR #459); `getActions`, `getFolders` and `getWorkspaces` remain. Detail in [TI-65](#ti-65-the-other-three-gatedread-callers-can-still-store-a-stale-body-over-good-data) below. |
 | TI-66 | Extract the read-rebuild-append retry shared by three command handlers | 🔲 **Open** — raised 2026-08-10 (Hawk, PR #446 / 50-B). `TodoOrderCommandHandler` now carries a third near-identical copy of read → rebuild → handle → append → catch `ConcurrencyException` → backoff+jitter → `WriteContentionException` on exhaustion (`NoteCommandHandler`, `TodoCommandHandler`, `TodoOrderCommandHandler`). The copies drifted once already: the todo-order one was simply **missing**, which is what made 50-B's paired writes race into a 409 the client silently drops. A shared `AppendWithRetryAsync` helper makes the retry the default rather than something each handler must remember. |
 | TI-68 | **The pre-commit hook's vitest run is unreliable on WSL — capping worker threads makes it both reliable AND ~4x faster** | ✅ **Done** — PR #455, merged 2026-08-10. Raised 2026-08-10 (51-B). The hook runs the full 1030-test suite on every commit touching `web/`. Unconstrained on WSL it fails non-deterministically with scattered `Test timed out in 5000ms` errors on files that cannot fail for a real reason (`taskListMarkdownRoundTrip.test.ts` is a pure string function with no async at all). **Measured on 51-B, same commit, same tree:** unconstrained → 8 failed / 1214 s, then 33 failed / 835 s; `VITEST_MAX_THREADS=3` → 1030 passed / 154 s, but **3 is marginal** — a later run at 3 still failed (5 failed / 714 s, timeouts in `ContextMemoization`, `ListView`, `useDocumentTitle`, none touched by the change). `VITEST_MAX_THREADS=2` → **1032 passed / 139 s**, and was the only setting that passed first time. Across 51-B the hook blocked 5 commit attempts and cost ~90 min without ever finding a real fault. Capping is *faster*, not a tradeoff — over-subscribed vmThreads workers thrash on the Windows FS (`setup` alone was 9179 s cumulative in the failing run vs 872 s capped). Cost 3 blocked commit attempts, ~50 min, on a change that was green throughout. **Do NOT "fix" this by forcing `CI=true`** — that selects the `forks` pool, which `web/vite.config.ts` documents as segfaulting on WSL; tried during 51-B and it was worse (53 `Failed to start forks worker` errors, 44 of 97 files never ran). **Fix (PR #455):** set top-level **`maxWorkers`** in `web/vite.config.ts` for the non-CI branch only (CI uses `forks` and is unaffected), so every clone gets the reliable path without needing to know the env var. **Correction — this row originally prescribed `poolOptions.vmThreads.maxThreads`, which Vitest 4 REMOVED and accepts as a silent deprecated no-op**: written that way the cap looks configured, reviews as correct, and never applies. Caught only by reading the deprecation warning on a throwaway single-file run. Same shape as [BUG-65]'s guards that could not fire and [TI-67]'s never-emitting RUM events — do not follow the prescribed fix literally without checking the option still exists. **Cap is deliberately NOT derived from core count:** the contention is filesystem and concurrent-session bound, not CPU bound, so more cores do not buy more workers; 2 is the measured safe value, bounded below via `availableParallelism()` for small machines. **What the evidence actually supports — read this before designing another experiment.** The claim is *"capping prevents the contention"*, **not** *"capping survives contention"*. Two capped runs are 2+2=4 workers on a 16-core box, which is not a contended condition at all — so a capped-overlap experiment **cannot reproduce the failure by construction**, and two green capped runs are the expected result rather than a test of the fix. Proof is the asymmetry: uncapped+contended fails reproducibly (**3 independent runs, 2 sessions** — 8 failed/1214 s, 33 failed/835 s, 12 failed/1204 s), capped has **never** failed in 6 runs, including one at load 14.29 against a heavy competing suite (1043 passed/328 s) and one straight through the pre-commit hook first time (1043 passed/299 s). Two paired overlapping capped runs (2026-08-10 18:46:40 and 18:46:45) were both clean at 1043/0. |
 | TI-69 | **Every push left a red X on the commit that meant nothing was broken — 162 of them — and the on-demand E2E runner they came from had never once been usable** | ✅ **Done** — raised 2026-08-10, fixed 2026-08-10 (PR #453). Every push, to `main` and to every slice branch alike, created a failing `E2E (on demand)` run with **zero jobs**: nothing ran, no test failed. **Cost:** every commit carried a false red mark — the signal that teaches people to stop reading CI — and the 10-clean-run flake bar still had no cheap way to be met, which is the exact job this workflow was added to do. **Cause:** `timeout-minutes: ${{ fromJSON(inputs.runs) * 4 + 15 }}` (line 61). GitHub Actions expressions have **no arithmetic operators**, so this is a *parse* error, not a runtime one — the file never loaded, `on:` was never read, and `workflow_dispatch` was never registered. An unparseable workflow is reported by GitHub as a zero-job failing run on push, named by its file path rather than its declared `name:`. Verbatim from the API on a dispatch attempt: `HTTP 422: failed to parse workflow: (Line: 61, Col: 22): Unexpected symbol: '+'`. **Corrects this row's original diagnosis, which was inferred from the run list alone:** no second workflow or repo setting ever added a push trigger, and it did not begin at 14:34Z on 2026-08-10 — **all 162 runs since the workflow was introduced in #429 on 2026-08-07 are this**, and there has never been a successful or dispatched run. The giveaway was available all along: `gh run view <id>` says *"This run likely failed because of a workflow file issue"*, and `gh workflow run` returns the parse error verbatim — neither was checked. **Fix:** compute the timeout in bash in a small `plan` job and pass it via `needs`, which *is* an allowed context in `timeout-minutes`; keep arithmetic out of `${{ }}`. Input validation moved there too, so a bad `runs` fails in ~20s rather than after Playwright install while the shared `deploy` concurrency group is held. **Proof:** the fixing branch's push produced no `e2e.yml` run — the first push in the repo's history not to — while a parallel branch pushed minutes later still did. **Verified end to end:** run [#166](https://github.com/simonkirkham/ai-note-taker/actions/runs/31408911704) is the workflow's first ever green run — `plan` sized the timeout, the suite ran, and the account guard printed `Target account 739754704263 matches E2E_TEST_ACCOUNT_ID.` after [PR #454] moved it to job level. |
-| TI-70 | **Nothing stops a broken workflow file reaching `main`, so the next one also shows up as an unexplained red X on everyone's commits rather than as a failed check** | 🔲 **Open** — raised 2026-08-10, out of [TI-69]. That defect survived 3 days and 162 red marks, and was first written up with a confidently wrong root cause, because an unparseable workflow does not fail like a test: it produces a zero-job run named by its file path, attached to a push the workflow does not even subscribe to, with no annotation on the PR that introduced it. **Cost:** every commit in the repo carries a false red X until someone happens to run the one command that reveals the parse error, and the affected workflow silently does not exist in the meantime. **Fix direction:** run `actionlint` (single Go binary, ~2s, no runtime deps) over `.github/workflows/**` and `.github/actions/**` in `docs-check.yml`, which is the workflow that already exists to gate paths `pr.yml` ignores — note `pr.yml` paths-ignores nothing relevant here, but `docs-check.yml` is the cheaper host. Add the same call to `.githooks/pre-commit` for local feedback, on the same terms as `check-doc-ids.sh` (CI is the real gate; the hook needs per-clone `core.hooksPath`). actionlint catches the exact class — expression syntax, unavailable contexts, unknown keys — plus shellcheck over `run:` blocks, of which this file has many. **Verify with:** re-introducing `${{ fromJSON(inputs.runs) * 4 + 15 }}` must fail the check. **Detail, and the checks that must run before this is archived, in [TI-70](#ti-70-what-must-be-true-before-ti-70-is-archived) below.** |
+| TI-70 | **Nothing stops a broken workflow file reaching `main`, so the next one also shows up as an unexplained red X on everyone's commits rather than as a failed check** | 🔲 **Open** — raised 2026-08-10, out of [TI-69]. That defect survived 3 days and 162 red marks, and was first written up with a confidently wrong root cause, because an unparseable workflow does not fail like a test: it produces a zero-job run named by its file path, attached to a push the workflow does not even subscribe to, with no annotation on the PR that introduced it. **Cost:** every commit in the repo carries a false red X until someone happens to run the one command that reveals the parse error, and the affected workflow silently does not exist in the meantime. **Fix direction:** run `actionlint` (single Go binary, ~2s, no runtime deps) over `.github/workflows/**` and `.github/actions/**` in `docs-check.yml`, which is the workflow that already exists to gate paths `pr.yml` ignores — note `pr.yml` paths-ignores nothing relevant here, but `docs-check.yml` is the cheaper host. There is no pre-commit hook to mirror it in (removed 2026-08-11), so CI is the only host, on the same terms as `check-doc-ids.sh` (CI is the real gate; the hook needs per-clone `core.hooksPath`). actionlint catches the exact class — expression syntax, unavailable contexts, unknown keys — plus shellcheck over `run:` blocks, of which this file has many. **Verify with:** re-introducing `${{ fromJSON(inputs.runs) * 4 + 15 }}` must fail the check. **Detail, and the checks that must run before this is archived, in [TI-70](#ti-70-what-must-be-true-before-ti-70-is-archived) below.** |
 | TI-72 | **An API deployed by hand is measurably slower to answer its first request than the identical code shipped by CI, and nothing says so** | 🔲 **Open** — raised 2026-08-10 (Hawk, PR #457 / [TI-64]). Every documented by-hand publish — `README.md`, `CLAUDE.md` `## How to run` — omits `-r linux-x64 --self-contained false`, the flag pair `pr.yml:62` and `deploy.yml:168,523` use to ReadyToRun-precompile the API Lambda. TI-35 shipped R2R precisely to cut first-request JIT; a manual `cdk deploy` from a clone silently undoes it and leaves prod that way until the next CI deploy. **Fix:** make the documented publish match CI's flags exactly, and prefer a single `scripts/publish-lambdas.sh` the docs, the hook and the workflows all call, so the flags exist once. |
 | TI-74 | **Move the same note twice while the sync is stuck and the second move snaps back — the first move used up that note's protection** | 🔲 **Open** — raised 2026-08-11 (Hawk, PR #459 / [TI-65]). Detail in [TI-74](#ti-74-the-stale-list-guards-budget-is-keyed-by-note-not-by-write) below. |
 | TI-75 | **Switch workspace at the wrong moment and the app can show one workspace's notes under the other's name** | 🔲 **Open** — raised 2026-08-11 (Hawk, PR #459). Detail in [TI-75](#ti-75-gatedreads-retries-re-resolve-the-workspace-url-mid-gate) below. |
-| TI-73 | **Committing while another session is also committing fails your commit on someone else's tests — the pre-commit gate has no idea anything else is running** | ✅ **Closed 2026-08-11 — obsolete.** The hook no longer runs any test suite (build/test moved to CI), so there is nothing left to contend for. Detail in [TI-73](#ti-73-the-pre-commit-gate-is-unbounded-across-sessions) below. |
-| TI-80 | **A broken workflow committed straight to `main` still reaches everyone unchecked — the new lint only ever runs on pull requests** | 🔲 **Open** — raised 2026-08-11 (reviewer, PR #464 / [TI-70]). [TI-70] closes the PR route; this is the other one. `docs-check.yml` declares `on: pull_request` only, and `CLAUDE.md` routes doc edits directly to `main`, so a workflow file changed by a direct push is linted by nothing — the same 162-red-X outcome [TI-69] produced. **Fix:** add `push: branches: [ main ]` with the same `paths:` list. ~6s per qualifying push, runs parallel to `doc-ids`, never gates a deploy (`docs-check.yml` is not in the deploy path). It also makes [TI-70] row 7 self-checking forever rather than once. **Verify with:** push the `${{ fromJSON(inputs.runs) * 4 + 15 }}` line straight to a branch that mimics `main` and watch the check go red. |
-| TI-79 | **An agent waiting for a build or a test run to finish can hang forever without saying so, and stops answering anyone trying to reach it** | 🔲 **Open** — raised 2026-08-11 ([TI-70] session). Detail in [TI-79](#ti-79-a-wait-loop-that-scans-process-cmdlines-can-never-exit) below. |
+| TI-80 | **A broken workflow committed straight to `main` still reaches everyone unchecked — the new lint only ever runs on pull requests** | ✅ **Done** — raised 2026-08-11 (reviewer, PR #464 / [TI-70]), fixed 2026-08-12 (PR [#471](https://github.com/simonkirkham/ai-note-taker/pull/471), squash `14c6c034`). Two independent Hawk reviews, both **Approved with minor comments**, no must-fix in either; their should-fixes are filed as [TI-83] and [TI-84] rather than taken as further rounds. [TI-70] closes the PR route; this is the other one. `docs-check.yml` declared `on: pull_request` only, and `CLAUDE.md` routes doc edits directly to `main`, so a workflow file changed by a direct push was linted by nothing — the same 162-red-X outcome [TI-69] produced. The prescribed fix held: `push: branches: [ main ]` with the same `paths:` list, both jobs, one file changed. **One thing the row did not predict** — the `concurrency` group had to change too; detail in [TI-80](#ti-80-the-push-trigger-needed-a-concurrency-change-the-row-did-not-predict) below. **Verified, not asserted:** six pushes on `proof/ti80-push` produced no run when the branch was outside the filter, green when clean, **red on TI-69's actual line** (`parser did not reach end of input ... "*", "INTEGER"`, run 31542276296), green again with the guard's exit code deliberately swallowed while `doc-ids` stayed unchanged, and red again on revert. Full evidence in the PR comment. **The one gap the PR recorded as unproven — `main` specifically — closed on merge:** the squash commit was itself the first push to `main` under the new trigger, producing run [31572859601](https://github.com/simonkirkham/ai-note-taker/actions/runs/31572859601), `event=push`, `branch=main`, `workflows: success` in 7s. Nothing was inferred; the run exists. |
+| TI-79 | **An agent waiting for a build or a test run to finish can hang forever without saying so, and stops answering anyone trying to reach it** | 🟡 **Partly done / mitigated** — PR [#479](https://github.com/simonkirkham/ai-note-taker/pull/479), open. CI now refuses this shape in any committed script; the ad-hoc case it actually happened in is covered by a written rule, not a check, and cannot be. Detail in [TI-79](#ti-79-a-wait-loop-that-scans-process-cmdlines-can-never-exit) below. |
+| TI-85 | **The check that proves our read-your-writes probe still works can be fooled by a read the previous page started, so it could one day pass while proving nothing** | 🔲 **Open** — raised 2026-08-12 (Hawk, PR #473 / [BUG-79], classified should-fix; not blocking, and the reviewer said so). `AppPage.ObserveActionsReadTokenAsync` clears the probe **before** reloading, so its sampling window includes any read the outgoing page starts between the route being installed and the reload. In the ungated arm such a read still carries the token, which would report the control as gated and fail the check for a reason unrelated to what it tests. **Why it is a should-fix and not a must-fix:** the ungated path has never once reported a token across ~25 recorded runs (batches of 6/10, 5/10 and 10/10); every observed failure was the *gated* arm losing its seed, which is fixed. So this is a latent hole, not an active one. **Fix:** take a sequence-number boundary just before the reload and ignore anything recorded below it. The same change closes the sibling race on the ungated arm's `ryw.*` delete, which is a live-page write with the same exposure — do that deletion in an init script too, added first so the gated arm's later seed still wins. **Why it matters beyond this one test:** it is the same class as the bug the probe was built for — a measurement that looks like a property of the system turning out to be a property of when it was taken. |
+| TI-82 | **247 merged branches sit on the remote because the documented merge step silently fails to delete them, and the docs said that failure was harmless** | 🔲 **Open** — raised 2026-08-11 ([TI-80] session, from the coordinator's measurement). Detail in [TI-82](#ti-82-the-documented-merge-step-deletes-neither-branch) below. |
 | TI-78 | **A browser fault that happens late in a long session still goes unreported, and nothing says so** | 🔲 **Open** — raised 2026-08-11 ([TI-67] review). The injected RUM snippet in `.github/workflows/deploy.yml` never sets `sessionEventLimit`, so the client default of **200** applies: `canRecord()` is `session.record && !isLimitExceeded()`, and `isLimitExceeded()` is `session.eventCount >= 200`. With `telemetries: ["errors","performance","http"]` at `sessionSampleRate: 1`, HTTP and performance events alone can exhaust that inside one 30-minute session — after which **every** custom event is dropped silently (`sessionLimitExceeded++`, nothing logged). This lands hardest on exactly the signals [TI-67] just enabled, because faults tend to happen *after* someone has been working a while, and it is the same self-concealing shape TI-67 existed to fix. **Fix:** set `sessionEventLimit` explicitly in the snippet (0 = unlimited), and confirm by reading an event back late in a session rather than by reading the config. |
+| TI-87 | **A dropped connection while installing dependencies paints a red X on a pull request that did nothing wrong** | 🔲 **Open** — raised 2026-08-13 (hit by [CHANGE-41], PR #475, run [31677449442](https://github.com/simonkirkham/ai-note-taker/actions/runs/31677449442)). The `desktop` job's `npm --prefix desktop ci` runs Electron's `postinstall`, which downloads the ~100 MB Electron binary from GitHub releases. One `RequestError: socket hang up` failed the job in 17 s; a plain re-run passed with nothing changed. **Same class as [TI-84]** — an unretried, uncached network fetch turning a transient blip into a red check — and the same two fixes apply: retries (`npm config set fetch-retries` does **not** cover Electron's own download; it reads `ELECTRON_GET_...` / needs a retry wrapper) and an `actions/cache` on the Electron download cache keyed by version, which also removes a ~60 s download from every run. **Worth fixing together with [TI-84]**, since one cache-and-retry pass covers both. **Bound the retry, don't just add one** — [TI-84]'s review found that a naive retry delay is a lower bound, not an upper one: a rate-limited response carrying `Retry-After: 120` makes the client wait the longer of the two and blow the job's timeout, converting a 6-second red X that *names the failed download* into a timeout that names nothing. Whatever retry this uses needs an explicit total-time cap. |
+| TI-88 | **A merge can be waved through as safe and then refused seconds later, and the cleanup that follows can close the pull request** | 🔲 **Open** — raised 2026-08-13, hit live on PR [#469](https://github.com/simonkirkham/ai-note-taker/pull/469): the gate printed `GREEN — safe to merge`, the merge was refused ~3 s later on conflicts, and the branch cleanup that assumed it had landed auto-closed the PR. Detail in [TI-88](#ti-88-a-gate-verdict-has-an-expiry-and-the-window-between-reading-it-and-acting-on-it-is-where-it-fails) below. |
+| TI-89 | **On a Mac, the self-test that guards the merge gate reports nine failures accusing the merge-gate logic, when the only thing wrong is the machine's `date` command** | 🔲 **Open** — raised 2026-08-13 (Hawk, PR [#469](https://github.com/simonkirkham/ai-note-taker/pull/469) / [TI-81], should-fix). Measured, not argued: `scripts/test-merge-gate.sh:84-85` builds its clock fixtures with `date -u -d '-45 minutes'`, which only GNU coreutils supports. Run against a `date` without `-d`, the suite prints **`MERGE-GATE SELF-TEST: FAILED`, 45 PASS / 9 FAIL**, and every failure message names orphaned run records rather than the clock. Fix: one guard that exits loudly if `date -u -d` is unsupported. CI is `ubuntu-latest`, so it costs nobody today. Detail in [TI-89](#ti-89-the-merge-gates-self-test-blames-the-merge-gate-when-the-machines-date-command-is-the-problem) below. |
+| TI-91 | **The merge gate can say it is safe to merge while a deploy is genuinely running, if the clock on the machine reading it is more than ten minutes fast** | 🔲 **Open** — raised 2026-08-13. **Derived from reading `scripts/deploy-status.sh`, not from an observed miss** — and no reading taken afterwards could establish whether one has already happened. Detail in [TI-91](#ti-91-a-fast-clock-turns-the-merge-gates-stale-run-discount-into-a-fail-open) below. |
+| TI-92 | **A tracking item can be half-archived — copied into the archive but never deleted from the live list — and nothing notices, because the check that catches exactly this looks only at bugs** | 🔲 **Open** — raised 2026-08-13. **34 TI ids sit in both files today**, all pre-existing, so finished work reads as outstanding on the one column the human scans. Detail in [TI-92](#ti-92-half-archived-ti-items-are-invisible-because-the-live-vs-archive-check-covers-bugs-only) below. |
+| TI-90 | **A change can land in the main codebase with nothing checked against it at all, and nothing anywhere reports it** | 🟡 **In Progress** — raised 2026-08-13. Measured: commit `4727672f` carries **zero** check-suites from **any** app, while `14a4a48f`, `fb286458` and `c12fa2c9` around it each carry two. A daily backstop now reconciles `main` against its check-suites and names any such commit; the cause of the undelivered push event is still unknown. **The backstop is live, and its FIRST live run found a second instance** (PR #478, merged 87610e0f; run 34328044188, 2026-09-09). Over the last 50 commits on `main` it named two that nothing ever ran against: `4727672f` (the original evidence) and `95ff86cc`, which landed **2026-09-08** — so this is still happening, not a one-off from August. The registration check in the detail table was wrong as first written and is corrected there. Detail in [TI-90](#ti-90-a-commit-can-reach-main-with-no-check-suite-from-any-app-and-the-absence-is-why-nobody-noticed) below. |
+| TI-93 | **The backstop that catches an unchecked commit accepts any robot's answer, so a commit whose build pipeline never ran can still be reported as checked** | 🔲 **Open** — raised 2026-08-13 ([TI-90] review, PR #478). Detail in [TI-93](#ti-93-the-backstop-accepts-any-apps-check-suite-so-a-commit-the-build-pipeline-never-saw-still-reads-as-checked) below. |
+| TI-94 | **A merge can quietly put back work someone deliberately deleted — no conflict, no marker, every check green — so a closed item reappears as open work and another session's finished change is undone** | 🔲 **Open** — raised 2026-08-13. **Three confirmed instances in one day; only one was visible to any existing check, and one sat on `main` for 10 straight commits.** Archiving is exactly the delete-versus-surrounding-context operation the `merge=union` driver resolves wrongly, so it will recur. Interim gate, usable today: zero deleted lines in the diff against the **merge base** on an append-only file — diffing against `origin/main` instead reads every line `main` gained since your branch point as your deletion (**86** falsely accused vs **0** real, same branch, measured). Detail in [TI-94](#ti-94-a-merge-silently-restores-a-deleted-section-and-nothing-detects-it) below. |
+
+| TI-95 | **Changes can sit undelivered for weeks while everything looks healthy — the last deployment failed, nothing since then triggered another, and nobody is told** | 🔲 **Open** — raised 2026-09-08. **Observed: main's last deploy failed 2026-08-14 and the next one ran 2026-09-08, a 25-day gap in which the app received nothing.** Every commit between touched only docs/scripts/`.claude`, which `deploy.yml` paths-ignores, so no run re-tested the red state and no signal existed to notice it. Detail in [TI-95](#ti-95-a-failed-deploy-can-go-unnoticed-for-weeks-because-nothing-re-runs-it) below. |
+| TI-96 | **The nightly check on how good the app's meeting summaries are stopped running, and the reason is that the model doing the marking replied with something the tool could not read.** One unreadable reply aborts the whole night's run, so no scores are produced at all. | 🔲 **Open** — raised 2026-09-09. First failure after at least four consecutive good nights. Detail in [TI-96](#ti-96-one-unreadable-reply-from-the-marking-model-throws-away-the-whole-nights-quality-scores) below. |
+| TI-97 | **On a Windows machine, one of the repo's own checks says it has failed when it has not.** Running the checks before pushing reports a failure that the real build machine does not see, so the honest response — stop and investigate — is wasted every time, and the dishonest one is to learn to ignore a red check. | 🔲 **Open** — raised 2026-09-09. Detail in [TI-97](#ti-97-a-self-test-reports-a-false-failure-on-a-windows-machine-because-its-stand-in-for-github-is-invisible-there) below. |
 
 **2026-06-17 deploy-gate stabilisation session:** proved **10 consecutive green deploys** (#595 ×10). Root-caused and fixed a **44-min E2E suite hang** (PR #291's fire-and-forget response-body read on the reload loop) → replaced with a hang-proof, sync-only diagnostic (PR #292) and a **hard 120 s per-test cap** (**TI-43 done**, PR #293). **TI-42** cards-list flake did not recur in 13+ runs (not reproduced ≠ fixed; diagnostic now in place). **BUG-31** turned out to be three stacked causes — original image-reappear symptom fixed, `SaveAndReturnAsync` cards-refetch sync fixed (PR #297, suite-wide win), and a residual stuck-note-detail-read layer carved out as **TI-44**. Full write-up: [docs/learnings/e2e-gate-hang-and-the-diagnostic-that-caused-it.md](learnings/e2e-gate-hang-and-the-diagnostic-that-caused-it.md).
 
@@ -445,68 +458,392 @@ The tier that catches what [TI-59] cannot: latency and the whole capture→engin
 
 ---
 
-## TI-73. The pre-commit gate is unbounded across sessions
+## TI-91. A fast clock turns the merge gate's stale-run discount into a fail-open
 
-**What it costs:** your commit fails on tests you never touched, after a full-suite wait, because another session happened to be committing at the same time. The failure names *their* files, so the session that sees the red is not the session that caused it — and the honest response to a failure in an untouched file (file it as a high-priority bug, per `CLAUDE.md`) is exactly the wrong one here. A false red gate is worse than a slow one: it burns a full suite run, then sends someone hunting a defect that does not exist.
+**What it costs:** the gate prints `GREEN — safe to merge` while a deploy is still running, the merge lands on top of it, and the in-flight deploy is disrupted. **Derived from reading the script, not observed here.** No instance has been seen on this box, and — see below — none could be found afterwards even if it had happened.
 
-**Observed 2026-08-10**, across two sessions driving four slices between them:
+**Why.** `age_minutes()` in `scripts/deploy-status.sh` computes `datetime.now(timezone.utc) - t`. Both `t` values it is handed are **GitHub-side** timestamps — the run record's `updatedAt` and each job's `completed_at` — while `now` is the **local** clock. The discount is then gated on `if age < STALE_MINUTES or job_age < STALE_MINUTES`, which blocks whenever either looks recent. `STALE_MINUTES = 10`.
 
-| Fact | Value |
+| Local clock | Computed ages | Outcome |
+| --- | --- | --- |
+| Behind GitHub | Negative, so under the threshold | Blocks. Fail-**closed**, safe |
+| Ahead by more than `STALE_MINUTES` (10) | Both inflated past the threshold | A genuinely running deploy is classified orphaned, discounted, and the gate prints safe to merge. Fail-**open** |
+
+**The script already names this and does nothing about it.** The comment immediately above the clock test reads: *"Clock skew is a one-sided fail-open — a local clock more than STALE_MINUTES AHEAD discounts live runs — and two GitHub-side timestamps measured against one local `now` does nothing about that."* Documented is not guarded, and that is the row's point. [TI-81, archived](technical-improvements-archive.md#ti-81-an-orphaned-run-record-blocks-the-merge-gate-for-tens-of-minutes) built this discount precisely to avoid merging onto a live deploy; the clock is a route back to that outcome that bypasses every clause of the allow-list rather than defeating one.
+
+**Reachability.** WSL2 clocks drifting after the host sleeps or hibernates is well-known platform behaviour, and this repo's gate runs on that box. **No instance has been observed here.** Measured just now for provenance: `gh api -i` returned `Date: Thu, 13 Aug 2026 08:21:34 GMT` and local `date -u` read the same second — no skew at the time of filing.
+
+**It leaves no trace, which is the argument for fixing it rather than watching for it.** The gate prints GREEN with a plausible-looking age, the merge succeeds, and the only symptom is a disrupted deploy surfacing — if at all — as an unrelated flake much later. No reading taken afterwards can establish whether this has already happened.
+
+**Docs-only merges are structurally immune, and that is what makes it dangerous.** `.github/workflows/deploy.yml` paths-ignores `docs/**`, `**/*.md` and `scripts/**` (verified on `origin/main`), so a docs- or scripts-only merge produces a `Repo Checks` run and never a deploy — nothing to disrupt, whatever the clock says. Exposure falls entirely on merges carrying backend or frontend changes, while the inert merges that dominate by volume here accumulate an unbroken record of correct-looking verdicts that means nothing. A session doing docs work reads that record and concludes the gate is sound.
+
+**Two candidate fixes, neither picked:**
+
+| # | Fix | What it buys |
+| --- | --- | --- |
+| a | Measure GitHub-side against GitHub-side — the API response carries a server `Date` header (confirmed present on `gh api -i`); using it as `now` makes the skew cancel | The comparison stops depending on the local clock at all |
+| b | Refuse to discount when local `now` is implausible relative to the newest timestamp seen | A clock that cannot be trusted fails **loud**, in **both** directions, not only the negative one |
+
+**Same family as [TI-88] and [TI-90]** — a gate reporting a state that is not the state now. [TI-88] is a stale mergeability flag and [TI-81] was a stale run record; this one is a sound record read against a wrong clock.
+
+**Raised in:** 2026-08-13, from a read of `scripts/deploy-status.sh` on `origin/main`.
+
+---
+
+## TI-92. Half-archived TI items are invisible because the live-vs-archive check covers bugs only
+
+**What it costs:** an item written into the archive but never deleted from the live table stays on the outstanding list forever, so anyone scanning the `Status` column to decide what is left reads finished work as open. CI fails the build for exactly this state on a bug and permits it silently on a technical improvement.
+
+**Why.** `scripts/check-doc-ids.sh` lines 45–55 `comm -12` the ids in `docs/phases/phase-bugs.md` against the `## BUG-N` headings in `docs/phases/phase-bugs-archive.md` and fail when an id appears in both. There is **no equivalent for TI** (`technical-improvements.md` vs `technical-improvements-archive.md`) and none for CHANGE. The *duplicate*-id check higher up does cover all three prefixes; it is only the live-vs-archive half that is BUG-only.
+
+**Measured 2026-08-13 — 34 TI ids have a row in the live table and an entry in the archive.** All pre-existing; none introduced today.
+
+```bash
+comm -12 \
+  <(grep -oE '^\| *TI-[0-9]+ +\|' docs/technical-improvements.md | grep -oE 'TI-[0-9]+' | sort -u) \
+  <(grep -oE '^## TI-[0-9]+' docs/technical-improvements-archive.md | grep -oE 'TI-[0-9]+' | sort -u)
+```
+
+TI-1, 2, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 19, 21, 22, 26, 27, 28, 29, 30, 31, 32, 35, 36, 37, 38, 39, 41, 42, 43, 44.
+
+**The count is 34 and not 27, and the seven-id gap is itself part of the fix.** The existing BUG check matches `^\| BUG-[0-9]+ \|` — exactly one space before the closing pipe. This table pads its column, so a single-digit id is written `| TI-1  |` with two spaces and does not match. Copying the BUG regex verbatim to TI finds 27 of the 34 and silently misses TI-1, 2, 4, 5, 6, 8 and 9. The BUG check carries the same blind spot latently — it does not bite today only because every single-digit bug is already archived out of the live table.
+
+**Part 1 — sweep the affected ids.** For each, decide whether the live row or the archive entry is the survivor, then delete the other.
+
+**Part 2 — extend the live-vs-archive check to TI and CHANGE**, with a padding-tolerant pattern (`^\| *<PREFIX>-[0-9]+ +\|`) so it cannot miss a padded row. Note there is **no CHANGE archive file today** (`docs/phases/` has only `phase-bugs-archive.md`), so the CHANGE half guards a file that does not yet exist and must no-op cleanly when it is absent, exactly as the BUG block already does.
+
+**Part 2 must be seen failing before it is trusted.** With 34 existing instances it should go red immediately on the current tree. If it goes green, the check is the defect — not the tree.
+
+**Ordering and sequencing, both binding:**
+
+1. Part 2 will fail CI on `main` until part 1 is done, so either sweep first or land the check together with the sweep in one change. A red shared gate blocks every session here, so an interim red is a real cost, not a formality.
+2. The sweep must not start until PRs **#477, #478 and #479** have landed. It rewrites most of `docs/technical-improvements.md`, and `merge=union` on this file resolves concurrent *appends*, not a wholesale rewrite against branches holding their own rows — #478 ([TI-90]) and #479 ([TI-79]) are both in a fix round. Part 2 touches only a script and is independent of that constraint.
+
+**Raised in:** 2026-08-13, from a read of `scripts/check-doc-ids.sh` on `origin/main`.
+
+---
+
+## TI-94. A merge silently restores a deleted section, and nothing detects it
+
+**What it costs:** a merge can undo a deletion someone made on purpose. The content comes back, git reports no conflict, no marker is written, and every check passes — so a finished item reappears on the outstanding list carrying advice that no longer applies, and the session that deleted it is never told. One instance below reached `main` and stayed live for hours before a human spotted it by eye.
+
+**Why it will keep happening:** `.gitattributes` sets `merge=union` on the three tracking tables so concurrent *appends* resolve instead of conflicting. CLAUDE.md documents union's bad case as "two branches editing the same row". **There is a second bad case with no guard: a deletion on one branch against surrounding context on another.** Union keeps both sides, so the deleted content is restored. Archiving is precisely that operation — delete a row and its section from the live doc while other branches hold context around them — so every archive action is an opportunity for this.
+
+### The gate to use today, before any of the below is built
+
+**On a file you are only appending to, the diff against the MERGE BASE must contain zero deleted lines.** One reading, no set arithmetic, no regex to get wrong. It catches a resurrection and an accidental clobber of someone else's work together, and unlike the heading-set diff it cannot be defeated by a padding mistake:
+
+```bash
+git fetch origin
+MB=$(git merge-base origin/main HEAD)
+git diff $MB HEAD -- docs/technical-improvements.md | grep '^-' | grep -v '^---'
+```
+
+**Against `origin/main` instead of the merge base the gate gives the WRONG answer, and the wrong form is the one you reach for first.** `git diff origin/main HEAD` reports every line `main` has gained since your branch point as a deletion *by you* — so a branch that deleted nothing is accused of deleting other people's work. Measured on `slice/ti-90-main-checked`, the same branch, same file, both forms:
+
+| Form | Reading |
 | --- | --- |
-| Concurrent `vitest run` processes | 4 |
-| Load average | 16.54 on 16 cores |
-| Failing tests | `imageMarkdownRoundTrip`, `taskListMarkdownRoundTrip` — both `web/src/lib` |
-| Failure shape | `Test timed out in 5000ms` — timeouts, not assertion failures |
-| Touched by the committing slice? | **No** — neither file was in its diff |
-| Result in isolation, minutes later | **13/13 pass** |
+| `git diff origin/main <branch>`, `origin/main` = `0ea857c7` | **60 added / 86 removed** |
+| `git diff $(git merge-base origin/main <branch>) <branch>` | **71 added / 0 removed** |
 
-Measured again ~90 min later, independently, by the other session — the fuller picture, and the reason a vitest-only count understates it:
+Every one of the 86 was TI-94's own filing landing on `main` after that branch point. Re-measured 2026-08-13 with `origin/main` one commit further on (`4fbf7286`) the wrong form reads **130 removed** — the false accusation *grows* with unrelated activity on `main`, which is the tell. The row's own closing warning applies to the row: **a check that accuses wrongly gets switched off**, and this one accused wrongly on its first real use.
 
-| Processes | Count |
+**`git fetch origin` first is part of the gate, not hygiene.** A stale `origin/main` moves the merge base and gives a false pass — the same input-staleness that made `scripts/next-doc-id.sh` report a taken id as free when the local `origin/main` predated the claim. The script was right; its input was old. Fetch, then check, then commit, with nothing in between.
+
+This filing was verified that way: the commit adding it shows **66 insertions and 0 deletions**.
+
+**When you are revising your own earlier text the count is not zero, and the gate still works** — it just becomes "zero deletions of lines *someone else* wrote". Clear it by proving every deleted line came from your own prior commit, which is mechanical:
+
+```bash
+MB=$(git merge-base origin/main HEAD)
+git diff $MB HEAD -- <file> | grep '^-' | grep -v '^---' | sed 's/^-//' > /tmp/del.txt
+git show <your-sha> -- <file> | grep '^+' | grep -v '^+++' | sed 's/^+//' > /tmp/added.txt
+while IFS= read -r l; do [ -n "$l" ] && grep -qxF "$l" /tmp/added.txt || echo "NOT MINE: $l"; done < /tmp/del.txt
+```
+
+The follow-up commit to this row deleted 7 lines and printed nothing — all 7 were its own. Do not weaken the gate to "deletions are fine when I expect them"; the expectation is the thing being tested.
+
+**Do not read that escape hatch as escaping the ancestry constraint below — it inherits it.** "Traced to your own prior commit" is an ancestry question wearing different clothes: `<your-sha>` has to be an ancestor of `HEAD` and not of the merge base, or the trace proves nothing. What it escapes is *pattern-matching* — it never asks whether a line looks like a resurrection, it asks where the line came from — and that is why it is worth leading with. It does not escape needing the history.
+
+Keep the heading-set diff below as the *diagnostic* — it names **what** came back — but lead with the deletion count, which answers **whether** anything did.
+
+### The fix — an orphan-section check
+
+**A `## TI-N` section in the live doc with no matching `| TI-N |` row is an orphan.** Two of the instances below were exactly that shape. One `comm -23`, no network, runs beside the existing checks in `scripts/check-doc-ids.sh`:
+
+```bash
+comm -23 \
+  <(grep -oE '^## TI-[0-9]+' docs/technical-improvements.md | grep -oE 'TI-[0-9]+' | sort -u) \
+  <(grep -oE '^\| *TI-[0-9]+ +\|' docs/technical-improvements.md | grep -oE 'TI-[0-9]+' | sort -u)
+```
+
+Four constraints on the implementation, each measured rather than assumed:
+
+1. **It must run against the LIVE docs only, never the archives.** Measured on `origin/main` 2026-08-13: `technical-improvements-archive.md` has **42 `## TI-` sections and 0 table rows**; `phase-bugs-archive.md` has **73 `## BUG-` sections and 0 table rows**. The archives carry no table at all, so a rule written generically over "the doc pair" — the obvious way to write it, since the live-vs-archive check beside it takes both files — fires on **all 115 archive entries** and is red from birth. A check that is red from birth gets commented out, not fixed.
+2. **The row pattern must tolerate column padding** — `^\| *TI-[0-9]+ +\|`, not the existing BUG check's single-space `^\| BUG-[0-9]+ \|`. Single-digit ids are written `| TI-1  |`, with two spaces, and the single-space pattern does not match them, so it reports a *false orphan* for every one of TI-1 through TI-9. Same blind spot [TI-92](#ti-92-half-archived-ti-items-are-invisible-because-the-live-vs-archive-check-covers-bugs-only) measures at seven ids.
+   **This is not hypothetical — it happened while filing this item.** The first measurement of the baseline below used the single-space pattern and reported **2 orphan sections on `origin/main` (TI-3 and TI-7)**. Both were false: the rows exist, padded. The correct count is zero. So the instrument written to catch a check that cannot see what it seeks was itself, on its first run, a check that could not see what it sought — and it reported a confident number rather than an error. Treat the padded pattern as the requirement, not the preference, and re-read [`docs/learnings/a-mechanism-nobody-has-watched-work-is-not-working.md`](learnings/a-mechanism-nobody-has-watched-work-is-not-working.md) before trusting any count this check prints.
+3. **It is disjoint from [TI-92](#ti-92-half-archived-ti-items-are-invisible-because-the-live-vs-archive-check-covers-bugs-only) part 2, not a variation of it.** They take different inputs: live-vs-archive compares **two files**; the orphan check compares **two structures within one file**. TI-92 part 2 is necessary but not sufficient here — it catches a section present in both files and misses an orphan whose archive entry is absent, which is what instance 1 was.
+4. **Apply the same shape to `phase-bugs.md` and `phase-minor-changes.md`** — all three carry `merge=union` and all three are archived the same way.
+
+**It must be seen red before it is trusted.** Baseline measured on `origin/main` at `b2acbfb1` with the command above: **zero orphan sections**. So it goes green on day one, and a check whose only observed output is green is untested.
+
+**The positive control is a git blob, not a reconstruction.** `git show 4727672f:docs/technical-improvements.md` **is** the defect — the real file, at the real sha, on `main`. Run the check against that blob and it must print `TI-73` and nothing else. It is immutable, so it cannot rot. **Do not tidy it into a synthetic fixture:** a hand-written fixture is strictly weaker, because it proves the check matches something someone wrote to be matched rather than the shape a merge actually produced.
+
+### Three confirmed instances, one of them visible to an existing check
+
+All verified 2026-08-13 by measuring the repository, not quoted from a report. A fourth was reported and **could not be reproduced** — see the note at the end of this section.
+
+**Instance 1 — shipped to `main` and stayed there for 10 consecutive commits.** Squash merge [`4727672f`](https://github.com/simonkirkham/ai-note-taker/commit/4727672f) (the [TI-81] merge, PR #469) **added `## TI-73. The pre-commit gate is unbounded across sessions` back** to `docs/technical-improvements.md`; the diff shows it as an added heading. TI-73 had been archived on 2026-08-11 and its section deleted, and union restored it during one of that branch's merges of `main`. Confirmed: **no live row for TI-73 at that commit** (`grep -c '^| TI-73 |'` = 0), so it sat as an orphan section — a closed item presented as open work, prescribing a fix for a pre-commit gate that no longer exists (`.githooks/` was deleted from `main` on 2026-08-11).
+
+Measured span, by walking `git rev-list 4727672f~1..b2acbfb1` and testing each commit for section-present/row-absent: the orphan was on `main` in **10 successive commits over 55 minutes**, `4727672f` (08:34) through `f3218a71` (09:25), removed at `b2acbfb1` (09:29). Every one of those commits was green. It also propagated: both open slice branches picked it up from `main`, so a single silent restoration seeded ten commits and two branches. TI-73 is now absent from the live doc and present in the archive — the correct end state.
+
+**Instance 2 — caught before it shipped, by eye.** PR [#477](https://github.com/simonkirkham/ai-note-taker/pull/477) rebased onto `main` twice. The first rebase produced duplicate TI-83 **and** TI-84 rows (2 of each) and `scripts/check-doc-ids.sh` caught it. `main` then moved to `10957a81`, which archived TI-84 — deleting both its row and its `## TI-84.` detail section. The second rebase, an hour later, **silently restored the entire `## TI-84.` section**: the resulting commit carries the section with **no matching row**, and only one TI-83 row, so the duplicate check printed OK. Nothing caught it; it was found by diffing section headings against `origin/main` by hand, and removed in a later amend. Pushing it would have undone another session's completed archive with every check green.
+
+**Instance 3 — the only one an existing check would have caught, and only by luck.** The [TI-90] worktree (PR [#478](https://github.com/simonkirkham/ai-note-taker/pull/478)) reached commit `12cb3076` carrying **two `| TI-90 |` rows**. `scripts/check-doc-ids.sh`'s duplicate-id check catches this — but only because the restored content happened to be a *row*, which duplicates an id. Restore a *section* instead, as instances 1 and 2 did, and the same driver on the same file produces nothing for any check to see. **One in three, and the one is an accident of which half of the item came back.**
+
+> **Durability of the controls.** Instances 2 and 3 live only in their worktrees' reflogs and **will expire**; instance 1's blob is on `main` and is permanent. Test against `4727672f`, and do not substitute a fixture for it.
+
+**A fourth instance was reported and does not survive checking.** The report was a resurrected `| TI-84 |` row on the two open slice branches. Every commit carrying that row was tested with `git merge-base --is-ancestor 10957a81 <sha>`, and **none is a descendant of the archive commit** — so each is legitimate pre-archive ancestry, not a restoration. Likewise the TI-73 orphans on those branches are inherited from instance 1's span on `main`, not independent events. Recorded because the near-miss is the point: **a resurrection and ordinary pre-archive ancestry look identical in a `grep`, and only an ancestry test separates them.** Any check built here must test ancestry before it accuses, or it will generate false reports of exactly this kind — and a check that accuses wrongly gets switched off.
+
+**Run the ancestry test PER BRANCH. It does not generalise, and the two branches in that fourth report split on it** — same artefact, opposite diagnosis, decided entirely by ancestry (re-run 2026-08-13, `git merge-base --is-ancestor 10957a81 <ref>`):
+
+| Branch | Descends from `10957a81` (the TI-84 archive)? | Diagnosis |
+| --- | --- | --- |
+| `slice/ti-79-cmdline-wait-guard` (PR #479) | **NO** | pre-archive history — an inherited TI-84 row is legitimate, not a resurrection |
+| `slice/ti-90-main-checked` (PR #478) | **YES** | post-archive — an inherited TI-84 row there **would** have been a resurrection |
+
+**The failure mode, recorded because it happened here: a per-branch test cannot support a cross-branch conclusion.** One branch was tested and the verdict was stated for both. It came out right by luck — neither carried the row in the end — which is the worst way for it to come out, because it earns the method trust it has not got. Test every ref you name, or name only the ref you tested.
+
+### Why nothing catches it today
+
+`scripts/check-doc-ids.sh` has two checks and neither sees this shape:
+
+- The **duplicate-id** check (`uniq -d` over rows) covers all three prefixes, but a resurrected *section* adds no row, so there is nothing to duplicate. Instance 2 passed it.
+- The **live-vs-archive** `comm -12` check compares **BUG ids only** (script lines 45–55) — verified by reading the script. A resurrected `TI` section is invisible to it, and instance 1's TI-73 had no archive-side row to compare anyway.
+
+It printed `doc ids OK` throughout instances 1 and 2, and caught instance 3 only because that one restored a row rather than a section.
+
+### Other directions, as options not decisions
+
+- **Extend the live-vs-archive check to TI and CHANGE** — this is **[TI-92](#ti-92-half-archived-ti-items-are-invisible-because-the-live-vs-archive-check-covers-bugs-only) part 2**, already specced there. Do not duplicate it. Necessary but not sufficient, per constraint 3 above.
+- **Reconsider `merge=union` on these files, or narrow where it applies** — union was adopted because PR #414 re-conflicted three times in one day. Removing it trades silent restoration for frequent conflicts; narrowing it (union on the table region only, normal merge on the detail sections) keeps the benefit where appends happen and restores conflict markers where deletions happen. Unmeasured.
+- **Correct the `merge=union` comment in `.gitattributes` in the same change** — it currently states that `scripts/check-doc-ids.sh` "runs in the pre-commit hook", so a reader concludes union's bad case is caught before a local commit. It is not: `.githooks/` was deleted from `main` on 2026-08-11 (`dba8fce8`, "Remove the pre-commit hook entirely, and every reference to it") and `git ls-tree -r origin/main` lists **0** files under `.githooks/`. Name `.github/workflows/docs-check.yml` as the only enforcement point. This is the documentation of the exact mechanism TI-94 is about, which is why it is here and not a row of its own.
+
+### Sequencing
+
+TI-94's check is **independent of TI-92's sweep and can land at any time** — it touches only `scripts/check-doc-ids.sh`, goes green on the current tree, and needs no doc rewrite. TI-92's 27+ row sweep must still wait behind PRs **#477**, **#478** and **#479**.
+
+### A related current reading, recorded here to place it correctly
+
+Three ids have a `## TI-` section in **both** the live doc and the archive: **TI-19, TI-42, TI-44**. All three trace to `8b3b0d15` (2026-06-29, `Revert "docs(scout): add per-slice Value statements to Phase 43"`), which re-added all three headings — pre-existing, not fresh resurrections. **This belongs to [TI-92](#ti-92-half-archived-ti-items-are-invisible-because-the-live-vs-archive-check-covers-bugs-only)'s sweep scope, not TI-94's**, and it is a different measurement from TI-92's headline 34: that 34 counts live *rows* against archive *sections*; this 3 counts live *sections* against archive *sections*. Both were re-measured 2026-08-13 and both are correct.
+
+**Raised in:** 2026-08-13, from two observed instances — one on `main`, one on a branch.
+
+---
+
+## TI-89. The merge gate's self-test blames the merge gate when the machine's `date` command is the problem
+
+**What it costs:** someone on a Mac runs the self-test that guards every merge, sees it red, and is pointed at the orphaned-run-record logic — which is fine. The real cause is two `date: illegal option -- d` lines printed far above the failures, with nothing connecting them. Time spent chasing a phantom bug in the one script every session has to pass. Costs nobody today: CI is `ubuntu-latest`.
+
+**Why:** `scripts/test-merge-gate.sh:84-85` builds `STALE` and `FRESH` with `date -u -d '-45 minutes'`, a GNU coreutils extension. BSD `date` (macOS) rejects `-d`, both assignments capture the empty string, and every fixture's `updatedAt` becomes `""`. The gate then blocks on "the run record carried no readable updatedAt" — a correct refusal, reached by a path unrelated to what the case tests.
+
+**Measured 2026-08-13, with `date` shadowed by a stub that rejects `-d`:**
+
+| Run | Result |
 | --- | --- |
-| `vitest run` | 7 |
-| `dotnet test` | 3 |
-| MSBuild | **28** |
-| Load | 11.3 instant, **18** on the 15-min average, 16 cores |
+| GNU `date` | `MERGE-GATE SELF-TEST: GREEN` — 54 PASS, 0 FAIL |
+| `date` without `-d` | `MERGE-GATE SELF-TEST: FAILED` — 45 PASS, 9 FAIL, exit 1 |
 
-**Why [TI-68] does not cover this.** TI-68 capped `web/vite.config.ts` to `maxWorkers: 2` and fixed the single-suite case decisively (uncapped+contended failed in 3 independent runs; capped has never failed in 13+). But the cap bounds **one suite**, not the machine. N sessions × (2 vitest workers + a node process + `tsc` + `eslint`) is unbounded by design, and the backend half is worse: only `Analysis.Eval` and `Infrastructure.Assertions` disable xUnit parallelism, so a frontend-only slice still triggers an uncapped backend run through the hook. TI-68's own row makes the matching point from the other side — *"two capped runs are 4 workers on 16 cores, which is not a contended condition"* — which is true, and is precisely why four of them is.
+The nine read like the gate is broken: `an orphaned record is discounted, and said so — exit 1, wanted 0; missing 'orphaned'`, `a job with no completed_at cannot establish that the run finished — missing 'no readable completed_at'`, `the caller inherits the discount, on one line — the discount did not survive the relay onto the MAIN DEPLOY line`. None mentions a clock.
 
-This is [BUG-69] recurring above the level TI-68 fixed. BUG-69 is closed correctly; its fix was right for one machine, one session.
+**The review that raised this predicted the opposite outcome — that the suite would degrade into passing while asserting nothing.** It does not; it fails loudly, at the suite level, on nine cases. That is a better failure than the one predicted, and it is why this is a should-fix and not urgent. What survives the correction is the **accusation**: a broken check that names the wrong culprit is still a broken check, and the 45 cases that still say PASS include ones whose clock fixtures are now empty and are passing on an unrelated arm. Same family as the standing `CLAUDE.md` rule that a mechanism nobody has watched work is not working — here the instrument was watched, and the prediction about it was wrong.
 
-**Fix direction, cheapest first:**
+**Fix:** one guard beside the assignments — compute `STALE`, and if it is empty, print `this suite needs GNU date (coreutils); on macOS: brew install coreutils and put gnubin on PATH` and exit non-zero. Loud and named beats nine failures that name something else.
 
-1. **Make the hook wait rather than fail — and gate on LOAD AVERAGE, not a process count.** At the top of `.githooks/pre-commit`, sleep-and-recheck against a bounded deadline with a clear message, instead of running straight into contention. Waiting is strictly better than a false red — the commit was going to take minutes anyway. **Bound the wait** (~10 min, then proceed anyway): an unbounded wait stalls a session rather than saving one. Use:
+**Verified NOT a gap — do not re-open it.** The same review also flagged that the `updated_at` staleness clock had no test pinning it, because on a re-run GitHub carries already-successful jobs into the new attempt with their **original** `completed_at`, leaving `updated_at` to decide alone (`deploy-status.sh:256-259` says exactly this in a comment). The fixture it asked for already exists: `test-merge-gate.sh:243-249`, "Clause 3's own red test — identical to #762 in every way except a fresh record", is stale jobs plus a fresh `updated_at`. Injecting the exact defect warned about — rewriting `if age < STALE_MINUTES or job_age < STALE_MINUTES` to drop the `age` term — reddened that case and failed the suite (53 PASS / 1 FAIL). The guard bites.
 
-   ```bash
-   awk -v c=$(nproc) '{ printf "%.2f\n", $1/c }' /proc/loadavg   # ratio ≳ 1.0 = saturated
-   ```
+**A known limit, recorded so nobody files it as a defect:** a `skipped` job blocks the discount, so an orphaned record on a run carrying one keeps the original bug. This is conscious and tested (`a conclusion outside the allow-list blocks rather than being guessed at`) — it is the allow-list failing **closed**, which is the property the whole fix exists to have. Measured **1 skipped job in 125, across 25 runs**, and in that one instance it accompanied a failure that blocks regardless.
 
-   **Load average is preferred for one reason only: it sees every kind of competing work without anyone having to enumerate it.** That is the failure that started this — a `vitest run` count is blind to the backend, and the hook runs xUnit too; the measurement above found 7 vitest processes beside 3 `dotnet test` and 28 MSBuild, so a session polling only vitest sees a quiet box while 31 backend processes fill it. **A `pgrep -f` count in the hook is a legitimate alternative**, not a ruled-out one — see the correction below before discarding it.
+**Raised in:** 2026-08-13, Hawk's post-merge review of PR #469 ([TI-81, archived](technical-improvements-archive.md#ti-81-an-orphaned-run-record-blocks-the-merge-gate-for-tens-of-minutes)), two findings folded into one item.
 
-   **Correction — `pgrep -f` is sound in the hook; it is the agent-side ad-hoc check that is not.** An earlier version of this row claimed `pgrep -fc` self-matches and is therefore never zero. **That was wrong.** The real mechanism: the Claude Code wrapper shell runs as `/bin/bash -c source …snapshot… && eval '<the entire command text the agent typed>'`, so its cmdline contains every pattern in that command and `pgrep -f` legitimately matches *it*. Measured on an idle box:
+## TI-90. A commit can reach main with no check-suite from any app, and the absence is why nobody noticed
 
-   | How the pattern reaches pgrep | Result |
-   | --- | --- |
-   | Typed on an agent's tool command line | `count=1`, exit 0 — the wrapper |
-   | Confined to a script, run as a bare path | **`count=0`, exit 1** — correct |
+**Symptom.** A change lands in the main codebase and nothing is checked against it — no failure, no red X, no trace anywhere. `main` then looks checked when it was never looked at, and the next person builds on top of it believing the opposite.
 
-   `.githooks/pre-commit` is invoked by git as a bare path, so nothing carries the pattern on a command line and the count is honest. The inflation is an artefact of *invocation*, not of pgrep — and it is not a constant: on the real pattern the count was 31, of which **3** were wrapper shells (one per concurrent agent shell), so a naive "subtract one" would also have been wrong.
+**Measured 2026-08-13**, on `repos/simonkirkham/ai-note-taker/commits/<sha>/check-suites`:
 
-   **This cannot be A/B-tested on a single command line** — put the bracketed and naive forms in one command and the wrapper's cmdline contains both literals, so both match. The same confounder invalidated the first script-based test here: the script was clean, but a control `pgrep` left in the *same* command block put the needle back on the wrapper's cmdline and returned 1 again. Only running the script alone, with the pattern appearing nowhere else, gives the true answer.
-2. **Or take a lock** around the heavy gate (`flock` on a file under the repo root), so the suites serialise across worktrees by construction rather than by politeness.
-3. **Not "raise the timeout"** — that hides the contention and slows the honest failure case.
+| Commit | `total_count` | Apps |
+| --- | --- | --- |
+| `4727672f` (TI-81 squash merge) | **0** | none |
+| `14a4a48f` | 2 | `coderabbitai`, `github-actions` |
+| `fb286458` | 2 | `coderabbitai`, `github-actions` |
+| `c12fa2c9` | 2 | `coderabbitai`, `github-actions` |
+| `93cc8cad` | 3 | `coderabbitai`, `github-actions` ×2 |
 
-**Verify with:** start a full suite in one worktree, then commit from another. Today the second run fails on files the second worktree never touched; after the fix it must wait and then pass. Confirm the guard actually fires — a wait that never triggers looks identical to no wait at all ([BUG-65]'s guards-that-cannot-fire shape).
+**This is not a workflow-config defect, and looking for one is the wrong search.** `docs-check.yml` is byte-identical between `14a4a48f` and `4727672f`; all three files `4727672f` changed are in its push `paths:` list; and its `concurrency.group` is keyed by `github.sha` on a push, so no push can cancel another. Decisively: **CodeRabbit is absent too**, and a `paths:` filter cannot suppress an unrelated app's check-suite. Zero suites across *every* app means no check machinery was triggered at all — most parsimoniously, no push event was delivered GitHub-side.
 
-**CI cannot prove this one — a manual demonstration is the only evidence.** `pr.yml:12` paths-ignores `.githooks/**` (and `scripts/**`), so **no check runs against this file on any PR**. A green PR here means nothing was tested, not that the change works. So the acceptance evidence is a hand-run red/green pair plus an injected defect: show the second commit failing today, show it waiting and passing after, then remove the guard and show it failing again. This is the [CLAUDE.md] "a mechanism nobody has watched work is not working" case, with the usual safety net removed — and the same blind spot that let [TI-69] sit unparsed for 162 pushes.
+**Retracted diagnosis, kept on purpose.** An earlier version of this blamed the `paths:` filter. It was wrong because `actions/runs` — which lists *workflow runs only* — was used to answer a question about *all checks*. "The guard did not fire" and "nothing fired" are different claims needing different queries; `check-suites` answers the second, and only the second.
 
-**Note for whoever takes it:** [TI-64] merged 2026-08-10 (068c97d7), so `.githooks/pre-commit` is free. Two things TI-64 changed in it: the three Lambda publishes are now guarded by `test -f` so they only run when absent, and the hook is the sole place that logic lives. Interim mitigation already in use across sessions: agents poll `pgrep -fc 'vitest run'` before committing and treat a timeout in an untouched file as contention, not a defect.
+**[TI-83] does not close this.** Dropping a `paths:` list changes what happens when a push event *arrives*. It does nothing at all when no push event arrives.
+
+**Same family as [TI-88] and the archived [TI-81]:** a gate reporting a state that is not the state now. TI-81 was a stale run record read as live, TI-88 a verdict that expired between being read and being acted on, and this one a check that was never asked. In all three the artefact on screen is confidently wrong rather than absent, which is why none of them surfaces as a complaint.
+
+**What shipped: a backstop, not a fix.** The cause of the undelivered push event is still unknown and is not within reach from this side of the API. What is within reach is noticing — so `scripts/check-main-checked.sh` walks the last N commits on `main`, asks the check-suites API about each, and fails if any commit has none. `.github/workflows/main-checked.yml` runs it daily.
+
+- **Why a schedule, not a push trigger.** The failure is "a trigger did not fire", so a guard triggered by that same push event is structurally incapable of catching it — the commit that lost its push event would have lost this run too. A `schedule:` is delivered by GitHub timers, independent of this repo's push deliveries, and it looks *backwards* over a window rather than at one commit. The cost is latency: a hole is found within a day rather than within a minute, against a current detection latency of never.
+- **How wide the window really is — measured, because the first estimate was wrong.** An earlier revision said "roughly 15-20 commits a day, so a commit stays in scope for two to three runs". **Measured 2026-08-13** from the committer dates of the last 100 commits on `main`: **45 on 08-10, 36 on 08-11, 5 on 08-12, 14 on 08-13** (partial day). So on a busy day the 50-commit window covers barely **27 hours — one scheduled run, not two or three**, and a hole landing at the start of a 45-commit day can roll out of the window before a second run sees it. On a quiet day it covers over a week. Raise the `count` input if a busier cadence becomes normal; the API pages at 100.
+- **Three outcomes, not two.** `0` all checked · `1` an unchecked commit · `2` could not determine. The third is the one that matters: a 401, a rate limit, a proxy error page, and a body missing `total_count` all look like a genuine zero to the obvious implementation, and a backstop that reports all-clear because it could not reach the API manufactures exactly the false confidence it exists to remove. Exit 1 and exit 2 are opposite instructions — fix `main`, or ask again — and never share a code or a word.
+- **Grace window, 10 minutes.** A commit pushed seconds ago has no suite yet. Measured against the committer date, which in this repo is within a minute of the push time (squash merges stamp it at the merge instant; direct doc pushes commit and push within seconds).
+- **Why "no `github-actions` suite" is *not* the failure condition.** **Measured 2026-08-13 08:19 UTC**, pinned to the tip `10957a81` so it reproduces (the window slides as `main` advances, which is why an earlier "20 of the last 40 / 50%" reading did not): `gh api "repos/{owner}/{repo}/commits?sha=10957a81&per_page=50" --jq '.[].sha'`, then one `check-suites` call per sha → **1 UNCHECKED, 22 with suites but none from `github-actions`, 27 fully checked**. Those 22 are benign — `deploy.yml` paths-ignores `docs/**` and `docs-check.yml` only gained its push trigger at [TI-80] — and another app answering *proves the push event was delivered*, which is the thing being reconciled. Failing on them would be a **44%** false-alarm rate that buries the one real hole. They are reported and do not fail.
+- **The residual hole in that choice, written down rather than left to be discovered.** Accepting **any** app's suite proves an event reached **an** app. It does **not** prove the `github-actions` pipeline was triggered. A commit could carry a CodeRabbit suite while Actions was never invoked, and this script calls that `ok`. Narrow — but it is the same shape of thing this exists to catch, one level in. `CHECK_MAIN_REQUIRE_ACTIONS=1` closes it, at the cost of the false-alarm rate above; **[TI-93]** holds that flip and its checkable condition, so it is a scheduled follow-up rather than an env var waiting for somebody to remember.
+
+**NOTHING WATCHES THIS WORKFLOW — and its silence is indistinguishable from a clean `main`.** This is the sharpest limit, not a footnote. If GitHub stops delivering the schedule, this file goes quiet in exactly the way the thing it monitors did: no failure, no red X, no trace. (GitHub also disables scheduled workflows in repositories with 60 days of no activity; this repo is nowhere near that, but the rule exists.) So the silence has to be actively disproven, by these three commands — **the first two run immediately on merge**, because they take seconds and "we'll see it tomorrow" is how [TI-69] shipped a workflow that never parsed, painted **162 push red X's over three days**, and was noticed by nobody:
+
+| # | Command | Fails if | When |
+| --- | --- | --- | --- |
+| 1 | `gh workflow list --json name,path --jq '.[] \| select(.path \| test("main-checked"))'` | **nothing prints.** A file that does not parse is simply *absent* from the list — absence, not an error message, is the whole failure mode. This is the positive control: the one of the three that can express a no about registration. **Corrected 2026-09-09:** this read `gh workflow list \| grep -i main-checked`, which greps the *display* name column. The workflow is called `Main Checked`, so the hyphenated filename never matched and the command reported "did not parse" about a workflow that was registered, active, and dispatchable — the check itself was the confidently-wrong artefact this row is about. Match on `.path` instead. | immediately on merge |
+| 2 | `gh workflow run main-checked.yml -f count=50` | **HTTP 422.** Exactly the check TI-69 failed. Then read it: `gh run list --workflow main-checked.yml --limit 1` | immediately on merge |
+| 3 | `gh run list --workflow main-checked.yml --event schedule --limit 1` | **the list is empty** — the timer never fired, and every quiet day since has been meaningless | after the first 07:17 UTC window, and again whenever it has been silent longer than feels right |
+
+**Verified, not asserted** — three arms, because a detector that reddens on everything only proves it noticed something. All three re-run 2026-08-13 after the review fixes:
+
+1. **Red on the real case.** `bash scripts/check-main-checked.sh 6 b59e991c` → `MAIN-CHECKED: FAILED — 1 of 6 commits reached b59e991c with NO check-suite from any app: 4727672f`, exit 1, with the other five reported `ok`.
+2. **Green on the neighbours.** `14a4a48f`, `fb286458`, `c12fa2c9` each → `MAIN-CHECKED: GREEN`, exit 0.
+3. **Loud, not green, on every error path** — forced against the real API, not a stub: an invalid token (real HTTP 401), an unreachable host, a non-existent ref (real HTTP 404), a real 401 on the per-commit call with the commit list succeeding, and a real HTTP 200 whose valid JSON simply has no `total_count`. All five printed `COULD NOT DETERMINE` and exited 2; none printed `GREEN`, none printed `UNCHECKED`. The first three were **independently reproduced by a second session**; the last two remain this session's measurement only.
+
+**A clock that disagrees now fails loud, not quiet** (Hawk, PR #478, blocking). The grace window is `now − committer date`, and any **negative** age satisfied `age < GRACE` — so a commit stamped in the future was excused as *too recent* and the run exited **0 with a genuine zero-suite commit in the window**, which is the one defect class this exists to remove. Not hypothetical: the stamp read is the *committer* date, and for a direct doc push to `main` — the route `CLAUDE.md` prescribes — that is the committing machine's clock, on WSL, across sleep/resume. It also self-heals only once wall-clock time overtakes the stamp, by which point the window has rolled past the commit. A future-dated commit is now `unverifiable` → exit 2. Proven both ways: reverting the arm reddens exactly the 3 new cases and leaves 34 green.
+
+**Cost.** One API call per commit plus one for the list — 51 calls for the default 50-commit window, measured at 36s wall clock. No build, no test, no deploy; nothing on the deploy path.
+
+**Tests.** `scripts/test-check-main-checked.sh`, **37** stub-driven cases, no network, ~2s, wired into `docs-check.yml` (`pr.yml` paths-ignores `scripts/**`, and this script prints GREEN forever in normal operation, so nothing about day-to-day use would ever reveal a broken failure arm). Every classification is asserted both ways — one fixture that must be reported and one that must not, differing only in the clause under test. Presence is not enough, so each guard is pinned by injecting its defect and checking that the **right** cases redden: reverting the future-date arm → exactly 3 red / 34 green; the classic `total_count or 0` → exactly 2 red / 35 green (it reddened **0** before this review, because the fixture naming it was caught one line later by the `check_suites`-is-a-list guard); a bare sibling-script invocation → exactly 1 red / 36 green.
+
+## TI-93. The backstop accepts any app's check-suite, so a commit the build pipeline never saw still reads as checked
+
+**Symptom.** A change lands in the main codebase, the build and test pipeline never runs against it, and the daily backstop still reports it as checked — because some other robot (the code-review bot) answered instead. Narrower than [TI-90], and the same shape one level in: an artefact that is confidently wrong rather than absent.
+
+**Why it was built this way, and why that is now expiring.** `scripts/check-main-checked.sh` trips on `total_count == 0` across *all* apps, not on the absence of a `github-actions` suite. That was the right call at the time: another app answering *proves the push event was delivered*, which is the thing being reconciled, and **measured 2026-08-13 08:19 UTC** over the 50 commits ending at `10957a81`, the stricter bar would have fired on **22 of 50 (44%)** — an alarm that cries wolf on nearly every other commit is one nobody reads. What it does **not** prove is that the Actions pipeline was invoked at all.
+
+**The reason it can now be closed.** Those 22 exist because `deploy.yml` paths-ignores `docs/**` and `docs-check.yml` carried a `paths:` list on its push trigger. **Measured, same run:** every one of the 22 predates [TI-80] (`14c6c034`); of the **16** commits at or newer than it, **15 are `ok` and 1 is the real `UNCHECKED` hole — zero are `no-actions`**. Once [TI-83] (PR #477) removes the remaining `paths:` from the push trigger, every push to `main` produces a `Repo Checks` run and therefore a `github-actions` suite, so the benign class stops existing **by construction** rather than by judgement.
+
+**The flip, with its checkable condition** — this is a scheduled change of default, not an env var waiting for somebody to remember it:
+
+1. **Wait for** [TI-83] (PR #477) to merge, so no push to `main` can match zero workflows.
+2. **Check it, do not assume it:** `CHECK_MAIN_REQUIRE_ACTIONS=1 bash scripts/check-main-checked.sh 50 main`. The condition is **exit 0 with zero `no-actions` lines** — a strict-mode false-alarm count of 0 over the full 50-commit window. Anything else means the class has not closed and the flip waits.
+3. **Then switch the default** in `scripts/check-main-checked.sh` (`REQUIRE_ACTIONS="${CHECK_MAIN_REQUIRE_ACTIONS:-1}"`), invert the existing `...unless the stricter bar is asked for` case in `scripts/test-check-main-checked.sh` so the *lenient* bar becomes the opt-out, and re-run the suite.
+
+**Cost.** Minutes. One default flipped, one test case inverted, one measurement re-run. Reversible by the same env var in the other direction.
+
+**Raised in:** 2026-08-13, Hawk's review of PR #478 ([TI-90]), finding folded out of that row so the flip has an owner and a condition rather than a comment.
+
+---
+
+## TI-88. A gate verdict has an expiry, and the window between reading it and acting on it is where it fails
+
+**What it costs:** a merge is declared safe, refused seconds later, and the branch cleanup that normally follows a successful merge then deletes the remote branch — which **auto-closes the pull request**. Fully recoverable (re-push the sha, `gh pr reopen`), but it is a live path from one stale field to a closed PR, and the person hitting it has just been told the opposite by the gate.
+
+**Observed live, 2026-08-13.** `scripts/merge-gate.sh 469` printed `MERGE GATE: GREEN — safe to merge PR #469`, with `MERGEABLE: ok (CLEAN)`. Roughly **three seconds later** `gh pr merge 469 --squash` was refused: `GraphQL: Pull Request has merge conflicts (mergePullRequest)`. Two commits (`504990a2`, `95ecf1ee`) had just been pushed directly to `main` in between. First-hand reading, both halves watched.
+
+**Why:** GitHub computes a PR's mergeability **asynchronously**. Until it recomputes against the new `main`, the API keeps serving the previously-computed `MERGEABLE`/`CLEAN`. The gate therefore reads a value that is already stale — and, the part that matters, it **cannot distinguish "verified clean against current `main`" from "not yet rechecked"**. Both arrive as `MERGEABLE`/`CLEAN`.
+
+**Distinct from its two neighbours — do not fold them together.** [TI-81] (archived) was a stale *run* record on the deploy gate. [TI-87] is a network blip on a dependency download. This is a stale *mergeability* flag on the PR gate, in a different script, with a different failure path.
+
+**Same shape as [TI-81], and the shape is the reusable part:** a gate reporting a state that was true a moment ago and is not true now — a stale run record there, a stale mergeability flag here. See [TI-81 in the archive](technical-improvements-archive.md#ti-81-an-orphaned-run-record-blocks-the-merge-gate-for-tens-of-minutes). It is the same family as [TI-77] (`UNKNOWN` mergeability read as a conflict) and as the standing guardrail in `CLAUDE.md` about a mechanism nobody has watched work: a check that agrees with reality without being able to see it. TI-77 fixed *not yet computed*; this is *computed, then invalidated*.
+
+**Two candidate fixes, neither picked:**
+
+| # | Fix | What it buys |
+| --- | --- | --- |
+| a | Record `origin/main`'s sha at the moment the gate reads `MERGEABLE`, and re-check immediately before merging that the sha has not moved — fail **closed** if it has | The verdict can name what it was computed against, so a later step can tell it is void |
+| b | Treat the verdict as having an expiry and re-run the gate **inside** the merge step, rather than as a separate earlier call | Closes the window rather than detecting movement inside it |
+
+(b) removes the window; (a) keeps the two calls but makes the second able to see the first is void. Either way the gate must be able to say **which `main` it checked** — a verdict that cannot name its input cannot be re-validated.
+
+**A second, operational rule this incident produced, independent of whichever fix is taken:** never run cleanup on the assumption an action succeeded. Verify the action landed, *then* clean up. Here the cleanup ran on the assumption the merge had happened, and turned a failed merge into a closed PR — the cleanup did more damage than the bug.
+
+**Learnings:** [merge-gate-verdicts-expire.md](learnings/merge-gate-verdicts-expire.md).
+
+**Raised in:** 2026-08-13, measured during [TI-81]'s own merge.
+
+---
+
+## TI-82. The documented merge step deletes neither branch
+
+**What it costs:** the remote carries **247** `slice/`+`proof/` branches (measured 2026-08-11, after three were removed). Every `git fetch`, every branch autocomplete, every "is this still in flight?" question is paid against that list, and a genuinely-live branch is indistinguishable from 240 dead ones. `scripts/next-doc-id.sh` scans 305 remote refs to answer one question.
+
+**Why it went unnoticed for so long: the doc said the failure was harmless.** `CLAUDE.md` → `## Workflow` step 11 stated that `gh pr merge --squash --delete-branch` deletes the *remote* branch and only its *local* cleanup fails (`'main' is already used by worktree`) — "this is harmless". It is not. When the local step errors, `gh` aborts the whole cleanup and **the remote branch survives silently**. Nobody checked, because the doc had already answered the question.
+
+**The measurement (coordinator, 2026-08-11, five merges):**
+
+| Branch | Remote after merge |
+| --- | --- |
+| `slice/ti-67-rum-custom-events` | still on remote |
+| `slice/ti-65-gated-read-stale` | still on remote |
+| `slice/ti-77-merge-gate-unknown` | still on remote |
+| `slice/ti-70-actionlint` | gone — deleted by hand |
+| `slice/ti-61-routing-flake` | gone — deleted by hand |
+
+Three of five survived, and the two that did not are exactly the two deleted explicitly. **Done 2026-08-11:** `CLAUDE.md` steps 11 and 13 corrected (both deletes are now explicit, and step 11 no longer calls the failure harmless), and the three branches above deleted after confirming each was safe.
+
+**Confirming a squash-merged branch is safe to delete — `git branch -r --merged` is the wrong test.** A squash merge never makes the branch tip an ancestor of `main`, so `--merged` lists none of these and `--is-ancestor` returns NO for all three; read naively that says "unmerged, do not delete". Two checks settle it instead:
+
+1. `gh pr list --state all --head <branch>` → the PR is `MERGED` and names its squash commit; `git merge-base --is-ancestor <squash-sha> origin/main` confirms that commit is on `main`.
+2. For the files the branch actually touched — `git diff --name-only $(git merge-base origin/main <tip>) <tip>` — check none still differs: `git diff --name-only origin/main <tip> -- <those files>`. A residual here is not automatically unmerged work; on both branches that showed one, the file had been changed by a *later* commit on `main` (#470, #464), which `git log <squash-sha>..origin/main -- <file>` shows in one line.
+
+**Remaining work:** the other 247 are historical and were deliberately not swept. A sweep needs the two checks above run per branch — worth scripting (`scripts/prune-merged-branches.sh`, dry-run by default) rather than doing by hand, since the naive `--merged` filter is wrong for every squash-merged branch in the list and would report almost all 247 as unmerged.
+
+**Raised in:** [TI-80] session, 2026-08-11, from the coordinator's measurement.
+**Depends on:** —
+
+---
+
+## TI-80. The push trigger needed a concurrency change the row did not predict
+
+**What it would have cost:** a broken workflow file reaching `main` unlinted **anyway**, with a run list that looks fine. The row's prescribed fix — `push: branches: [ main ]` with the same `paths:` list — is correct and is what shipped. But `docs-check.yml` keys its concurrency group `docs-check-${{ github.head_ref || github.ref }}` with `cancel-in-progress: true`. On a pull request `head_ref` is the branch, so runs are keyed per-PR. On a **push** `head_ref` is empty, so every push to `main` falls into **one** group — and the second merge landing a minute after the first **cancels the first's lint**. A cancelled run is not a failing run. Merges land minutes apart here routinely.
+
+**Fix:** `docs-check-${{ github.head_ref || github.sha }}`. Pull-request behaviour is byte-identical (`head_ref` is non-empty there, so that operand never changes); each pushed commit gets its own group, so no push can cancel another and every commit reaching `main` is linted exactly once.
+
+**Watched working, not argued.** Two commits pushed 5s apart on `proof/ti80-push`:
+
+```
+run 31542444491 failure created=22:26:50Z  workflows:failure 22:26:53->22:27:00
+run 31542450478 success created=22:26:55Z  workflows:success 22:26:58->22:27:07
+```
+
+They overlapped and **both completed**. Under the old key the first — the one carrying the red — would have been cancelled at 22:26:55.
+
+**The generalisable bit:** adding a trigger to an existing workflow inherits every workflow-level setting, and `concurrency` is the one that can silently convert a new red into no red at all. Check the concurrency key against the *new* event's contexts, not the old one's — `github.head_ref` is empty on a push, which turns a per-branch key into a global one without changing a character of it.
+
+**Raised in:** [TI-80] implementation, 2026-08-11. **Fix:** PR [#471](https://github.com/simonkirkham/ai-note-taker/pull/471).
+**Depends on:** —
+
+---
+
+## TI-95. A failed deploy can go unnoticed for weeks because nothing re-runs it
+
+**What it costs:** work that merged successfully never reaches the app, and nothing says so. Every subsequent PR reports green, the roadmap says the slices are done, and the only symptom is the absence of the feature in production — which nobody looks for, because the merge appeared to succeed. When it is eventually noticed, the original failure's logs have expired, so the cause cannot be established.
+
+**Observed, 2026-09-08.** Deploy **#773 failed 2026-08-14** at the E2E gate. The next deploy of any kind was the one triggered on **2026-09-08** — a **25-day** window during which nothing was delivered. It surfaced only because slice 52-A's merge gate refused to open, not because anything reported it.
+
+**Why nothing re-ran it:** `deploy.yml` paths-ignores `docs/**`, `**/*.md`, `scripts/**` and `.claude/**`. Every commit that landed on `main` in that window touched only those paths, so no run was triggered, so the red state was never re-tested. The failure was also the chronic intermittent E2E flake ([BUG-38], [TI-39]) — it passed first time on a 2026-09-08 re-run of the identical commit — so a single automatic retry would have cleared it on the day.
+
+**Why the merge gate does not cover this:** it reads main's last deploy and blocks on red, which is correct, but it is only consulted when someone is *trying to merge*. In a quiet period nobody consults it, and the gate's silence is indistinguishable from health.
+
+**Candidate fixes, cheapest first:**
+1. Re-run a failed `deploy.yml` run once automatically before reporting failure — the flake it hit clears on a retry, and this alone would have closed the 25-day gap.
+2. A scheduled check that fails loudly when main's most recent `deploy.yml` run is not `success`, independent of anyone merging. Answers "is what I merged actually live?" without a human asking.
+3. Surface the age of the last successful deploy where it is already read — `scripts/deploy-status.sh` prints the run number but not that it is three weeks old.
+
+**Related:** [BUG-38] (the flake that caused this instance), [TI-39] (stabilising it). This item is about the *silence*, not the flake — a deterministic failure would have gone unnoticed exactly as long.
+
+**Depends on:** —
 
 ---
 
 ## TI-79. A wait loop that scans process cmdlines can never exit
 
 **What it costs:** the session goes quiet mid-task and stays quiet. Nobody is told it is stuck, it never reaches another tool round, and **queued messages cannot reach it** — so a peer or the human asking "are you alive?" gets nothing back. Recovery is killing the wrapper pid by hand. Adjacent to [TI-70]: both are guards over code `pr.yml` cannot see.
+
+**The tell, before any of the mechanism.** A process-list match whose **`etime` is 0-2 seconds**, when the job should have been running for minutes, is your own command — not the job. Check the age before believing the match: `ps -eo pid,etimes,args | grep -F '<fragment>' | grep -vF 'grep -F'`. This is the most useful line here because it fires on the evidence in front of you rather than needing a rule remembered in advance. Related trap: **`ps -eo … -p <pid>` does not filter to that pid** — `-e` selects everything and overrides `-p`, so the output looks pid-scoped and is not.
 
 **Mechanism.** A wait built on scanning process command lines for a literal — `pgrep -f "<pattern>"`, or any `ps` / `/proc/*/cmdline` equivalent — **self-matches**. This harness runs each Bash tool call as `/bin/bash -c … && eval '<the entire command text>'`, so the wrapper's own cmdline contains whatever pattern was typed, and the scan always finds itself.
 
@@ -517,25 +854,80 @@ This is [BUG-69] recurring above the level TI-68 fixed. BUG-69 is closed correct
 
 So `until ! pgrep -f "bin/eslint"; do sleep 15; done` never exits, whatever eslint does.
 
-**Happened for real on 2026-08-11:** a reviewer agent wrote exactly that loop, the lint step finished, and the loop would have spun indefinitely.
+**Reported from 2026-08-11** — recalled from the report of the session it happened to, and a second one a day later; not measured here. A reviewer agent wrote exactly that loop, the lint step finished, and the loop would have spun indefinitely. The self-matching itself *is* measured here, and is what the probe table above and the fixtures assert.
 
 **The one-shot form fails differently and worse.** It returns a plausible phantom — "the job is running" — when nothing is. The tell is an `etime` of 0-2 seconds against a job that should have been alive for minutes.
 
-**`pgrep -f` is legitimate INSIDE `.githooks/pre-commit`**, because git invokes the hook as a bare path and no wrapper carries the pattern. It is the *invocation* that is broken, not pgrep — see the same analysis under [TI-73](#ti-73-the-pre-commit-gate-is-unbounded-across-sessions), which needs a working process/load probe and is where this was first characterised. **Any check must therefore not reject hook-internal use.**
+**`pgrep -f` is legitimate inside a committed script run as a bare path**, because no wrapper then carries the pattern. It is the *invocation* that is broken, not pgrep — see the same analysis under [TI-73](#ti-73-the-pre-commit-gate-is-unbounded-across-sessions), which needs a working process/load probe and is where this was first characterised. **Any check must therefore not reject hook-internal use.**
 
-**Fix direction:** grep committed scripts and hooks for process-scanning waits at pre-commit, on the same terms as `check-doc-ids.sh` — CI is the real gate, the hook is local feedback.
+**It is not a `pgrep` problem, and banning `pgrep -f` would not have held.** Any scan over `ps` output or `/proc/*/cmdline` self-matches on any literal typed in the same tool call. Confirmed by a session walking into it **while checking for it**: a loop written specifically to avoid `pgrep -f` — `for p in $(pgrep -P <session>); do … case "$c" in *"while true"*460*461*)` — reported two matches, the real watcher plus the wrapper running the `case` statement, because the pattern literals sat in its own cmdline.
 
-**What it cannot cover, stated rather than implied.** The ad-hoc case: an agent typing the loop straight into a Bash call. No committed-file check reaches that, and **that is exactly where this happened**. A guard over `scripts/` and `.githooks/` is worth having, but the durable fix for the ad-hoc case is a written rule (wait on a pid, an exit status, a sentinel polled with `until grep -q … ; do sleep 20; done`, or a sha changing) plus this row to point at. Note also that `timeout N tail -f FILE | grep -m1 SENTINEL` does **not** return when the file stops growing.
+**The count cannot be corrected, so never wait on one.** The inflation is not a constant — it is one match per concurrent agent wrapper carrying the literal (a real count of 31 seen as 34 on a three-session box — reported by that session, not measured here). "Subtract one" is wrong and gets more wrong the busier the machine is. Never trust a count, only a pid. The `[b]racket` trick narrows the artefact — the wrapper that *typed* the pattern stops matching — but a **peer session's** wrapper that typed the plain word still does, so it is not a basis for a wait either. And the two forms **cannot be A/B tested on one command line**: both literals then sit in the wrapper's cmdline and both match.
 
-**Related:** [docs/learnings/a-mechanism-nobody-has-watched-work-is-not-working.md](learnings/a-mechanism-nobody-has-watched-work-is-not-working.md) carries this as instance 2 and its live recurrence.
+**Fix, as shipped** (PR [#479](https://github.com/simonkirkham/ai-note-taker/pull/479))**:** `scripts/check-cmdline-waits.sh`, run by `.github/workflows/docs-check.yml` on the same terms as `check-doc-ids.sh` and `lint-workflows.sh`. It refuses the **shape** — a loop that waits (the scan is in its exit condition, or it scans and sleeps) and whose exit turns on a cmdline scan by any means — not the tool. A one-shot scan, a name-only `pgrep`, a pid-scoped `ps -p`, and a `for` loop over one snapshot of results all stay green, so hook-internal and bare-path use is untouched. A deliberate exception takes `# cmdline-wait-ok: <reason>`; the reason is required. `scripts/test-check-cmdline-waits.sh` holds 32 fixtures — 19 that must go red, 13 that must stay green — plus a repo-wide scan, and runs in the same job as the injected-defect check made permanent. The trigger is `**/*.sh`, not the two new files, or a bad loop added to any other script would be ungated. The pre-commit hook was removed on 2026-08-11, so CI is the only place this can live.
+
+**What it cannot cover, stated rather than implied.** The ad-hoc case: an agent typing the loop straight into a Bash call. No committed-file check reaches that, and **that is exactly where this happened, both times**. A guard over committed scripts is worth having, but the durable fix for the ad-hoc case is the written rule in [docs/learnings/waiting-without-scanning-process-cmdlines.md](learnings/waiting-without-scanning-process-cmdlines.md) — wait on a pid (`wait <pid>`, `tail --pid=<pid> -f /dev/null`), on an exit status, on a sha changing, or poll a sentinel with `until grep -q SENTINEL <file>; do sleep 20; done`. Two traps in the substitutes themselves: `timeout N tail -f FILE | grep -m1 SENTINEL` does **not** return when the file stops growing (`tail -f` only learns its reader is gone on its next write, and a finished job writes nothing more); and a sentinel poll **outlives its own condition** — an agent slept out three full 570-second rounds on a deploy that had already finished (reported by that session, not measured here), and from outside a late wait is indistinguishable from a stuck one.
+
+**Review round 1 (PR #479, CHANGES REQUESTED) — the guard did not catch the thing it exists to catch.** The reviewer wrote seven genuine dangerous loops and **all seven passed**. Three causes, all now fixture-pinned:
+
+| Miss | Cause | Closed by |
+| --- | --- | --- |
+| `ps aux`, `ps ax`, `ps aux \| grep -c` | The `aux`/`ax` alternative sat behind a `[[:space:]]+` that had already consumed the only separating space, so it needed a *second* one — `ps  aux` matched, `ps aux` did not. The branch was advertised in a comment, reviewed, and **never once executed** | Split into its own branch; `red-ps-aux.sh`, `red-ps-ax.sh`, `red-ps-aux-count.sh` |
+| `pgrep -c -f X`, `pgrep -u "$USER" -f X` | `-f` was only detected as the **first** option. The first case is the existing `red-count.sh` with one space added | `-f` matched in any option position; `red-pgrep-f-not-first.sh`, `red-pgrep-f-after-arg.sh` |
+| A scan in a `for`-header inside a waiting loop | The for branch attributed the scan to nothing, when a waiting loop was already open around it | Mark already-open enclosing loops only; `red-for-header.sh` |
+| A `cmdline-wait-ok:` named in prose deep inside a loop body | The exemption was bounded downward (exact at 3 lines) but **unbounded upward** | Bounded in both directions; `red-marker-inside-loop.sh` plus `ok-marker-just-inside.sh` to pin the other side |
+
+**A fifth defect surfaced only by running it.** Bracing the two new branches exposed a dangling `else`: unbraced, `for (…) if (…) …` followed by `else` binds that `else` to the **inner** `if`, so awk silently swallowed the body-scan branch and every scan inside a loop body went undetected — while the file still parsed and `bash -n` stayed clean. Caught because the seven loops were re-run against the *existing* fixtures rather than on their own; six went red and one stayed green, and that one green was the tell.
+
+**Evidence for the round:** all seven loops verbatim, green before and red after, under gawk 5.2.1 **and** a mawk 1.3.4 shim (`ubuntu-latest` resolves `awk` to mawk); the eight new fixtures seen **red against the pre-fix checker** and green after, with the 19 pre-existing cases unmoved in both directions; and a positive control on the default `git ls-files` path — a `ps aux` loop appended to a tracked script named the file and line, and the revert returned `OK`.
+
+**Round 2 closed three more, two of them false positives.** The pattern worth keeping: a guard that refuses legitimate work is not a lesser bug than one that misses the defect, because the response to it is to switch the guard off.
+
+| Missed / wrongly refused | Cause | Fix, and the fixture that pins it |
+| --- | --- | --- |
+| An exempted **inner** loop reddened the loop around it, naming the very line the author had exempted | The upward exemption bound stopped the marker covering the outer loop, but `close_loop` still exported the inner scan outward | An exempted loop no longer exports its scan; `ok-marker-nested.sh` and its `while` variant |
+| `ps -aux`, `ps -ax` | Branch (b) needed the `aux`/`ax` word to follow whitespace and the hyphen blocked it; branch (a) needs an `e` or capital `A`, which neither form has | `-?` before the word; `red-ps-hyphen-aux.sh`, `red-ps-hyphen-ax.sh` — one per spelling, so neither regresses alone |
+| `pgrep node-fetch` — a **name-only** `pgrep`, which the header explicitly promises stays green | The option scan ran into the argument, so any process name carrying a hyphen-then-`f` read as an option bearing `-f` | The option must start at whitespace, which a name cannot; `ok-pgrep-hyphenated-name.sh` |
+
+The first was a regression introduced by the round-1 fix — green before it, red after — which is why the seven loops are re-run against the *existing* fixtures every round rather than on their own.
+
+**The `else`/`}` invariant is now stated where an editor will look.** Every `else` in the awk program must be immediately preceded by `}`; an unbraced body re-binds the `else` to the inner `if` and awk swallows the next branch whole, with a clean parse and a clean `bash -n`. It was a site-local comment and is now in `EDITING THIS FILE` beside the apostrophe trap.
+
+**A resurrected row the repo's own id check could not see.** Rebasing onto `main` let the `merge=union` driver restore the `TI-83` row that `main` had just archived — no conflict, no markers. `scripts/check-doc-ids.sh` returned `doc ids OK` throughout, because its live-vs-archive check matches `## TI-N` **headings** and a resurrected table row has no heading ([TI-92] covers that gap). Only a set comparison against the **merge base** caught it, which is the check to run — `git diff $(git merge-base origin/main HEAD) HEAD -- <file>` must show only lines you deleted yourself.
+
+**Also from that round:** `.githooks/**` was dropped from the trigger (0 files on `main` since 2026-08-11 — dead config, and the script's own `git ls-files -- '.githooks/*'` already covers reinstatement), and the five `scripts/*.sh` entries listed by name were replaced by `**/*.sh`, a net deletion — all five are inside the glob.
+
+### OPEN CONTROL — the wildcard trigger has not been watched matching on a pull request
+
+**If `**/*.sh` under-matches, the repo's own guards stop being checked and nothing reports it.** The five entries it replaced were `check-doc-ids.sh`, `lint-workflows.sh`, `merge-gate.sh`, `deploy-status.sh` and `test-merge-gate.sh` — so the failure mode is the guards' own guard quietly switching off. A filter that stops matching produces no run, no error and no annotation, which is the same self-concealing shape as [TI-69].
+
+Evidence, separated by strength rather than merged into one claim:
+
+| Claim | Strength |
+| --- | --- |
+| The `pull_request` trigger fires at all | **Observed** repeatedly, incl. PR #477 and #478 |
+| `**/*.sh` in a `paths:` list matches a nested `scripts/*.sh` | **Observed** on GitHub's own matcher — throwaway branch `proof/ti79-sh-glob`, two temporary workflows each with a single-entry `paths:` list; a push changing only `scripts/sessions.sh` ran the `**/*.sh` one (run `31685559621`, `total_count=1` by full sha) and never ran the `**/*.no-such-extension-xyz` control |
+| `**/*.md` matches a nested path in a `paths-ignore` list | **Observed** in real history — `39e19fb5` changed only `desktop/MANUAL-VERIFICATION.md`, which matches only `**/*.md` in `deploy.yml`, and no Deploy run exists; `fb286458` is the positive control |
+| The same holds on the **`pull_request`** trigger specifically | **INFERRED, not observed.** `paths` and `paths-ignore` share one matching implementation across triggers, so the transfer is sound — but it is an inference |
+
+**Why the last one could not be closed before merging.** A `pull_request` filter is evaluated against the **whole PR diff**, and PR #479 also changes `docs/technical-improvements.md` and `.github/workflows/**` — both matching other entries — so any control run inside #479 is vacuous: its outcome is fixed regardless of the glob. A push to `main` is equally vacuous, since the `push:` trigger has had no `paths:` key since #477.
+
+**The control to run, once, after this merges.** Open a PR whose entire diff is a one-line comment change to `scripts/sessions.sh` or `scripts/next-doc-id.sh` — verified mechanically against the post-change list: every `.sh` file in the repo is matched by `**/*.sh` and by **no other entry**.
+
+- **Pass:** `gh pr checks <n>` lists `doc-ids` and `workflows`.
+- **Fail:** an empty check list. That is the coverage regression, and the fix is to restore the five enumerated entries alongside the glob.
+
+**Tooling trap that makes "nothing ran" unfalsifiable:** a short sha silently returns zero rows on **both** routes — `gh run list --commit <short>` gave 0 and `gh api …/actions/runs?head_sha=<short>` gave `total_count=0` on a commit that has exactly one run, while the full 40-character sha gave 1 on both. Always pass `$(git rev-parse <ref>)`.
+
+**Related:** [docs/learnings/waiting-without-scanning-process-cmdlines.md](learnings/waiting-without-scanning-process-cmdlines.md) is the written rule. [docs/learnings/a-mechanism-nobody-has-watched-work-is-not-working.md](learnings/a-mechanism-nobody-has-watched-work-is-not-working.md) carries this as instance 2 and its live recurrence.
 
 ---
 
 ## TI-70. What must be true before TI-70 is archived
 
-**Merged 2026-08-11** — PR [#464](https://github.com/simonkirkham/ai-note-taker/pull/464), squash `a43574e6`, deploy #763. **Still open**: row 7 below is unproven, and it is the only row that tests the merged state. This section exists because the item's own subject is checks nobody watched run, so its own closing conditions must live somewhere durable rather than in a merged PR description nobody re-reads.
+**Merged 2026-08-11** — PR [#464](https://github.com/simonkirkham/ai-note-taker/pull/464), squash `a43574e6`, deploy #763. **All seven rows ticked as of 2026-08-11**; row 7, the last and the only one testing the merged state, is recorded below. This section exists because the item's own subject is checks nobody watched run, so its own closing conditions must live somewhere durable rather than in a merged PR description nobody re-reads.
 
-**Who ticks row 7, and when:** the next session that opens a PR touching only `.github/workflows/**` — for any reason, this item does not need its own PR. [TI-80] is the natural candidate, since its fix edits `docs-check.yml` and nothing else. **How:** `gh pr checks <n>` on that PR must list a check named `workflows`. Do not infer it from a green PR — `pr.yml` also runs on `.github/**`, so green proves nothing here; look for the check *by name*. If it is absent, the `paths:` widening did not take and TI-70 is not fixed.
+**Row 7 was ticked on 2026-08-11 by [TI-80]'s PR [#471](https://github.com/simonkirkham/ai-note-taker/pull/471)**, which was the predicted candidate — its diff is `docs-check.yml` and nothing else. The check was read *by name* out of `gh pr checks 471`, not inferred from a green PR (`pr.yml` also runs on `.github/**`, so green proves nothing here).
 
 | # | Check | State |
 | --- | --- | --- |
@@ -545,13 +937,150 @@ So `until ! pgrep -f "bin/eslint"; do sleep 15; done` never exits, whatever esli
 | 4 | **Injected defect** — disable the failure path and confirm the red case passes | ✅ `"$bin" -color \|\| true` → exit 0 with the defect still present; reverted |
 | 5 | A PR whose diff is **only** `.github/workflows/**` gets a `workflows` run | ✅ PR #467 (base `proof/ti70-base`, head `proof/ti70-head`) — changed files = `[.github/workflows/e2e.yml]`, `workflows` pass. (The proof branch was cut before [TI-77] merged, so its `paths:` list is a **subset** of the shipped one — but it contains `.github/workflows/**`, the entry under test, and path filters are OR'd, so a superset cannot stop a glob matching.) |
 | 6 | A workflow-only PR got **no** `Docs Check` run before this change | ✅ PR #466 — `gh run list` returns only `PR Checks` |
-| 7 | **After merge:** the first real PR touching only `.github/workflows/**` shows a `Repo Checks / workflows` run | 🔲 **Outstanding** — merged 2026-08-11 (PR [#464](https://github.com/simonkirkham/ai-note-taker/pull/464), squash `a43574e6`, deploy #763), so the widened filter is now live on `main` and this is the only unproven row |
+| 7 | **After merge:** the first real PR touching only `.github/workflows/**` shows a `Repo Checks / workflows` run | ✅ **2026-08-11, [TI-80]'s PR [#471](https://github.com/simonkirkham/ai-note-taker/pull/471)** — `gh pr view 471 --json files` = `[.github/workflows/docs-check.yml]`, one path, nothing else. `gh pr checks 471` lists the check **by name**: `workflows  pass  6s`, run [31541957717](https://github.com/simonkirkham/ai-note-taker/actions/runs/31541957717) (`event: pull_request`), alongside `doc-ids  pass  20s`. Not inferred from a green PR. Verified by the TI-80 session |
 
-**Do not archive TI-70 until row 7 is ticked.** Rows 1-6 were all demonstrated on a branch; row 7 is the only one that tests the merged `paths:` filter on `main`, which is the half that TI-69 actually fell through. A green PR is not evidence for it — check for the run by name.
+**All seven rows are ticked and [TI-80] has merged, so TI-70 is ready to archive — that is the next action on it, and it was deliberately not done here.** Terms: condense to one entry in [technical-improvements-archive.md](technical-improvements-archive.md), keep the `## TI-70` heading so inbound anchors resolve, delete the row and this section. Two things the archive entry must carry rather than drop: known limit **3** below is **permanent** (see it for why), and known limit **4** is now **closed** by [TI-80] — the gate runs on a direct push to `main`, watched doing so at run [31572859601](https://github.com/simonkirkham/ai-note-taker/actions/runs/31572859601).
+
+Rows 1-6 were all demonstrated on a branch; row 7 was the only one that tested the merged `paths:` filter on `main`, which is the half TI-69 actually fell through.
 
 **Known limits, so nobody assumes coverage that is not there:**
 
 1. A TI-69-shaped defect **inside a composite action's `run:` block** is not caught. actionlint validates a local action's metadata (YAML parse, `runs.using`) via the workflow that `uses:` it, but never lints the shell inside it — measured, exit 0 on both an unused variable and an unquoted expansion.
 2. An action referenced by **no** workflow is never looked at.
-3. `.githooks/pre-commit` is exercised by no check on any PR (`pr.yml` paths-ignores `.githooks/**`), so the hook half is only ever proven by hand.
-4. **The gate never runs on a push to `main`.** `docs-check.yml` is `pull_request`-only, so a workflow file changed by a **direct commit to `main`** — which `CLAUDE.md` explicitly routes doc edits through — is linted by nothing in CI. The only remaining defence is `.githooks/pre-commit`, which needs per-clone `core.hooksPath` and so, in this workflow's own words, protects nobody by default. Tracked as [TI-80].
+3. **`docs-check.yml` is the one workflow the gate cannot protect — and this is a permanent limit, not a to-do.** Broken, it does not load, so it cannot run the lint that would have caught it: the check is hosted by the file it would need to check, and no arrangement of triggers escapes that. True on both the pull-request and the push route, so [TI-80] does not change it. Nothing in the repo covers this file; the only defence is that a change to it is small, deliberate, and made by someone who has just read this line. Do not file it as work — carry it into the archive entry as a stated limit. Raised by Hawk on PR #471.
+4. ~~**The gate never runs on a push to `main`.**~~ **CLOSED 2026-08-12 by [TI-80]** (PR [#471](https://github.com/simonkirkham/ai-note-taker/pull/471), squash `14c6c034`). The limit was real: `docs-check.yml` was `pull_request`-only, so a workflow file changed by a **direct commit to `main`** — the route `CLAUDE.md` explicitly uses for doc edits — was linted by nothing anywhere, `.githooks/pre-commit` having been deleted on 2026-08-11. **Watched closing:** TI-80's own merge commit was itself the first push to `main` under the new trigger, and produced run [31572859601](https://github.com/simonkirkham/ai-note-taker/actions/runs/31572859601) — `event=push`, `branch=main`, `workflows: success` in 7s. That is the `main` case TI-80's PR had honestly recorded as unproven, closed by the merge rather than by argument.
+
+---
+
+## TI-61. A routing test fails on a busy machine
+
+**What it costs.** A CI run or a deliberate local suite run is thrown away on a test nobody
+touched. The expensive part is not the run — it is that the next person has to re-derive from
+scratch that it is not a regression. That has now happened at least twice.
+
+**The measurement that settles it.** Under deliberate contention (32 CPU spinners, no other
+suites, `ratio1` 1.97 rising to 2.91):
+
+| Test | median | max | ceiling |
+| --- | --- | --- | --- |
+| `Back returns to the home screen` | 3966 ms | **5780 ms** | 5000 ms |
+| `opening a note pushes a /notes/:id URL` | 2334 ms | 3379 ms | 5000 ms |
+| `Forward reopens the note` | 1840 ms | 2949 ms | 5000 ms |
+
+The binding test exceeds the ceiling on its own, and sits at 79% of it even when it passes.
+Unloaded and alone it is 293 ms — the box's effective speed varies by 10-56x, and a fixed
+wall-clock deadline cannot tell "slow machine" from "hung test" across that range. A per-test
+timeout exists to catch hangs, not to assert machine speed.
+
+### Still open: two files are predicted to exceed the new budget
+
+This is why the row is 🟡 and not ✅. Ranking every test file by its slowest test (full suite,
+unloaded — relative durations rank the same without contention):
+
+| slowest test | file | |
+| --- | --- | --- |
+| 2455 ms | `staleDetailRefetch.test.tsx` | work-bound |
+| 2437 ms | `staleCardsRefetch.test.tsx` | work-bound |
+| 1125 ms | `Routing.test.tsx` | work-bound — the file that has actually been failing |
+| 1039 ms | `HomeSearch.test.tsx` | **discount** — 4 real `setTimeout` sleeps, which do not inflate under CPU starvation |
+
+`Routing` inflated 1125 -> 5780 ms (~5.1x) under deliberate contention. **The same multiple on
+2455 ms is ~12500 ms, which exceeds the 12000 ms budget PR #470 sets.** Both files are genuinely
+work-bound — no fake timers, no sleeps — so they should inflate the same way.
+
+**Remedy, when one of them fails — do this, not something else:**
+
+1. Reproduce it under deliberate contention and record the *measured* worst duration.
+2. Raise `LOCAL_TEST_TIMEOUT_MS` in `web/vite.config.ts` to **that file's worst x2**.
+3. **Do not raise it pre-emptively.** ~12500 ms is an extrapolation; neither file has been measured
+   under contention. Sizing a budget off an unmeasured multiple is the error this investigation
+   refused three times (a role-query theory that measured 15 ms, an underpowered 2/10-vs-0/10 A/B,
+   and a reviewer's suggested 25000 ms). A measured number is checkable six months later; a guess
+   is indistinguishable from a measurement, including in whether it was already too small.
+
+**Post-merge observation owed, and by whom.** Nothing about this fix is verifiable from a green
+deploy — the change only takes effect on a *locally contended* run, which CI never performs. The
+observation that would prove it is a local full-suite run under load that previously failed and now
+passes; that was taken before merge (control red at 5000 ms, candidate 0 failures / 60 under
+identical contention). **No further observation is owed, and no future session should record this
+as Done on the strength of a deploy** — the row closes only when the two files above have been
+measured, or when they have gone long enough without failing that the exposure is judged closed.
+
+**Fix.** `testTimeout` 12000 (= worst observed 5780 x2) and `asyncUtilTimeout` 4000
+(= longest succeeding wait 1735 x2), **local only**, mirroring the existing `LOCAL_MAX_THREADS`
+precedent. CI keeps 5000/1000 — it runs the frontend job alone on native Linux, so a genuine
+hang still fails there. `testBudgets.test.ts` asserts the split in both directions, so CI is its
+own positive control against the raised budget leaking into it.
+
+### Corrections to the original row — it was wrong on every specific
+
+The row as filed on 2026-08-06 said the failing assertion was `findByTestId('note-title-input')`
+after `window.history.forward()`, missing its 1000 ms budget because the *render* was slow.
+Measured, none of it holds:
+
+| The row said | Measured |
+| --- | --- |
+| `Forward reopens the note` | Every reproduction failed in **`Back returns to the home screen`** |
+| `findByTestId(...)`, 1000 ms budget | `Test timed out in 5000ms` — the **per-test** budget, a different ceiling |
+| the render misses the window | The render is fine. `<h1>{heading}</h1>` has no data gate; one pass of the role query costs **15 ms** under load |
+| "second observation of the same failure" (34-C) | **Unverified, and now withdrawn.** The cited `token-log.md` entry names no test at all — only "the one flake (Routing.test)". It was an inference presented as an observation |
+
+The row's own arithmetic was the tell: the steps *before* the failing assertion ran 2.65x their
+unloaded time while the assertion blew a >9x anomaly. A uniformly slower box cannot produce that.
+
+### Withdrawn: the poll-vs-mutation theory, and the 48-site claim built on it
+
+An intermediate diagnosis held that `waitFor` on a non-DOM value (`window.location.pathname`) is
+structurally worse under starvation, because RTL's MutationObserver cannot see a non-DOM value
+and only the 50 ms poll remains. **Measured head to head, it is backwards:** poll `backWait`
+165 ms against mutation `backWait` 199 ms. The 1735 ms figure that made the theory look
+overwhelming came from a run carrying three other sessions' suites; alone on the box the same
+step is 165 ms. It was contention, not the wake mechanism.
+
+Consequently **the count of 48 `waitFor(pathname)` sites across 9 files is a scope measurement,
+not 48 defects**, and `OpenNoteTabs.test.tsx` (23 of them) is *not* predicted to be the next
+casualty on that basis. If the mechanism is a fixed deadline against variable machine speed,
+exposure scales with **total test duration**, not with the number of pathname waits.
+
+### Read the load figures as period-specific
+
+Every figure here was gathered while the pre-commit hook still ran full suites on every commit
+across parallel sessions. That hook was removed the same night (`dba8fce8`), so ambient load on
+this box will be materially lower from now on. The numbers are real, but nobody should read
+`ratio1` 2.28 as this machine's resting state — which makes 12000 ms more conservative than it
+looks, and that is the right direction for a budget whose only job is to catch a genuine hang.
+
+---
+
+## TI-96. One unreadable reply from the marking model throws away the whole night's quality scores
+
+**Symptom.** The nightly job that measures how good the app's meeting summaries are produces nothing at all — no scores for any model, any prompt, any fixture. The cause is a single reply from the *marking* model that was not valid JSON. There is no per-item tolerance, so one bad reply anywhere in the matrix ends the run.
+
+**Severity:** Medium — nothing user-facing breaks, but the only signal for whether summary quality is getting better or worse goes dark, and it goes dark silently at exactly the moment it would be most worth reading.
+
+**Evidence.** Run 34326803133 (`Analysis Eval` #98, scheduled, 2026-09-09 08:00Z) — `conclusion: failure`. The stack ends in `Analysis.Eval.Scoring.BedrockContentJudgeClient.ParseVerdicts` (`tests/Analysis.Eval/Scoring/BedrockContentJudgeClient.cs:71`), called from `RateAsync` (line 61) and `ContentJudge.ScoreAsync` (line 19), throwing out of `System.Text.Json.JsonDocument.Parse`. Runs #94-#97 (2026-09-05 to 2026-09-08) all succeeded, so this is the first occurrence, not a standing break.
+
+**Fix direction.** A model reply is untrusted input, not a contract. `ParseVerdicts` should treat an unparseable or wrong-shaped reply as one unscored item — retried a bounded number of times, then recorded in the results as unscored with the raw reply attached — rather than as a fatal error for the run. The count of unscored items belongs in the report so a quietly degrading judge is visible instead of invisible. Same shape as the rule already applied to the backstop in [TI-90]: a response nobody can read is a third outcome, never silently folded into one of the other two.
+
+**Not yet established.** Whether the bad reply was a truncation (hit the output token cap), a refusal, or prose wrapped around the JSON — the run log carries the stack but not the offending text. Logging the raw reply on a parse failure is part of the fix, and is what makes the next occurrence diagnosable in one read.
+
+---
+
+## TI-97. A self-test reports a false failure on a Windows machine because its stand-in for GitHub is invisible there
+
+**Symptom.** `bash scripts/test-check-main-checked.sh` prints `CHECK-MAIN-CHECKED SELF-TEST: FAILED` with 13 failing cases on a native-Windows checkout (Git Bash). The same commit passes the `doc-ids` job on CI. Nothing is wrong with the code under test; the harness is not reaching it.
+
+**Severity:** Low for correctness, higher for trust — a check that cries wolf on one machine is a check that stops being read on every machine. That is the failure mode [TI-90] and [TI-93] are both about, arriving from the harness side.
+
+**Diagnosis — confirmed, not inferred.** The self-test writes a fake `gh` (a `#!/usr/bin/env bash` script, no file extension, `chmod +x`) into a temp directory it puts first on `PATH`. Bash honours that: `PATH="$D:$PATH" gh api foo` runs the fake. But `check-main-checked.sh` calls GitHub from inside Python — `subprocess.run(["gh", "api", path])` — and on Windows that goes through `CreateProcess`, which only resolves names carrying an extension listed in `PATHEXT`. The extensionless fake is skipped, the real `C:\Program Files\GitHub CLI\gh.EXE` further down `PATH` answers instead, and every fixture sha becomes a real API call against a commit that does not exist — which the script correctly reports as *could not determine*. Measured directly:
+
+```
+$ PATH="$D:$PATH" python3 -c "import shutil; print(shutil.which('gh'))"
+C:\Program Files\GitHub CLI\gh.EXE
+```
+
+**Fix direction.** Write a `gh.cmd` alongside the fake `gh` in the same temp directory, forwarding to the shell script via the absolute path of the running `bash` (`cygpath -w "$(command -v bash)"`). `CreateProcess` finds `.cmd`; Bash still prefers the extensionless file, so POSIX behaviour is unchanged and the extra file is inert on Linux and macOS. Gate the write on the platform only if the stray file is judged untidy — it does not need to be.
+
+**Scope.** Only this self-test is affected today, because it is the only harness that stubs a command consumed from inside Python. Any future stub used the same way inherits the same hole, so the fix belongs in whatever helper writes stubs rather than only in this one file.
+
+**Related:** the same machine needed [the Windows toolchain steps](new-machine-setup.md#steps) before any of this ran at all, including a `python3` that is not the Microsoft Store stub.

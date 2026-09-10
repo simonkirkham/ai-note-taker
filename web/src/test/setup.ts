@@ -1,5 +1,6 @@
 import '@testing-library/jest-dom'
 import { webcrypto } from 'node:crypto'
+import { configure } from '@testing-library/react'
 import { setupServer } from 'msw/node'
 import { retryConfig } from '../api/client'
 import { resetStaleCardsTrackingForTests } from '../hooks/useNoteCards'
@@ -13,6 +14,19 @@ import { handlers } from './handlers'
 // restore Node's Web Crypto in tests so the content-hash guard is exercised as it is in the browser.
 if (!globalThis.crypto?.subtle) {
   Object.defineProperty(globalThis, 'crypto', { value: webcrypto, configurable: true, writable: true })
+}
+
+// TI-61. Companion to `testTimeout` in vite.config.ts, for the same reason and local
+// only. RTL's 1000 ms default is the budget a single `findBy*`/`waitFor` gets, and
+// under contention it is exceeded before the per-test budget is: the first reproduction
+// failed on `findByRole('heading', { name: 'Home' })` with "Unable to find role", not on
+// a test timeout. Note the nominal budget already under-delivers — a wait measured at
+// 1735 ms still SUCCEEDED against a nominal 1000 ms, because the deadline is only
+// checked on a poll that starvation also delays.
+// 4000 = longest wait measured that still succeeded (1735) x2, rounded up.
+// CI keeps the 1000 ms default.
+if (!process.env.CI) {
+  configure({ asyncUtilTimeout: 4000 })
 }
 
 export const server = setupServer(...handlers)

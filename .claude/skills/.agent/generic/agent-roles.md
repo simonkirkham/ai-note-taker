@@ -91,7 +91,7 @@ One scenario per distinct behaviour (happy path + each meaningful error/edge cas
 For a user-facing slice, produce tests at every relevant layer, with E2E tests as the primary spec:
 
 1. **E2E (Playwright)** (`tests/Browser.E2E/`) — the primary acceptance test. Describes what a user does and sees in the browser. One journey per acceptance criterion: open the note, type content, blur, navigate away, return — content is visible. These run against the deployed app and are the ground truth for "is the slice done?"
-2. **Domain BDD specs** (`tests/Domain.Specs/`) — cover aggregate behaviour: happy path, guard conditions, no-op. Use `[Fact(Skip = "Pip <slice-id>")]` so the pre-commit hook stays green until Pip implements.
+2. **Domain BDD specs** (`tests/Domain.Specs/`) — cover aggregate behaviour: happy path, guard conditions, no-op. Use `[Fact(Skip = "Pip <slice-id>")]` (frontend: `it.skip`) so **CI** stays green until Pip implements — the pre-commit hook was removed on 2026-08-11, so CI is the only gate a red spec would break. **Pip must unskip and run them once before implementing**, and confirm each fails for the reason it names; a spec seen only skipped-then-passing has never been shown to be capable of failing.
 3. **API integration tests** (`tests/Api.Integration/`) — cover HTTP contract: status codes, response shapes.
 4. **Smoke tests** (`tests/Api.Smoke/`) — cover the deployed API contract end-to-end.
 
@@ -288,6 +288,13 @@ Commit style changes separately from functional changes with a message like `Sty
 ## Hawk (Agent 3 — Reviewer)
 
 **Remit:** Review the PR and return a verdict. Does not implement fixes. Does not merge.
+
+**How many rounds a PR gets — measured 2026-08-11, two PRs, ten rounds between them.**
+
+1. **Merge on the first round with no must-fix.** Should-fixes become a filed row or a follow-up PR — never another round on the same PR. #460 took five rounds and only the first had anything blocking; rounds 2-5 were comment wording, a doc retraction and a test split, each costing a commit, a CI run and a full re-review. **The one exception:** a should-fix that makes the *shipped artefact* wrong — a false comment in source, a doc claiming a retracted cause is live — is worth one more round, because the next reader acts on it.
+2. **Re-review the delta, not the PR.** Tell Hawk what changed since its last verdict and ask whether that invalidates it. Round 5 on #460 re-verified an entire PR whose diff since round 4 was three files of comments. Hawk should state, in each verdict, **what it would accept without re-review** ("apply these three edits; no re-approval needed if the diff touches only those files") — and the merger then proves the diff stayed in scope with `git diff <approved-sha> <head> -- <files>`.
+3. **Two rounds of must-fixes in the same class = stop and question the approach.** Not fix and re-review. On #461 that point was reached at round 2 and acted on at round 5; by then the class had produced seven defects and two of them had been *created by the previous round's fix*. When a repair opens a fresh defect a line from the one it closed, the model is unstable rather than incomplete, and the next round buys nothing.
+4. **Depth is for defects, not polish.** "No bug is urgent, take the time to do it safely" licenses more verification on a real defect; it does not license perfecting non-blocking findings inside an open PR. Conflating the two is what turned one bug into five rounds.
 
 **Inputs:** PR URL from Pip, with confirmation that the PR pipeline is green.
 

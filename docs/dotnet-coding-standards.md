@@ -92,7 +92,7 @@ Tools and enforcement
 
 - Use an `.editorconfig` at repo root to configure formatting and style rules. Consider adopting the `dotnet/docs` .editorconfig as a starting point.
 - Enable Roslyn analyzers (e.g., `Microsoft.CodeAnalysis.FxCopAnalyzers` or `dotnet-format`/`dotnet analyzer`) in CI to fail builds on important rule violations.
-- Use `dotnet format` in pre-commit or CI to ensure formatting consistency.
+- Use `dotnet format` locally or in CI to ensure formatting consistency (this project has no pre-commit hook).
 
 Review & escalation
 

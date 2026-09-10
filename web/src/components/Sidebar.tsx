@@ -2,6 +2,7 @@ import clsx from "clsx";
 import { useState } from "react";
 import { FolderNode } from "../api/folders";
 import { UNFILED_ID } from "../constants";
+import { buildLabel, buildTitle } from "../lib/buildInfo";
 import FolderTree from "./FolderTree";
 import folderTreeStyles from "./FolderTree.module.css";
 import KeepAudioLocalToggle from "./KeepAudioLocalToggle";
@@ -171,6 +172,11 @@ export default function Sidebar({
             onClick={onSignOut}
           >Sign out</button>
         )}
+        <div
+          className={styles.sidebarBuild}
+          data-testid="build-number"
+          title={buildTitle()}
+        >{buildLabel()}</div>
       </div>
     </nav>
   );

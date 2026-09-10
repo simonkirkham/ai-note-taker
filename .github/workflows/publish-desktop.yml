@@ -70,6 +70,12 @@ jobs:
         if: steps.changed.outputs.build == 'true'
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false" # unsigned build — do not attempt code signing
+          # CHANGE-41: the build stamp at the foot of the sidebar. This installer is built from
+          # the deploy that just went green, so it carries THAT deploy's number — desktop and
+          # web then report the same build. Empty on a manual dispatch (no deploy behind it),
+          # where the app falls back to "Build dev". build-web.mjs passes the env through.
+          VITE_BUILD_NUMBER: ${{ github.event.workflow_run.run_number }}
+          VITE_BUILD_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: npm --prefix desktop run package
 
       - name: Publish to GitHub Releases (rolling 'desktop-latest')
