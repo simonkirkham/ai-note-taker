@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation } from 'react-router'
 import SessionLeaveConfirm from '../components/SessionLeaveConfirm'
 import { recordRumEvent } from '../rum'
 import {
-  RecordingSessionContext,
-  type RecordingSessionValue,
+  RecordingControlContext,
+  type RecordingControlValue,
+  RecordingLiveContext,
   type StartArgs,
 } from './recordingSessionContext'
 import { useTranscription } from './useTranscription'
@@ -49,11 +51,44 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
   const [boundNoteId, setBoundNoteId] = useState<string | null>(null)
   const session = useTranscription(boundNoteId ?? '')
 
+  // Owned here for the same reason the capture is: the record control unmounts when you look at
+  // another note's tab, and both of these were `useState`/`useRef` inside it.
+  //
+  // The cost of that was silent and on the headline flow. Record in Standup, click another note's
+  // tab to check something, come back, press Stop: the transcript saved, but the automatic
+  // write-up never ran and nothing on screen said so — the control had remounted with
+  // `hasRecordedThisSession` back to false, which is the gate the auto-analyse effect reads. The
+  // one-shot latch remounted too, so the mirror-image bug was available as well: analyse twice.
+  //
+  // Before this slice the round trip was impossible (every exit was behind a confirm), which is
+  // why the flags could live in the control until now.
+  const [recording, setRecording] = useState<{ noteId: string; autoAnalyse: boolean } | null>(null)
+  const analyseClaimedRef = useRef(false)
+
+  const noteStarted = useCallback((noteId: string, args: StartArgs) => {
+    setRecording({ noteId, autoAnalyse: args[1] })
+    analyseClaimedRef.current = false
+  }, [])
+
+  const claimAutoAnalyse = useCallback(() => {
+    if (analyseClaimedRef.current) return false
+    analyseClaimedRef.current = true
+    return true
+  }, [])
+
   const isCapturing =
     session.status === 'requestingCredentials' ||
     session.status === 'recording' ||
     session.status === 'finalising'
-  const recordingNoteId = isCapturing ? boundNoteId : null
+  // 'finalising' is excluded on purpose. In on-device mode it lasts minutes after Stop, and
+  // while it does, `isCapturing` had the tab pulsing and screen readers announcing ", recording"
+  // about a meeting the user had already stopped — and told every other note "Another note is
+  // recording — stop it first" about a recording that could not be stopped. The 'saving' wording
+  // that already exists for the lockout is the truthful one for this window; the marker follows
+  // the LIVE capture, the lockout follows the whole busy period below.
+  const isLiveCapture =
+    session.status === 'requestingCredentials' || session.status === 'recording'
+  const recordingNoteId = isLiveCapture ? boundNoteId : null
 
   // Stop is not the end of the work. The audio upload and the speaker-labelling run on
   // afterwards — minutes, on a long meeting — and both read shared settings back out across
@@ -78,6 +113,22 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
   // once the hook has actually re-rendered with the new id.
   const pendingStartRef = useRef<{ noteId: string; args: StartArgs } | null>(null)
 
+  // Read through a ref so `startIn` does not take a dependency on the live session. Depending on
+  // it directly gave `startIn` a new identity on every partial transcript result, which flowed
+  // into the context value and re-rendered every consumer several times a second.
+  const sessionRef = useRef(session)
+  useEffect(() => {
+    sessionRef.current = session
+  }, [session])
+  const boundNoteIdRef = useRef(boundNoteId)
+  useEffect(() => {
+    boundNoteIdRef.current = boundNoteId
+  }, [boundNoteId])
+  const busyNoteIdRef = useRef(busyNoteId)
+  useEffect(() => {
+    busyNoteIdRef.current = busyNoteId
+  }, [busyNoteId])
+
   const startIn = useCallback((noteId: string, ...args: StartArgs) => {
     // Single-recorder rule: a LIVE capture is never silently displaced. A merely-bound note
     // (stopped, committing) does not block another note from starting.
@@ -87,7 +138,7 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
     // a state production cannot reach, but one the refusal permanently locks up if it ever
     // does, because nothing can then acquire the binding. The question being asked is "is
     // another note holding a live capture?", so ask that.
-    if (busyNoteId !== null && busyNoteId !== noteId) return
+    if (busyNoteIdRef.current !== null && busyNoteIdRef.current !== noteId) return
 
     // Already bound to this note — start now rather than via the ref. Routing this through
     // the effect strands it: `setBoundNoteId` to the value it already holds takes React's
@@ -95,21 +146,23 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
     // Continue / Re-record path from 18-C, and the parked request would then fire much later
     // on an unrelated re-render (an upload or diarization transition) or never at all.
     // No stale-closure risk here — the hook's callbacks already close over this exact id.
-    if (boundNoteId === noteId) {
-      session.startRecording(...args)
+    if (boundNoteIdRef.current === noteId) {
+      noteStarted(noteId, args)
+      sessionRef.current.startRecording(...args)
       return
     }
 
     pendingStartRef.current = { noteId, args }
     setBoundNoteId(noteId)
-  }, [busyNoteId, boundNoteId, session])
+  }, [noteStarted])
 
   useEffect(() => {
     const pending = pendingStartRef.current
     if (!pending || pending.noteId !== boundNoteId) return
     pendingStartRef.current = null
+    noteStarted(pending.noteId, pending.args)
     session.startRecording(...pending.args)
-  }, [boundNoteId, session])
+  }, [boundNoteId, session, noteStarted])
 
   // No release effect, and no "have I seen it active yet?" latch. Deriving the claim from the
   // status instead of storing it removes the start/idle race those existed for: there is no
@@ -131,6 +184,9 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
   // note's guard and falls back to this one, so exactly one is ever live.
   const [leaveDestination, setLeaveDestination] = useState<string | null>(null)
   const [finishingTranscript, setFinishingTranscript] = useState(false)
+  // Kept apart from `leaveDestination`, which is cleared the instant the leave is confirmed —
+  // so the "finishing the transcript" banner has nothing left to name without this.
+  const [finishingDestination, setFinishingDestination] = useState<string | null>(null)
   const pendingLeaveRef = useRef<(() => void) | null>(null)
   const pendingAwaitTranscriptRef = useRef(false)
   // Latched once a leave is confirmed, so a second guarded click cannot re-arm a confirm whose
@@ -151,6 +207,7 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
       pendingLeaveRef.current = proceed
       pendingAwaitTranscriptRef.current = awaitTranscript
       setLeaveDestination(destination)
+      setFinishingDestination(destination)
       return true
     },
     [busyNoteId],
@@ -169,6 +226,32 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
     setPrevIsCapturing(isCapturing)
     if (!isCapturing && leaveDestination !== null) setLeaveDestination(null)
   }
+
+  // C4 — a confirm must not follow you to another screen.
+  //
+  // Nothing used to clear this on navigation, and this slice is what made navigation possible
+  // while it is up: tab switches, Home, folders and Unfiled are all unguarded now, so none of
+  // them calls `clearSessionLeave`. Reachable in four clicks — record in Standup, open Client
+  // call's tab, press Sign out (the session's confirm appears), click Standup's tab (unguarded,
+  // so the confirm survives), then press Back. The mounted note raises its OWN confirm on
+  // popstate and both are on screen at once, each rendering `confirm-leave-button` — two red
+  // banners, a duplicate testid that throws in vitest and violates strict mode in Playwright,
+  // and the stale one still holding an armed sign-out that the effect below would fire.
+  //
+  // Split in two because of the lint gates: the banner goes during render (React's documented
+  // reset-state-on-input-change, same as the transition above, and it means the stale banner
+  // never paints), while the armed continuation it was holding is dropped in the effect below,
+  // because writing a ref during render is what react-hooks/refs forbids.
+  const { pathname } = useLocation()
+  const [prevPathname, setPrevPathname] = useState(pathname)
+  if (prevPathname !== pathname) {
+    setPrevPathname(pathname)
+    if (leaveDestination !== null) setLeaveDestination(null)
+  }
+  useEffect(() => {
+    pendingLeaveRef.current = null
+    pendingAwaitTranscriptRef.current = false
+  }, [pathname])
   // Second half of that same transition: the banner is dropped above, the pending navigation
   // runs here because it is a side effect and must wait for commit. Keep the two together —
   // splitting them strands one without the other.
@@ -266,31 +349,47 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
     [],
   )
 
-  // `session` is a fresh object every render, so this memo does not actually stabilise the
-  // value — it is here for shape, not for identity. Consumers must not assume referential
-  // stability from it.
-  const value = useMemo<RecordingSessionValue>(
+  // Every field here is a primitive or a callback with stable identity, so this value changes
+  // only when something a consumer actually cares about changes — NOT on every partial
+  // transcript result. That is the whole point of the split; see `RecordingControlValue`. If a
+  // dependency that churns is ever added here, the app-wide re-render it removes comes straight
+  // back, and nothing will fail to say so.
+  const control = useMemo<RecordingControlValue>(
     () => ({
       boundNoteId,
       recordingNoteId,
       busyNoteId,
-      session,
+      recordedNoteId: recording?.noteId ?? null,
+      autoAnalyseChoice: recording?.autoAnalyse ?? true,
+      claimAutoAnalyse,
       startIn,
       guardLeave,
       clearSessionLeave: cancelLeave,
     }),
-    [boundNoteId, recordingNoteId, busyNoteId, session, startIn, guardLeave, cancelLeave],
+    [
+      boundNoteId,
+      recordingNoteId,
+      busyNoteId,
+      recording,
+      claimAutoAnalyse,
+      startIn,
+      guardLeave,
+      cancelLeave,
+    ],
   )
 
   return (
-    <RecordingSessionContext value={value}>
-      {children}
-      <SessionLeaveConfirm
-        destination={leaveDestination}
-        finishing={finishingTranscript}
-        onConfirm={() => void confirmLeave()}
-        onCancel={cancelLeave}
-      />
-    </RecordingSessionContext>
+    <RecordingControlContext value={control}>
+      <RecordingLiveContext value={session}>
+        {children}
+        <SessionLeaveConfirm
+          destination={leaveDestination}
+          finishing={finishingTranscript}
+          finishingDestination={finishingDestination}
+          onConfirm={() => void confirmLeave()}
+          onCancel={cancelLeave}
+        />
+      </RecordingLiveContext>
+    </RecordingControlContext>
   )
 }

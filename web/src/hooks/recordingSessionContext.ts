@@ -19,9 +19,42 @@ export type NoteRecording = UseTranscriptionResult & {
   otherNoteRecording?: boolean
   /** Which of those it is, so the control can say so rather than just refusing. */
   otherNoteBusyReason?: 'recording' | 'saving'
+  /**
+   * A recording has been made in this note during this page session. Owned by the session, not
+   * by the record control, because the control unmounts the moment you look at another note's
+   * tab and a flag it held would be lost mid-meeting — taking the automatic write-up with it.
+   */
+  hasRecordedThisSession?: boolean
+  /**
+   * The automatic-write-up choice as it was when Record was pressed. Also session-owned, and
+   * for the same reason: the toggle is hidden during a recording precisely so it cannot change,
+   * which a remount back to its default would quietly undo.
+   */
+  autoAnalyseChoice?: boolean
+  /**
+   * Claim the one automatic write-up this capture is allowed. Returns true to the first caller
+   * after each Record, false to every caller after that — so a control that remounts mid-meeting
+   * cannot trigger a second analysis of the same recording.
+   *
+   * Optional throughout: a test driving the control with a bare session gets `undefined` and
+   * falls back to the control's own local latch.
+   */
+  claimAutoAnalyse?: () => boolean
 }
 
-export interface RecordingSessionValue {
+/**
+ * Everything about the session that is NOT the live transcript: which note holds it, what it
+ * will and will not allow, and the leave guard.
+ *
+ * Separate from the live session on purpose. `useTranscription` calls `setTranscript` on every
+ * partial result from the speech service — several times a second, for the length of a meeting —
+ * so anything sharing a context with it re-renders at that rate. Before the split that was the
+ * whole app: the sidebar, the notes list, the folder panel, the workspace switcher and the open-
+ * note tab bar all re-rendered continuously while recording, on a main thread that is also
+ * feeding the on-device transcriber (BUG-65/67). Everything outside the note screen reads only
+ * this half, and this half changes only when one of its primitives does.
+ */
+export interface RecordingControlValue {
   /**
    * The note the session is BOUND to — the one that sees it. Outlives the capture on purpose:
    * after Stop, the transcript commit, the WAV upload and the diarization trigger all still
@@ -41,7 +74,15 @@ export interface RecordingSessionValue {
    * overlapping.
    */
   busyNoteId: string | null
-  session: UseTranscriptionResult
+  /**
+   * The note a recording has actually been made in during this page session, or null. Survives
+   * the record control unmounting; see `NoteRecording.hasRecordedThisSession`.
+   */
+  recordedNoteId: string | null
+  /** The automatic-write-up choice captured at the last Record. */
+  autoAnalyseChoice: boolean
+  /** Claim this capture's one automatic write-up; see `NoteRecording.claimAutoAnalyse`. */
+  claimAutoAnalyse: () => boolean
   /** Claim the session for `noteId` and start it. */
   startIn: (noteId: string, ...args: StartArgs) => void
   /**
@@ -61,25 +102,31 @@ export interface RecordingSessionValue {
   clearSessionLeave: () => void
 }
 
-export const RecordingSessionContext = createContext<RecordingSessionValue | null>(null)
+export const RecordingControlContext = createContext<RecordingControlValue | null>(null)
+
+/**
+ * The live transcription session — the half that changes on every partial result. Read only by
+ * the note that owns it, through `useNoteRecording`.
+ */
+export const RecordingLiveContext = createContext<UseTranscriptionResult | null>(null)
 
 /** Which note is currently recording, for the tab bar. Null when nothing is. */
 export function useRecordingNoteId(): string | null {
-  return useContext(RecordingSessionContext)?.recordingNoteId ?? null
+  return useContext(RecordingControlContext)?.recordingNoteId ?? null
 }
 
 /**
  * The session-owned leave guard, for `App`'s `requestLeave` to consult. Returns a stable-enough
  * function; callers must treat a `false` return as "nothing to protect, go ahead".
  */
-export function useGuardLeave(): RecordingSessionValue['guardLeave'] {
-  const ctx = useContext(RecordingSessionContext)
+export function useGuardLeave(): RecordingControlValue['guardLeave'] {
+  const ctx = useContext(RecordingControlContext)
   return ctx?.guardLeave ?? (() => false)
 }
 
 /** Stand the session's confirm down — see `clearSessionLeave`. */
 export function useClearSessionLeave(): () => void {
-  const ctx = useContext(RecordingSessionContext)
+  const ctx = useContext(RecordingControlContext)
   return ctx?.clearSessionLeave ?? (() => {})
 }
 
@@ -103,7 +150,8 @@ const IDLE: Omit<UseTranscriptionResult, 'startRecording'> = {
  * another note holds it, which is the single-recorder rule.
  */
 export function useNoteRecording(noteId: string): NoteRecording {
-  const ctx = useContext(RecordingSessionContext)
+  const ctx = useContext(RecordingControlContext)
+  const live = useContext(RecordingLiveContext)
   // Ownership follows the BINDING, not the capture: a note that has just stopped still owns
   // the session while its transcript commits and its recording uploads, and must keep seeing
   // the real status ('stopped'/'finalising') rather than being handed the idle view.
@@ -117,20 +165,39 @@ export function useNoteRecording(noteId: string): NoteRecording {
       ? 'recording'
       : 'saving'
   const startIn = ctx?.startIn
-  const session = ctx?.session
+  // Only the owning note looks at the live session. Resolving it to the module-level IDLE here
+  // rather than inside the memo below is what keeps the returned object STABLE for every other
+  // note: IDLE never changes identity, so a note off the recording path gets the same object
+  // back on every partial result, and its effects and memoised children stay put.
+  const view = owns && live ? live : IDLE
 
   const startRecording = useCallback<UseTranscriptionResult['startRecording']>(
     (...args) => startIn?.(noteId, ...args),
     [startIn, noteId],
   )
 
+  const hasRecordedThisSession = ctx?.recordedNoteId === noteId
+  const autoAnalyseChoice = ctx?.autoAnalyseChoice ?? true
+  const claimAutoAnalyse = ctx?.claimAutoAnalyse
+
   return useMemo(
     () => ({
-      ...(owns && session ? session : IDLE),
+      ...view,
       startRecording,
       otherNoteRecording,
       otherNoteBusyReason,
+      hasRecordedThisSession,
+      autoAnalyseChoice,
+      claimAutoAnalyse,
     }),
-    [owns, session, startRecording, otherNoteRecording, otherNoteBusyReason],
+    [
+      view,
+      startRecording,
+      otherNoteRecording,
+      otherNoteBusyReason,
+      hasRecordedThisSession,
+      autoAnalyseChoice,
+      claimAutoAnalyse,
+    ],
   )
 }

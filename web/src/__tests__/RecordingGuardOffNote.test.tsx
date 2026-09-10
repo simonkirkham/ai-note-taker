@@ -73,6 +73,9 @@ vi.mock('../components/RecordControl', () => ({
       <button data-testid="mock-start-recording" onClick={() => transcription.startRecording(true, true)}>
         Start recording
       </button>
+      <button data-testid="mock-stop-recording" onClick={() => transcription.stopRecording()}>
+        Stop recording
+      </button>
       <div data-testid="mock-status">{transcription.status}</div>
     </>
   ),
@@ -115,6 +118,11 @@ const renderApp = () =>
   )
 
 beforeEach(() => {
+  // A client id must be configured or signOut() falls into no-auth mode
+  // (AuthContext sets the id token to 'no-auth' when none is set) and the app never returns
+  // to the sign-in screen — leaving a sign-out test with nothing to observe. Same reason, and
+  // same stub, as SignOutTranscriptCommit.test.tsx.
+  vi.stubEnv('VITE_GOOGLE_CLIENT_ID', 'test-client-id')
   commitAwaited = 0
   releaseCommit = null
   window.history.replaceState({}, '', '/')
@@ -134,7 +142,10 @@ beforeEach(() => {
   )
 })
 
-afterEach(() => clearToken())
+afterEach(() => {
+  clearToken()
+  vi.unstubAllEnvs()
+})
 
 async function openCard(title: string) {
   const cards = await screen.findAllByTestId('note-card')
@@ -219,13 +230,38 @@ describe('the leave guard follows the recording, not the note on screen', () => 
     releaseCommit?.()
     await waitFor(() => expect(screen.queryByTestId('finishing-transcript')).toBeNull())
 
-    // NOT asserted here, deliberately, and it is an open question rather than a decision:
-    // `expect(await screen.findByRole('button', { name: /sign in with google/i }))` FAILS.
-    // The parked continuation demonstrably resumes — the banner above clears from the
-    // `finally` — but the sign-out itself does not complete, so the user stays signed in with
-    // no feedback. The same assertion passes for the note-owned guard
-    // (SignOutTranscriptCommit.test.tsx), so it is specific to the session-owned path.
-    // Recorded in docs/phases/phase-51.md; do not delete this comment without settling it.
+    // The whole point of the wait: the sign-out completes only AFTER the save landed. This is
+    // the assertion that separates "parked, then finished the job" from "parked, then did
+    // nothing", so it is the one that must not be dropped.
+    expect(await screen.findByRole('button', { name: /sign in with google/i })).toBeInTheDocument()
+  })
+
+  // C4 — a confirm raised on one screen must not follow you to the next.
+  //
+  // Nothing cleared it on navigation, and this slice is what made navigation possible while it
+  // is up: the tab switches it deliberately leaves unguarded never call `clearSessionLeave`.
+  // The confirm then survived to the recording note's own screen, where that note raises its
+  // OWN confirm on Back — two red banners at once, each rendering `confirm-leave-button`, and
+  // the stale one still holding an armed sign-out that would fire when the capture ended.
+  it('drops a leave confirm when I navigate away instead of answering it', async () => {
+    renderApp()
+    await recordInStandupThenLeaveIt()
+
+    await userEvent.click(screen.getByTestId('sign-out-button'))
+    expect(await screen.findByTestId('confirm-leave-button')).toBeInTheDocument()
+
+    // An unguarded navigation — the kind this slice added.
+    await userEvent.click(within(tab('Standup')).getByTestId('open-note-tab-label'))
+    await waitFor(() => expect(window.location.pathname).toBe('/w/__default__/notes/note-1'))
+
+    expect(screen.queryByTestId('confirm-leave-button')).toBeNull()
+
+    // And the sign-out it was holding is gone with it, rather than waiting to fire on its own
+    // when the recording ends. Back on the recording note, its own guard raises exactly one
+    // confirm — `getBy` throws on a duplicate, which is the stacked-banner assertion.
+    await userEvent.click(screen.getByTestId('mock-stop-recording'))
+    await waitFor(() => expect(screen.getByTestId('mock-status')).toHaveTextContent('stopped'))
+    expect(screen.queryByRole('button', { name: /sign in with google/i })).toBeNull()
   })
 
   it('asks before closing the recording tab from a different tab', async () => {

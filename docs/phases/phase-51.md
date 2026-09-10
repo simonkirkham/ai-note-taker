@@ -8,7 +8,7 @@
 |-------|--------------------|--------|------------|
 | 51-A | A design, validated in a clickable prototype, for how the open-note bar should behave | Done | — |
 | 51-B | My open notes stay visible on every screen, with my notes list as the first tab | Done | 51-A |
-| 51-C | A recording keeps running while I read another note | Not Started | 51-B |
+| 51-C | A recording keeps running while I read another note | In Progress | 51-B |
 
 51-A was a **prototype spike**; it closed on 2026-08-10 with direction A locked. 51-B's scenarios below are the confirmed ones it produced.
 
@@ -194,15 +194,21 @@ It was registered by the mounted `NoteView`, gated on *that* note recording. Sin
 
 **Deliberately left alone:** `NoteView`'s in-header confirm. Merging the two behind a variant prop would relayout a proven banner for no user-visible gain; they share testids and ARIA semantics, and both carry a comment saying a change to one is almost always a change to both.
 
-**OPEN — signing out after waiting for the save does not complete.** Found by strengthening a spec that had been asserting too little. `RecordingGuardOffNote.test.tsx` originally asserted only that the save was *asked for*; made to hold the save open and assert what happens after, it shows the wait works and the sign-out does not. The parked continuation demonstrably resumes — the "finishing the transcript" banner clears from the `finally` — but `proceed()` does not produce the signed-out screen. The identical assertion passes for the note-owned guard (`SignOutTranscriptCommit.test.tsx`), so it is specific to the session-owned path in `recordingSession.tsx`'s `confirmLeave`. Not data loss: the transcript is saved first, and the user stays signed in. It is "sign out appeared to do nothing". The spec carries a comment naming this; settle it before the comment is removed.
+**Retracted, kept on purpose — "signing out after the save does not complete" was a defect in the spec's harness, not in the product.** An earlier revision of this doc recorded it as OPEN and the spec carried the assertion commented out. It was neither: with no `VITE_GOOGLE_CLIENT_ID` configured, `AuthContext` puts the app in no-auth mode, `signOut()` re-authenticates instead of signing out, and the sign-in screen can never appear — so the assertion was failing on the test environment, not on `confirmLeave`. `SignOutTranscriptCommit.test.tsx` stubs that env var, which is exactly why "the identical assertion passes for the note-owned guard" and why the difference was misread as a session-path bug. **Measured 2026-09-10:** with the stub added the assertion passes (9/9); with `proceed?.()` deleted from `confirmLeave` it and one sibling fail and the other 7 stay green — so it is now live, and specific. The lesson is the general one: a check that cannot express a pass in the environment it runs in accuses the code instead.
+
+**Fixed in review, 2026-09-10.** Each carries a spec that was watched fail for its own defect and stay green for the others:
+
+| What broke for the user | Spec |
+| --- | --- |
+| A meeting you glanced away from was never written up. Record, click another note's tab, come back, press Stop: the transcript saved and the automatic write-up silently never ran, with nothing on screen to say it was ever coming. The record control unmounts on a tab switch, and the flag gating the write-up lived in it. Both it and the one-shot latch now live in the session; so does the write-up choice, which a remount was resetting to its default. | `RecordingWriteUpSurvivesTabSwitch.test.tsx` (3) |
+| While recording, everything outside the note screen re-rendered several times a second for the length of the meeting — sidebar, notes list, folder panel, workspace switcher, tab bar — on the same thread that feeds the on-device transcriber. The session now sits in two contexts: the live transcript, and everything else. | `RecordingContextChurn.test.tsx` |
+| A "still recording — sign out?" prompt followed you to the next screen and could stack a second one on top of it, with the stale one still holding an armed sign-out. Confirms are now dropped on navigation. | `RecordingGuardOffNote.test.tsx` |
+| The tab pulsed and screen readers announced ", recording" for minutes after a meeting had stopped, while it was only saving — and other notes were told to "stop it first" about a recording that could not be stopped. The marker now follows the live capture; the lockout still follows the whole busy period, and says "saving". | existing lockout specs |
 
 **Still outstanding, lower severity:**
-- Auto-analyse is silently lost if the user leaves the recording note and comes back — `hasRecordedThisSession` is `useState` in `RecordControl`, and `NoteView` is `key={noteId}`, so the round trip remounts it to `false`. Derive it from the session instead.
+- The last-recorded note stays bound behind the scenes for the rest of the page's life, so closing or deleting it leaves the app pointing at something gone. Deliberate (the binding must outlive the capture so the save reaches the right note) and inert today, because the one thing that would act on it declines when there is nothing to save. Filed as [CHANGE-42](phase-minor-changes.md).
 - `RecordingTabJourney`'s worst case (two 30s reload-tolerant gates + a 30s start wait + launch + navigation) can exceed the 120s `E2EFact` cap on a cold projector, and would then fail with a bare xUnit timeout carrying none of the helper's diagnosis.
-- The journey's no-confirm assertion is pass-by-default (asserts absence before the destination has rendered); assert the destination loaded first.
 - The journey's Stop click is the last statement, so an earlier failure skips it, and `DisposeAsync` NREs if `InitializeAsync` throws early.
-- Navigating to another note while a leave confirm is showing silently discards the request — the confirm vanishes, nothing happens, no feedback. `NoteView` is `key={noteId}`, so its pending leave dies with it. Newly reachable because this slice made the tab switch unguarded.
-- `NoteViewFinalising.test.tsx`'s RecordControl mock starts recording from an effect keyed on `[transcription]`, which is a new object every render — it only avoids looping because of the same-value bailout that was just fixed. Re-key on `noteId`.
 
 ### Observability
 

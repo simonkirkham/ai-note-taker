@@ -13,6 +13,7 @@ import styles from "./SessionLeaveConfirm.module.css";
 export default function SessionLeaveConfirm({
   destination,
   finishing,
+  finishingDestination,
   onConfirm,
   onCancel,
 }: {
@@ -20,6 +21,12 @@ export default function SessionLeaveConfirm({
   destination: string | null;
   /** The leave is confirmed and parked on the transcript commit (BUG-55). */
   finishing: boolean;
+  /**
+   * The destination being waited on, in the same phrasing. Separate from `destination`, which
+   * is cleared the moment the leave is confirmed — so by the time this banner shows, the thing
+   * the user asked for is no longer on the other prop.
+   */
+  finishingDestination?: string | null;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -34,7 +41,11 @@ export default function SessionLeaveConfirm({
         data-testid="finishing-transcript"
       >
         <span className={styles.text}>
-          Finishing the transcript — you&rsquo;ll be signed out when it&rsquo;s saved…
+          {/* Correct only by coincidence when hardcoded: `finishing` is driven by the
+              wait-for-the-save flag, which today only sign-out passes. Say what the caller
+              actually asked for, so it stays true the first time another destination waits. */}
+          Finishing the transcript — we&rsquo;ll {finishingDestination ?? "sign out"} once
+          it&rsquo;s saved&hellip;
         </span>
       </span>
     );

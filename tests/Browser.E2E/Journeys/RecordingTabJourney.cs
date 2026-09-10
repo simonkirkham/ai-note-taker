@@ -113,8 +113,13 @@ public sealed class RecordingTabJourney(BrowserFixture browser) : IAsyncLifetime
         // running when we land — asserted on the OTHER note's screen, where the tab bar is the
         // only thing that can tell us.
         await _app.ClickOpenNoteTabAsync(other);
-        await Assertions.Expect(_page.GetByTestId("leave-confirm-text")).Not.ToBeVisibleAsync();
+        // The positive assertions come FIRST, deliberately. "The confirm is not showing" is
+        // trivially true before the destination has rendered, so asserting it on arrival would
+        // pass whether or not a regression had re-introduced the prompt. Waiting for the other
+        // note's screen and the marker means the absence is measured at a moment when a prompt
+        // would already have been up.
         await Assertions.Expect(RecordingDotOn(recording)).ToBeVisibleAsync();
+        await Assertions.Expect(_page.GetByTestId("leave-confirm-text")).Not.ToBeVisibleAsync();
         await Assertions.Expect(RecordingDotOn(other)).Not.ToBeVisibleAsync();
 
         // The single-recorder rule, from the note that does not hold the session.
@@ -158,10 +163,14 @@ public sealed class RecordingTabJourney(BrowserFixture browser) : IAsyncLifetime
         catch (PlaywrightException)
         {
             var error = await TextOrNoneAsync(_page.GetByTestId("transcription-error"));
-            var stillAsking = await _page.GetByTestId("transcription-stop-button").IsVisibleAsync();
+            // Read the timer's absence, not the Stop button's presence: Stop renders for
+            // 'requesting' AND 'recording' alike, so it cannot tell the two apart — an earlier
+            // version of this message claimed it could.
+            var stopShowing = await _page.GetByTestId("transcription-stop-button").IsVisibleAsync();
             throw new Exception(
                 $"The recording never went live. On-screen error: {error}. "
-                + $"Stop button showing (so it was still requesting): {stillAsking}. "
+                + $"Stop button showing (rendered while requesting OR recording, so this only "
+                + $"says the control is past idle): {stopShowing}. "
                 + $"URL: {_page.Url}. "
                 + "Most likely one of: the fake microphone was refused, the audio worklet never "
                 + "started, or /transcription/credentials failed.");

@@ -32,6 +32,7 @@ export default function RecordControl({
   const { status, transcript, elapsedSeconds, error, startRecording, stopRecording, reset } =
     transcription;
   const otherNoteRecording = transcription.otherNoteRecording ?? false;
+  const { autoAnalyseChoice, claimAutoAnalyse } = transcription;
   // Say which it is. "Another note is recording" is wrong and confusing when the other note
   // has already stopped and is only finishing its save — the user sees nothing recording
   // anywhere and is told something is.
@@ -41,7 +42,15 @@ export default function RecordControl({
       ? "Still saving the last recording — you can start again once it's done"
       : "Another note is recording — stop it first";
 
-  const [hasRecordedThisSession, setHasRecordedThisSession] = useState(false);
+  // 51-C review: the session owns this, because this control does not outlive a tab switch.
+  //
+  // Recording in one note and looking at another unmounts the control mid-meeting, and a plain
+  // `useState(false)` came back false — so pressing Stop saved the transcript and silently
+  // skipped the automatic write-up, with nothing on screen to say the write-up was ever coming.
+  // The local state stays as the fallback for a caller that passes a bare session (every spec
+  // that drives this control directly), where nothing can unmount it mid-recording anyway.
+  const [recordedLocally, setRecordedLocally] = useState(false);
+  const hasRecordedThisSession = recordedLocally || transcription.hasRecordedThisSession === true;
   const [isAnalysing, setIsAnalysing] = useState(false);
   const [analyseError, setAnalyseError] = useState<string | null>(null);
   const [includeCallAudio, setIncludeCallAudio] = useState(true);
@@ -51,7 +60,7 @@ export default function RecordControl({
 
   function begin(resumeFrom?: string) {
     setConfirmingResume(false);
-    setHasRecordedThisSession(true);
+    setRecordedLocally(true);
     // Capture the auto-analyse toggle at record start (it's hidden during recording, so it can't
     // change) — carried to the diarization trigger so the server re-analyses on the winning
     // transcript (33-B2).
@@ -105,7 +114,10 @@ export default function RecordControl({
     }
     if (
       status === "stopped" &&
-      autoAnalyse &&
+      // The choice as it was at Record, not as the toggle reads now. The toggle is hidden during
+      // a recording so it cannot change — but a remount mid-meeting resets it to its default,
+      // which would quietly write up a meeting the user had opted out of.
+      (autoAnalyseChoice ?? autoAnalyse) &&
       hasRecordedThisSession &&
       transcript.trim().length > 0 &&
       !autoAnalyseFiredRef.current &&
@@ -115,12 +127,30 @@ export default function RecordControl({
       // back to a local analyse when the job never STARTED ('failed') or there's no diarization
       // ('idle', e.g. a content-only note), so the note is still analysed exactly once.
       transcription.diarization !== "refining" &&
-      transcription.diarization !== "timedOut"
+      transcription.diarization !== "timedOut" &&
+      // LAST in the chain, and deliberately a call with a side effect: it takes the one-shot
+      // claim, so it must run only once every other condition has already passed.
+      //
+      // The local ref above cannot be the latch on its own — it remounts with this control, so
+      // looking at another note's tab after Stop and coming back would write the same recording
+      // up a second time. The session outlives both. Absent (a spec driving this control with a
+      // bare session), the local ref is the latch, as it was before.
+      (claimAutoAnalyse === undefined || claimAutoAnalyse())
     ) {
       autoAnalyseFiredRef.current = true;
       void handleAnalyse("auto");
     }
-  }, [status, autoAnalyse, hasRecordedThisSession, transcript, isAnalysing, transcription.diarization, handleAnalyse]);
+  }, [
+    status,
+    autoAnalyse,
+    autoAnalyseChoice,
+    claimAutoAnalyse,
+    hasRecordedThisSession,
+    transcript,
+    isAnalysing,
+    transcription.diarization,
+    handleAnalyse,
+  ]);
 
   return (
     <div className={styles.recordControl} data-testid="record-control">

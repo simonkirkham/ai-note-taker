@@ -1,6 +1,7 @@
 import userEvent from '@testing-library/user-event'
 import { delay, http, HttpResponse } from 'msw'
 import { useState } from 'react'
+import { MemoryRouter } from 'react-router'
 import NoteView from '../components/NoteView'
 import { ToastProvider } from '../components/ToastProvider'
 import { RecordingSessionProvider } from '../hooks/recordingSession'
@@ -83,7 +84,7 @@ afterEach(() => {
 function renderNoteView(props: { noteId?: string; initialTitle?: string; onBack?: () => void; onDelete?: (noteId: string) => Promise<void>; onOpenNote?: (noteId: string, title?: string, isNew?: boolean) => void; isNew?: boolean; otherWorkspaces?: { workspaceId: string; name: string }[]; onMoveToWorkspace?: (workspaceId: string) => void } = {}) {
   const { noteId = 'note-1', initialTitle = 'Test Note', onBack = noop, onDelete = asyncNoop, onOpenNote = noop, isNew, otherWorkspaces, onMoveToWorkspace } = props
   return render(
-    <ToastProvider><RecordingSessionProvider>
+    <ToastProvider><MemoryRouter><RecordingSessionProvider>
       <NoteView
         noteId={noteId}
         initialTitle={initialTitle}
@@ -95,7 +96,7 @@ function renderNoteView(props: { noteId?: string; initialTitle?: string; onBack?
         otherWorkspaces={otherWorkspaces}
         onMoveToWorkspace={onMoveToWorkspace}
       />
-    </RecordingSessionProvider></ToastProvider>,
+    </RecordingSessionProvider></MemoryRouter></ToastProvider>,
   )
 }
 
@@ -289,7 +290,7 @@ describe('NoteView', () => {
     function Harness() {
       const [open, setOpen] = useState(false)
       return (
-        <ToastProvider><RecordingSessionProvider>
+        <ToastProvider><MemoryRouter><RecordingSessionProvider>
           <button data-testid="outside-opener" onClick={() => setOpen(true)}>New note</button>
           {open && (
             <NoteView
@@ -297,7 +298,7 @@ describe('NoteView', () => {
               onDateSet={noop} onOpenNote={noop}
             />
           )}
-        </RecordingSessionProvider></ToastProvider>
+        </RecordingSessionProvider></MemoryRouter></ToastProvider>
       )
     }
     render(<Harness />)

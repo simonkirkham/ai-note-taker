@@ -1,3 +1,4 @@
+import { MemoryRouter } from 'react-router'
 import NoteView from '../components/NoteView'
 import { ToastProvider } from '../components/ToastProvider'
 import { RecordingSessionProvider } from '../hooks/recordingSession'
@@ -60,7 +61,7 @@ const asyncNoop = async () => {}
 
 function renderFresh() {
   return render(
-    <ToastProvider><RecordingSessionProvider>
+    <ToastProvider><MemoryRouter><RecordingSessionProvider>
       <NoteView
         noteId="note-fin"
         initialTitle=""
@@ -70,7 +71,7 @@ function renderFresh() {
         onDateSet={noop}
         onOpenNote={noop}
       />
-    </RecordingSessionProvider></ToastProvider>,
+    </RecordingSessionProvider></MemoryRouter></ToastProvider>,
   )
 }
 
