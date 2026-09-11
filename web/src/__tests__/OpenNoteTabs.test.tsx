@@ -297,7 +297,11 @@ describe('Open-note tabs (49-A)', () => {
   // The slice's real risk: a tab click is an in-app navigate, which does NOT fire the
   // popstate trap BUG-34 added — so the recording note must be asked about explicitly, or
   // switching tabs silently kills the capture.
-  it('switching tabs while recording asks first, and declining keeps the recording', async () => {
+  // 51-C replaced 49-A's behaviour here. Switching tabs used to ask first, because it
+  // unmounted the note that was capturing; the session now lives above the note, so the
+  // switch neither prompts nor stops anything. The close-tab confirm below is untouched —
+  // closing still destroys the capture, so it still asks.
+  it('switching tabs while recording just switches, and the recording keeps going', async () => {
     renderApp()
     await openFromList('Standup')
     await goHome()
@@ -307,34 +311,16 @@ describe('Open-note tabs (49-A)', () => {
     await userEvent.click(screen.getByTestId('mock-start-recording'))
 
     await userEvent.click(tabNamed('Standup'))
-
-    // Still on the recording note, with the existing leave confirmation showing.
-    expect(await screen.findByTestId('confirm-leave-button')).toBeInTheDocument()
-    expect(window.location.pathname).toBe('/w/__default__/notes/note-2')
-
-    await userEvent.click(screen.getByTestId('cancel-leave-button'))
 
     expect(screen.queryByTestId('confirm-leave-button')).toBeNull()
-    expect(window.location.pathname).toBe('/w/__default__/notes/note-2')
+    await waitFor(() => expect(window.location.pathname).toBe('/w/__default__/notes/note-1'))
+    expect(tabs()).toHaveLength(2)
   })
 
-  // CHANGE-33: the confirm names its destination, so a tab click and a tab close — which
-  // look identical behind a bare "Still recording —" — are told apart before confirming.
-  it('the confirm names the tab I clicked', async () => {
-    renderApp()
-    await openFromList('Standup')
-    await goHome()
-    await openFromList('Client call')
-    await waitFor(() => expect(tabs()).toHaveLength(2))
-    await userEvent.click(screen.getByTestId('mock-start-recording'))
-
-    await userEvent.click(tabNamed('Standup'))
-
-    expect((await screen.findByTestId('leave-confirm-text')).textContent).toBe(
-      'Still recording — open Standup?',
-    )
-  })
-
+  // CHANGE-33: the confirm names its destination rather than showing a bare
+  // "Still recording —". Its tab-CLICK case is gone with 51-C (a tab click no longer
+  // confirms at all), so closing is the remaining guarded action in this bar and the one
+  // that has to name itself.
   it('the confirm says close this tab when I close the recording tab', async () => {
     renderApp()
     await openFromList('Standup')
@@ -348,21 +334,6 @@ describe('Open-note tabs (49-A)', () => {
     expect((await screen.findByTestId('leave-confirm-text')).textContent).toBe(
       'Still recording — close this tab?',
     )
-  })
-
-  it('confirming the leave switches to the tab that was clicked', async () => {
-    renderApp()
-    await openFromList('Standup')
-    await goHome()
-    await openFromList('Client call')
-    await waitFor(() => expect(tabs()).toHaveLength(2))
-    await userEvent.click(screen.getByTestId('mock-start-recording'))
-
-    await userEvent.click(tabNamed('Standup'))
-    await userEvent.click(await screen.findByTestId('confirm-leave-button'))
-
-    await waitFor(() => expect(window.location.pathname).toBe('/w/__default__/notes/note-1'))
-    expect(tabs()).toHaveLength(2)
   })
 
   // A tab pointing at a note that no longer exists here can only reach the dead-link

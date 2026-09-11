@@ -21,6 +21,8 @@ export default function OpenNoteTabs({
   activeNoteId,
   homeIsCurrentPage,
   reconciled,
+  recordingNoteId,
+  savingNoteId,
   onSelect,
   onSelectHome,
   onClose,
@@ -45,6 +47,14 @@ export default function OpenNoteTabs({
   // 51-B: this now matters on every route, not just the note route — the set is provisional
   // on the notes list for exactly the same reason.
   reconciled: boolean;
+  // 51-C: the note currently recording, or undefined. Passed in rather than read from the
+  // session here so the bar stays a pure presentational component.
+  recordingNoteId?: string | null;
+  // 51-C: the note that is recording OR still writing itself away afterwards. Wider than
+  // `recordingNoteId` — on-device saving runs for minutes after Stop, and through all of it the
+  // note is still working and its tab is still guarded, so it needs a marker of its own rather
+  // than looking finished.
+  savingNoteId?: string | null;
   onSelect: (noteId: string) => void;
   onSelectHome: () => void;
   onClose: (noteId: string) => void;
@@ -71,6 +81,10 @@ export default function OpenNoteTabs({
         </li>
         {tabs.map((tab) => {
           const isActive = tab.noteId === activeNoteId;
+          const isRecording = tab.noteId === recordingNoteId;
+          // Never both: `savingNoteId` covers the whole busy period, `recordingNoteId` only the
+          // live capture, so the live half is taken by the branch above.
+          const isSaving = !isRecording && tab.noteId === savingNoteId;
           return (
             <li
               key={tab.noteId}
@@ -86,7 +100,26 @@ export default function OpenNoteTabs({
                 title={tab.title}
                 onClick={() => onSelect(tab.noteId)}
               >
+                {/* 51-C: the dot is decorative — the fact it carries rides in the accessible
+                    name instead, so a screen reader hears "Standup, recording" rather than an
+                    unannounced colour change. Colour is never the only channel. */}
+                {isRecording && (
+                  <span
+                    data-testid="open-note-tab-recording"
+                    className={styles.recordingDot}
+                    aria-hidden="true"
+                  />
+                )}
+                {isSaving && (
+                  <span
+                    data-testid="open-note-tab-saving"
+                    className={styles.savingDot}
+                    aria-hidden="true"
+                  />
+                )}
                 {tab.title}
+                {isRecording && <span className={styles.srOnly}>, recording</span>}
+                {isSaving && <span className={styles.srOnly}>, saving</span>}
               </button>
               <button
                 type="button"

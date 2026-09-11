@@ -173,10 +173,12 @@ describe('signing out mid-recording (BUG-55)', () => {
   it('does not make ordinary navigation wait for the finalise', async () => {
     // The reason this is opt-in per destination: in local mode awaitCommit takes minutes, and every
     // other destination is already safe because the request outlives a route change.
+    // 51-C: driven by closing the tab. Clicking Home no longer confirms at all — the recording
+    // survives it — so Home can no longer stand in for "an ordinary guarded destination".
     renderApp()
     await openNoteAndRecord()
 
-    await userEvent.click(within(screen.getByTestId('sidebar')).getByTestId('home-button'))
+    await userEvent.click(screen.getByTestId('open-note-tab-close'))
     await userEvent.click(await screen.findByTestId('confirm-leave-button'))
 
     // Left the note without the commit ever being awaited — no hang.
@@ -227,12 +229,14 @@ describe('a leave already committed does not re-arm the guard (BUG-55)', () => {
     await userEvent.click(screen.getByTestId('note-content'))
     await userEvent.keyboard('some typing')
 
-    await userEvent.click(within(screen.getByTestId('sidebar')).getByTestId('home-button'))
+    await userEvent.click(screen.getByTestId('open-note-tab-close'))
     await userEvent.click(await screen.findByTestId('confirm-leave-button'))
     await waitFor(() => expect(releaseContentSave).toBeDefined())
 
-    // Parked on the content PUT. A second navigation must not raise a confirm.
-    await userEvent.click(within(screen.getByTestId('sidebar')).getByTestId('home-button'))
+    // Parked on the content PUT. A second guarded click must not raise a confirm. 51-C: the
+    // tab close, since Home is no longer guarded — and the tab is still there to click,
+    // because `proceed` (which closes it) has not run yet.
+    await userEvent.click(screen.getByTestId('open-note-tab-close'))
     expect(screen.queryByTestId('confirm-leave-button')).toBeNull()
 
     releaseContentSave?.()

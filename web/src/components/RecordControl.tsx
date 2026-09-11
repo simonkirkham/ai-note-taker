@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { analyseNote } from "../api/notes";
-import type { UseTranscriptionResult } from "../hooks/useTranscription";
+import type { NoteRecording } from "../hooks/recordingSessionContext";
 import { type AnalyseTrigger, reportAnalyseFailure } from "../lib/analyseFailure";
+import { shouldAutoWriteUp } from "../lib/autoWriteUp";
 import styles from "./RecordControl.module.css";
 
 function formatTime(seconds: number): string {
@@ -24,13 +25,37 @@ export default function RecordControl({
   noteHasContent?: boolean;
   hasInitialTranscript?: boolean;
   initialTranscript?: string | null;
-  transcription: UseTranscriptionResult;
+  // 51-C: the session is app-scoped, so `transcription` may carry the single-recorder flag —
+  // true when ANOTHER note holds the live session.
+  transcription: NoteRecording;
   onAnalysisComplete?: () => void;
 }) {
   const { status, transcript, elapsedSeconds, error, startRecording, stopRecording, reset } =
     transcription;
+  const otherNoteRecording = transcription.otherNoteRecording ?? false;
+  const { autoWriteUp, autoWriteUpError, clearAutoWriteUp } = transcription;
+  // Under a recording session the SESSION runs the automatic write-up — it outlives this control,
+  // which unmounts whenever you look at another note. This control then only shows it. The local
+  // path below is for a caller with no session above it, where nothing can unmount it mid-meeting.
+  const sessionOwnsWriteUp = autoWriteUp !== undefined;
+  // Say which it is. "Another note is recording" is wrong and confusing when the other note
+  // has already stopped and is only finishing its save — the user sees nothing recording
+  // anywhere and is told something is.
+  const unavailableReason = !otherNoteRecording
+    ? undefined
+    : transcription.otherNoteBusyReason === 'saving'
+      ? "Still saving the last recording — you can start again once it's done"
+      : "Another note is recording — stop it first";
 
-  const [hasRecordedThisSession, setHasRecordedThisSession] = useState(false);
+  // 51-C review: the session owns this, because this control does not outlive a tab switch.
+  //
+  // Recording in one note and looking at another unmounts the control mid-meeting, and a plain
+  // `useState(false)` came back false — so pressing Stop saved the transcript and silently
+  // skipped the automatic write-up, with nothing on screen to say the write-up was ever coming.
+  // The local state stays as the fallback for a caller that passes a bare session (every spec
+  // that drives this control directly), where nothing can unmount it mid-recording anyway.
+  const [recordedLocally, setRecordedLocally] = useState(false);
+  const hasRecordedThisSession = recordedLocally || transcription.hasRecordedThisSession === true;
   const [isAnalysing, setIsAnalysing] = useState(false);
   const [analyseError, setAnalyseError] = useState<string | null>(null);
   const [includeCallAudio, setIncludeCallAudio] = useState(true);
@@ -40,7 +65,7 @@ export default function RecordControl({
 
   function begin(resumeFrom?: string) {
     setConfirmingResume(false);
-    setHasRecordedThisSession(true);
+    setRecordedLocally(true);
     // Capture the auto-analyse toggle at record start (it's hidden during recording, so it can't
     // change) — carried to the diarization trigger so the server re-analyses on the winning
     // transcript (33-B2).
@@ -63,7 +88,12 @@ export default function RecordControl({
   const showInitialTranscript = status === "idle" && hasInitialTranscript && !hasRecordedThisSession;
   const hasSomethingToAnalyse = status === "stopped" || showInitialTranscript || noteHasContent;
   const showAnalyseControl = status === "idle" || status === "stopped";
-  const analyseDisabled = !hasSomethingToAnalyse || isAnalysing;
+  // Busy either way: a manual analysis from here, or the session's automatic one for this note.
+  const analysing = isAnalysing || autoWriteUp === "running";
+  const analyseDisabled = !hasSomethingToAnalyse || analysing;
+  // A local failure is the most recent thing that happened here, so it wins. The session's is the
+  // one that survives a tab switch — so a failed write-up is still said when you come back.
+  const shownAnalyseError = analyseError ?? autoWriteUpError ?? null;
 
   // BUG-77: this used to be a bare `catch {}` that discarded the error and printed one sentence —
   // "Analysis failed. Please try again." — for a dead network, an expired sign-in, a refused
@@ -77,6 +107,10 @@ export default function RecordControl({
       const startedAt = Date.now();
       try {
         await analyseNote(noteId);
+        // A manual success puts right a failed automatic write-up — stop saying it failed. Only
+        // on success: a manual failure leaves the note still un-analysed, and the session's
+        // failure must then still be there after the next tab switch has dropped this one's.
+        if (trigger === "manual") clearAutoWriteUp?.();
         onAnalysisComplete?.();
       } catch (err) {
         setAnalyseError(reportAnalyseFailure(err, { noteId, trigger, startedAt }).message);
@@ -84,7 +118,7 @@ export default function RecordControl({
         setIsAnalysing(false);
       }
     },
-    [noteId, onAnalysisComplete],
+    [noteId, onAnalysisComplete, clearAutoWriteUp],
   );
 
   useEffect(() => {
@@ -93,23 +127,25 @@ export default function RecordControl({
       return;
     }
     if (
-      status === "stopped" &&
-      autoAnalyse &&
+      !sessionOwnsWriteUp &&
       hasRecordedThisSession &&
-      transcript.trim().length > 0 &&
       !autoAnalyseFiredRef.current &&
       !isAnalysing &&
-      // 33-B2: defer to the server while a diarization job is in flight ('refining') or started but
-      // slow ('timedOut') — the completion Lambda re-analyses on the winning transcript. Only fall
-      // back to a local analyse when the job never STARTED ('failed') or there's no diarization
-      // ('idle', e.g. a content-only note), so the note is still analysed exactly once.
-      transcription.diarization !== "refining" &&
-      transcription.diarization !== "timedOut"
+      shouldAutoWriteUp({ status, autoAnalyse, transcript, diarization: transcription.diarization })
     ) {
       autoAnalyseFiredRef.current = true;
       void handleAnalyse("auto");
     }
-  }, [status, autoAnalyse, hasRecordedThisSession, transcript, isAnalysing, transcription.diarization, handleAnalyse]);
+  }, [
+    status,
+    autoAnalyse,
+    sessionOwnsWriteUp,
+    hasRecordedThisSession,
+    transcript,
+    isAnalysing,
+    transcription.diarization,
+    handleAnalyse,
+  ]);
 
   return (
     <div className={styles.recordControl} data-testid="record-control">
@@ -156,7 +192,7 @@ export default function RecordControl({
             data-testid="transcription-auto-analyse-toggle"
             checked={autoAnalyse}
             onChange={(e) => setAutoAnalyse(e.target.checked)}
-            disabled={isAnalysing}
+            disabled={analysing}
           />
           Auto-analyse
         </label>
@@ -171,7 +207,7 @@ export default function RecordControl({
           disabled={analyseDisabled}
           title={hasSomethingToAnalyse ? undefined : "Add notes or record a transcript to analyse"}
         >
-          {isAnalysing ? "Analysing…" : "Analyse note"}
+          {analysing ? "Analysing…" : "Analyse note"}
         </button>
       )}
 
@@ -192,6 +228,12 @@ export default function RecordControl({
           className={styles.recordButton}
           data-testid="transcription-record-button"
           onClick={handleRecordClick}
+          // 51-C: only one note records at a time. The session refuses a second claim anyway,
+          // so without this the button would look live and silently do nothing. The tooltip
+          // says what to do about it; it deliberately does not name the holding note, which
+          // this component has no way to resolve — the bar's marker is where you look for that.
+          disabled={otherNoteRecording}
+          title={unavailableReason}
         >
           <span className={styles.recordDot} aria-hidden="true" />
           Record
@@ -232,9 +274,9 @@ export default function RecordControl({
         </button>
       )}
 
-      {analyseError && (
+      {shownAnalyseError && (
         <span className={styles.analyseError} data-testid="transcription-analyse-error" role="alert">
-          {analyseError}
+          {shownAnalyseError}
         </span>
       )}
     </div>

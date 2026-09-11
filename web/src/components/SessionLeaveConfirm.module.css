@@ -1,0 +1,68 @@
+/* 51-C review follow-up — the app-scoped "still recording" confirm.
+ *
+ * NoteView has its own copy of this banner, styled to sit inside the note header. This one
+ * has to appear on screens with no note at all (the notes list, a folder), so it floats.
+ * The two are kept deliberately separate rather than merged behind a variant prop: the note
+ * one is laid out by its header row, this one lays itself out. Their MARKUP must stay in
+ * step though — both carry the same testids and the same alertdialog/live-region semantics,
+ * and a change to one is almost always a change to both. */
+.banner {
+  position: fixed;
+  top: 0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  min-width: 0;
+  max-width: min(38rem, calc(100vw - 2rem));
+
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border-strong, var(--color-border));
+  border-radius: 0.5rem;
+  background: var(--color-surface);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 18%);
+}
+
+.text {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-error);
+  overflow-wrap: anywhere;
+}
+
+/* Buttons mirror the note header's pair rather than inventing a third treatment. */
+.confirm,
+.cancel {
+  font-size: 0.85rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.confirm {
+  background: var(--color-error);
+  border: 1px solid var(--color-error);
+  color: var(--color-surface);
+}
+
+.cancel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong, var(--color-border));
+  color: var(--color-text);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .banner {
+    animation: leaveConfirmIn 120ms ease-out;
+  }
+}
+
+@keyframes leaveConfirmIn {
+  from { opacity: 0; transform: translate(-50%, -0.25rem); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}

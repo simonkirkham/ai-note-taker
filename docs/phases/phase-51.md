@@ -8,7 +8,7 @@
 |-------|--------------------|--------|------------|
 | 51-A | A design, validated in a clickable prototype, for how the open-note bar should behave | Done | — |
 | 51-B | My open notes stay visible on every screen, with my notes list as the first tab | Done | 51-A |
-| 51-C | A recording keeps running while I read another note | Not Started | 51-B |
+| 51-C | A recording keeps running while I read another note | In Progress | 51-B |
 
 51-A was a **prototype spike**; it closed on 2026-08-10 with direction A locked. 51-B's scenarios below are the confirmed ones it produced.
 
@@ -158,15 +158,16 @@ Scenario: Only one note records at a time
   - Still required either way: audit every `NoteView` effect that assumes "mounted ⇒ visible/active" and gate it on active-ness.
 - **Classify every leave-guard site before removing any of them — this is where 51-C can silently re-open [BUG-54].** BUG-54 exists because leaving a recording note destroyed the transcript, and it wrapped ten `requestLeave` sites to prevent that. Keeping the recording mounted removes the *reason* for some of those prompts but not others, and the difference is whether the destination unmounts the recording:
 
-  | Site (`App.tsx` unless noted) | Under keep-mounted | Why |
+  | Site (`App.tsx` unless noted) | Outcome | Why |
   |---|---|---|
-  | Tab switch, `openNote` | **drop the prompt** | the whole point of the slice — recording stays mounted |
-  | Home / folder / Unfiled navigation | **drop the prompt**, IF the recording note stays mounted off-route | otherwise this is BUG-54 again; verify by test, not by reading |
-  | Close the recording tab | **keep** | unmounts the recording |
-  | Sign out (`awaitTranscript: true`) | **keep** | clears the token, unmounts everything |
-  | Workspace switch / create-and-switch (`WorkspaceSwitcher.tsx`, 2 sites) | **keep** | leaves the workspace the note lives in |
-  | Move note to another workspace | **keep** | the note survives the move, the transcript does not |
-  | `beforeunload` / `popstate` | **keep** | the browser is leaving regardless of mounting |
+  | Tab switch, `openNote` | **dropped** | the whole point of the slice — the session outlives the note |
+  | Home / folder / Unfiled navigation | **dropped** | the conditional resolved to yes. The session is hoisted above the route, so all three leave the capture running — proven by `RecordingSurvivesTabSwitch`, which leaves the note entirely, returns and reads the transcript back. Keeping them would also have contradicted the bar, which is on those screens (51-B) showing the note as live |
+  | Close the recording tab | **kept** | unmounts the recording |
+  | Sign out (`awaitTranscript: true`) | **kept** | clears the token, unmounts everything |
+  | Workspace switch / create-and-switch (`WorkspaceSwitcher.tsx`, 2 sites) | **kept** | leaves the workspace the note lives in. **Corrected during review:** the session does NOT unmount on a switch — same `/w/:wsId/*` route, no `key`, reconciled in place — so the capture survives while `api/client.ts` starts rewriting paths to the new workspace, sending checkpoints and the final commit to `/w/<new>/notes/<old-id>`. The prompt is load-bearing for that reason, not the assumed one |
+  | Move note to another workspace | **kept** | the note survives the move, the transcript does not |
+  | `beforeunload` | **kept**, and already correct | registered inside `useTranscription`, so hoisting moved it with the session — it follows the recording rather than whichever note is mounted |
+  | `popstate` (`NoteView.tsx`) | **kept as-is** | now redundant on most paths: browser-back within the workspace no longer destroys the capture, so this asks about a navigation that is safe. Left alone deliberately — narrowing BUG-34's trap is not this slice's call. Follow-up if the double-confirm annoys |
 
   Do not drop a prompt on the argument that the recording "should" survive — assert it survives first. The 49-A tab-switch confirm is the only one 51-C is *certain* to remove.
 - **[BUG-70] is open and overlaps.** "+ New Note" creates the note server-side *before* the guard runs, so a declined leave leaves an orphan. If 51-C drops the prompt on that path without fixing the ordering, the orphan stops being visible rather than stops happening. Read it before touching `handleNewNote`.
@@ -180,6 +181,40 @@ Scenario: Only one note records at a time
   - [ ] The recording tab is marked as recording in the bar
   - [ ] Closing a recording tab confirms first and stops the recording cleanly
   - [ ] A second recording cannot be started from another tab while one is live
+
+### 51-C — outstanding from review (PR #468, REQUEST CHANGES)
+
+**Fixed in-branch:** the claim was released only on `status === 'idle'`, which Stop never reaches — so the app was recordable once per page load, every other note stayed locked out and the tab kept a pulsing dot. Re-recording the same note was also stranded by React's same-value `setState` bailout. Both came from conflating two different things, now separated: `boundNoteId` (which note the session belongs to — outlives the capture so the commit and upload still target it) and `recordingNoteId` (derived from status — what locks other notes out and draws the marker). Specs added for the whole post-Stop phase, which had **no** coverage at all; that absence is what let both defects through a green PR.
+
+**Fixed — the leave guard is now session-owned.**
+
+It was registered by the mounted `NoteView`, gated on *that* note recording. Since this slice's whole purpose is to let the user be elsewhere while recording, the guard was absent in exactly the positions it creates, and `requestLeave` fell straight through to `proceed()`. Signing out then cleared the token before the transcript committed, the POST 401'd and nothing retried — BUG-55, reproduced on the headline flow. Closing the recording tab from another tab, and switching workspace, went the same way.
+
+`RecordingSessionProvider` now owns a `guardLeave` and renders an app-scoped confirm (`SessionLeaveConfirm`), so the guard follows the capture rather than the screen. `App`'s `requestLeave` prefers the mounted note's guard — which does strictly more, flushing that note's unsaved content draft — and falls back to the session's; exactly one is ever live. `handleCloseTab` now guards on the recording note as well as the active one. 9 specs in `RecordingGuardOffNote.test.tsx`, every one of which leaves the recording note before doing the dangerous thing, so none can be satisfied by the note-owned guard.
+
+**Deliberately left alone:** `NoteView`'s in-header confirm. Merging the two behind a variant prop would relayout a proven banner for no user-visible gain; they share testids and ARIA semantics, and both carry a comment saying a change to one is almost always a change to both.
+
+**Retracted, kept on purpose — "signing out after the save does not complete" was a defect in the spec's harness, not in the product.** An earlier revision of this doc recorded it as OPEN and the spec carried the assertion commented out. It was neither: with no `VITE_GOOGLE_CLIENT_ID` configured, `AuthContext` puts the app in no-auth mode, `signOut()` re-authenticates instead of signing out, and the sign-in screen can never appear — so the assertion was failing on the test environment, not on `confirmLeave`. `SignOutTranscriptCommit.test.tsx` stubs that env var, which is exactly why "the identical assertion passes for the note-owned guard" and why the difference was misread as a session-path bug. **Measured 2026-09-10:** with the stub added the assertion passes (9/9); with `proceed?.()` deleted from `confirmLeave` it and one sibling fail and the other 7 stay green — so it is now live, and specific. The lesson is the general one: a check that cannot express a pass in the environment it runs in accuses the code instead.
+
+**Fixed in review, 2026-09-10.** Each carries a spec that was watched fail for its own defect and stay green for the others:
+
+| What broke for the user | Spec |
+| --- | --- |
+| A meeting you glanced away from was never written up. Record, click another note's tab, come back, press Stop: the transcript saved and the automatic write-up silently never ran, with nothing on screen to say it was ever coming. The record control unmounts on a tab switch, and the flag gating the write-up lived in it. Both it and the one-shot latch now live in the session; so does the write-up choice, which a remount was resetting to its default. | `RecordingWriteUpSurvivesTabSwitch.test.tsx` (3) |
+| While recording, the whole app re-drew itself several times a second for the length of the meeting — sidebar, notes list, folder panel, workspace switcher, tab bar, **and the note you were reading**, editor included — on the same thread that feeds the on-device transcriber. Everything but the transcript moved to its own context; the transcript itself is now a subscription, so only the note that owns it is woken. Measured at the second attempt: the first split fixed everything except the largest consumer, and the spec as first written could not see it (25 re-renders, reported as clean). | `RecordingContextChurn.test.tsx` |
+| A "still recording — sign out?" prompt followed you to the next screen and could stack a second one on top of it, with the stale one still holding an armed sign-out. Confirms are now dropped on navigation. | `RecordingGuardOffNote.test.tsx` |
+| The tab pulsed and screen readers announced ", recording" for minutes after a meeting had stopped, while it was only saving — and other notes were told to "stop it first" about a recording that could not be stopped. The marker now follows the live capture and the saving note gets a quiet marker of its own; everything that PROTECTS the note still covers the whole busy period. Narrowing the marker alone had silently re-opened the close-tab hole: the tab of a half-saved meeting could be closed from another tab with no prompt and no marker left anywhere on screen. | `RecordingStillSaving.test.tsx` |
+| A failed automatic write-up could never be retried and its error message vanished on the next tab switch, leaving the meeting un-analysed with nothing saying the manual button needed pressing. The failure is now held by the session, so it is still on screen when you come back, until a manual Analyse succeeds; nothing re-runs behind your back. | `RecordingWriteUpSurvivesTabSwitch.test.tsx` (3 more) |
+| "We'll sign out once it's saved…" disappeared while the sign-out was still coming, so people were signed out with nothing on screen having warned them. Standing a leave prompt down now only affects one that has not been answered. | `RecordingGuardOffNote.test.tsx` |
+| Closing a tab that had nothing to do with a recording asked "Still recording — close this tab?", and confirming it stopped a meeting the user had never referred to — the rest of it lost, under a message saying it had been saved. Same for moving an unrelated note. The guard now asks whether the note being left is the busy one, not whether anything is busy. | `RecordingStillSaving.test.tsx` |
+| Pressing Record in a second note showed it the previous meeting's transcript and status for a render or two, and the write-up logic acted on that — writing up the wrong, empty note. Ownership and the session now move as one value, and the session is withheld until the new recording has actually started. | `RecordingContextChurn.test.tsx` |
+| Round 5: a meeting could silently miss its automatic write-up two more ways — pressing Analyse on any other note mid-meeting took the one write-up the meeting was owed, and a meeting that finished saving (on device, minutes after Stop) while you read another note waited for you to come back, and was erased if you started recording there first. The write-up now runs from the recording session when the meeting is ready, wherever you are, exactly once; the record control only shows it. The app-wide claim flag behind rounds 1, 4 and 5 is gone. | `RecordingWriteUpSurvivesTabSwitch.test.tsx` (2 more) |
+| After confirming sign-out and closing the saving note's tab, a false "Still recording — close this tab?" appeared beneath the "we'll sign out once it's saved" banner. A leave already confirmed now skips the note's own prompt. | `RecordingGuardOffNote.test.tsx` (extended) |
+
+**Still outstanding, lower severity:**
+- The last-recorded note stays bound behind the scenes for the rest of the page's life, so closing or deleting it leaves the app pointing at something gone. Deliberate (the binding must outlive the capture so the save reaches the right note) and inert today, because the one thing that would act on it declines when there is nothing to save. Filed as [CHANGE-42](phase-minor-changes.md).
+- `RecordingTabJourney`'s worst case (two 30s reload-tolerant gates + a 30s start wait + launch + navigation) can exceed the 120s `E2EFact` cap on a cold projector, and would then fail with a bare xUnit timeout carrying none of the helper's diagnosis.
+- The journey's Stop click is the last statement, so an earlier failure skips it, and `DisposeAsync` NREs if `InitializeAsync` throws early.
 
 ### Observability
 
