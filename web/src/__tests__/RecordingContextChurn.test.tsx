@@ -1,3 +1,6 @@
+// The provider refreshes a note's cached detail after writing it up, so it needs the query
+// client every real mount has above it (main.tsx).
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, render, screen } from '@testing-library/react'
 import { useEffect, useState } from 'react'
 import { MemoryRouter } from 'react-router'
@@ -123,10 +126,10 @@ function mountTwoNotes() {
   shown = {}
   return render(
     <MemoryRouter>
-      <RecordingSessionProvider>
+      <QueryClientProvider client={new QueryClient()}><RecordingSessionProvider>
         <WatchedNote noteId="note-1" />
         <WatchedNote noteId="note-2" />
-      </RecordingSessionProvider>
+      </RecordingSessionProvider></QueryClientProvider>
     </MemoryRouter>,
   )
 }
@@ -139,11 +142,11 @@ function mount() {
   shown = {}
   return render(
     <MemoryRouter>
-      <RecordingSessionProvider>
+      <QueryClientProvider client={new QueryClient()}><RecordingSessionProvider>
         <OutsideTheNote />
         <TheRecordingNote noteId="note-1" />
         <AnotherNote noteId="note-2" />
-      </RecordingSessionProvider>
+      </RecordingSessionProvider></QueryClientProvider>
     </MemoryRouter>,
   )
 }

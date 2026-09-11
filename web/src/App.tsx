@@ -32,6 +32,7 @@ import {
   useBusyNoteId,
   useClearSessionLeave,
   useGuardLeave,
+  useIsSessionLeaving,
   useRecordingNoteId,
 } from "./hooks/recordingSessionContext";
 import {
@@ -200,6 +201,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
   // not the one mounted. See requestLeave below.
   const guardLeave = useGuardLeave();
   const clearSessionLeave = useClearSessionLeave();
+  const isSessionLeaving = useIsSessionLeaving();
   // Titles follow the note-cards list so a rename re-derives; the title captured at open
   // time covers a note too new to be in the list yet.
   //
@@ -324,7 +326,13 @@ function AppContent({ signOut }: { signOut: () => void }) {
     // not protecting. True by construction today (the only callers that name a note can only
     // name the active one in that state), but unenforced invariants are exactly how the
     // unrelated-tab-close defect happened, so check it rather than rely on it.
-    const guard = opts?.noteId === undefined || opts.noteId === activeNoteId
+    //
+    // Nor is a leave the session has ALREADY confirmed. A sign-out waiting for the transcript to
+    // land keeps the note "still working", so the note's guard stays registered — and closing
+    // that note's tab raised "Still recording — close this tab?" about a meeting already stopped,
+    // beneath the banner saying the sign-out was coming. The session's guard refuses to re-arm
+    // over a leave in progress, which is the answer wanted here.
+    const guard = !isSessionLeaving() && (opts?.noteId === undefined || opts.noteId === activeNoteId)
       ? leaveGuardRef.current
       : null;
     if (guard) {
@@ -338,7 +346,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
     }
     if (guardLeave(proceed, destination, opts?.awaitTranscript ?? false, opts?.noteId)) return;
     proceed();
-  }, [guardLeave, clearSessionLeave, activeNoteId]);
+  }, [guardLeave, clearSessionLeave, isSessionLeaving, activeNoteId]);
 
   function handleSelectTab(noteId: string) {
     if (noteId === activeNoteId) return;

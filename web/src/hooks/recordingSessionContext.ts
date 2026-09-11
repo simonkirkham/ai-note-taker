@@ -26,25 +26,28 @@ export type NoteRecording = UseTranscriptionResult & {
    */
   hasRecordedThisSession?: boolean
   /**
-   * The automatic-write-up choice as it was when Record was pressed. Also session-owned, and
-   * for the same reason: the toggle is hidden during a recording precisely so it cannot change,
-   * which a remount back to its default would quietly undo.
-   */
-  autoAnalyseChoice?: boolean
-  /**
-   * Claim the one automatic write-up this capture is allowed. Returns true to the first caller
-   * after each Record, false to every caller after that — so a control that remounts mid-meeting
-   * cannot trigger a second analysis of the same recording.
+   * This note's automatic write-up, as the SESSION runs it. Present whenever a session is above
+   * the note — `'none'` when nothing is running or outstanding — and absent for a caller that
+   * passes a bare session, where the record control runs the write-up itself.
    *
-   * Optional throughout: a test driving the control with a bare session gets `undefined` and
-   * falls back to the control's own local latch.
+   * The session owns it because the write-up is a consequence of the MEETING ending, not of a
+   * screen being visible. Run from the control, it waited for you to be looking at the note: on
+   * device, where saving runs for minutes after Stop, reading another note meant it did not run
+   * until you came back — and starting a recording there first erased it for good.
    */
-  claimAutoAnalyse?: () => boolean
-  /**
-   * Hand the claim back after a failed write-up, so the next attempt is allowed. Without it a
-   * write-up that errors can never retry — the claim is taken before the request goes out.
-   */
-  releaseAutoAnalyse?: () => void
+  autoWriteUp?: AutoWriteUpState
+  /** Why the last automatic write-up of this note failed. Outlives a tab switch, unlike the control. */
+  autoWriteUpError?: string
+  /** Forget a failed automatic write-up — a manual analysis has since succeeded. */
+  clearAutoWriteUp?: () => void
+}
+
+export type AutoWriteUpState = 'none' | 'running' | 'failed'
+
+/** An automatic write-up still worth showing: in flight, or failed and not yet put right. */
+export interface AutoWriteUp {
+  state: 'running' | 'failed'
+  message?: string
 }
 
 /**
@@ -84,12 +87,18 @@ export interface RecordingControlValue {
    * the record control unmounting; see `NoteRecording.hasRecordedThisSession`.
    */
   recordedNoteId: string | null
-  /** The automatic-write-up choice captured at the last Record. */
-  autoAnalyseChoice: boolean
-  /** Claim this capture's one automatic write-up; see `NoteRecording.claimAutoAnalyse`. */
-  claimAutoAnalyse: () => boolean
-  /** Hand it back after a failure; see `NoteRecording.releaseAutoAnalyse`. */
-  releaseAutoAnalyse: () => void
+  /**
+   * Automatic write-ups worth showing, by note. Per note, so one meeting's failure is still said
+   * after the next meeting's write-up has run. Replaced only when a write-up starts or ends.
+   */
+  writeUps: Readonly<Record<string, AutoWriteUp>>
+  /** Forget `noteId`'s failed write-up; see `NoteRecording.clearAutoWriteUp`. */
+  clearAutoWriteUp: (noteId: string) => void
+  /**
+   * A confirmed leave (a sign-out) is waiting for the transcript to land. Read at call time, not
+   * rendered from — it is a ref, so asking costs no re-render.
+   */
+  isSessionLeaving: () => boolean
   /** Claim the session for `noteId` and start it. */
   startIn: (noteId: string, ...args: StartArgs) => void
   /**
@@ -176,6 +185,13 @@ export function useGuardLeave(): RecordingControlValue['guardLeave'] {
   return ctx?.guardLeave ?? (() => false)
 }
 
+/** Whether a confirmed leave is still under way — see `isSessionLeaving`. */
+export function useIsSessionLeaving(): () => boolean {
+  const ctx = useContext(RecordingControlContext)
+  return ctx?.isSessionLeaving ?? notLeaving
+}
+const notLeaving = () => false
+
 /** Stand the session's confirm down — see `clearSessionLeave`. */
 export function useClearSessionLeave(): () => void {
   const ctx = useContext(RecordingControlContext)
@@ -241,9 +257,11 @@ export function useNoteRecording(noteId: string): NoteRecording {
   )
 
   const hasRecordedThisSession = ctx?.recordedNoteId === noteId
-  const autoAnalyseChoice = ctx?.autoAnalyseChoice ?? true
-  const claimAutoAnalyse = ctx?.claimAutoAnalyse
-  const releaseAutoAnalyse = ctx?.releaseAutoAnalyse
+  const writeUp = ctx?.writeUps[noteId]
+  const autoWriteUp: AutoWriteUpState | undefined = ctx == null ? undefined : (writeUp?.state ?? 'none')
+  const autoWriteUpError = writeUp?.state === 'failed' ? writeUp.message : undefined
+  const clearAutoWriteUpFor = ctx?.clearAutoWriteUp
+  const clearAutoWriteUp = useCallback(() => clearAutoWriteUpFor?.(noteId), [clearAutoWriteUpFor, noteId])
 
   return useMemo(
     () => ({
@@ -252,9 +270,9 @@ export function useNoteRecording(noteId: string): NoteRecording {
       otherNoteRecording,
       otherNoteBusyReason,
       hasRecordedThisSession,
-      autoAnalyseChoice,
-      claimAutoAnalyse,
-      releaseAutoAnalyse,
+      autoWriteUp,
+      autoWriteUpError,
+      clearAutoWriteUp,
     }),
     [
       view,
@@ -262,9 +280,9 @@ export function useNoteRecording(noteId: string): NoteRecording {
       otherNoteRecording,
       otherNoteBusyReason,
       hasRecordedThisSession,
-      autoAnalyseChoice,
-      claimAutoAnalyse,
-      releaseAutoAnalyse,
+      autoWriteUp,
+      autoWriteUpError,
+      clearAutoWriteUp,
     ],
   )
 }

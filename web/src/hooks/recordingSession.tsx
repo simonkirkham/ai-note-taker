@@ -1,8 +1,14 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router'
+import { analyseNote } from '../api/notes'
+import { keys } from '../api/queryKeys'
 import SessionLeaveConfirm from '../components/SessionLeaveConfirm'
+import { reportAnalyseFailure } from '../lib/analyseFailure'
+import { shouldAutoWriteUp } from '../lib/autoWriteUp'
 import { recordRumEvent } from '../rum'
 import {
+  type AutoWriteUp,
   RecordingControlContext,
   type RecordingControlValue,
   RecordingLiveContext,
@@ -52,33 +58,34 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
   const [boundNoteId, setBoundNoteId] = useState<string | null>(null)
   const session = useTranscription(boundNoteId ?? '')
 
-  // Owned here for the same reason the capture is: the record control unmounts when you look at
-  // another note's tab, and both of these were `useState`/`useRef` inside it.
-  //
-  // The cost of that was silent and on the headline flow. Record in Standup, click another note's
-  // tab to check something, come back, press Stop: the transcript saved, but the automatic
-  // write-up never ran and nothing on screen said so — the control had remounted with
-  // `hasRecordedThisSession` back to false, which is the gate the auto-analyse effect reads. The
-  // one-shot latch remounted too, so the mirror-image bug was available as well: analyse twice.
-  //
-  // Before this slice the round trip was impossible (every exit was behind a confirm), which is
-  // why the flags could live in the control until now.
+  // The note recorded in during this page session, and the write-up choice made at its Record.
+  // Owned here for the same reason the capture is: the record control unmounts the moment you
+  // look at another note's tab, and both used to be state inside it — so the round trip reset
+  // them, and the write-up silently never ran.
   const [recording, setRecording] = useState<{ noteId: string; autoAnalyse: boolean } | null>(null)
-  const analyseClaimedRef = useRef(false)
+
+  // ---- The automatic write-up ------------------------------------------------------------
+  //
+  // Run HERE, for the recording, rather than by the record control on screen. Two review rounds
+  // of bugs came from the control owning it: it could only act while mounted, so the one
+  // write-up a meeting is owed had to be latched in a flag the whole app shared — and every
+  // attempt to keep that flag right broke it somewhere else. Analysing a different note took the
+  // flag; a meeting that finished saving while you read another note waited for you to return,
+  // and starting a recording there first erased it. Run from the session there is no flag to
+  // share: the write-up fires when the meeting is ready, wherever you are, exactly once.
+  const writeUpFiredRef = useRef(false)
+  const [writeUps, setWriteUps] = useState<Readonly<Record<string, AutoWriteUp>>>({})
+  const qc = useQueryClient()
+
+  const clearAutoWriteUp = useCallback((noteId: string) => {
+    setWriteUps((prev) => withoutNote(prev, noteId))
+  }, [])
 
   const noteStarted = useCallback((noteId: string, args: StartArgs) => {
     setRecording({ noteId, autoAnalyse: args[1] })
-    analyseClaimedRef.current = false
-  }, [])
-
-  const claimAutoAnalyse = useCallback(() => {
-    if (analyseClaimedRef.current) return false
-    analyseClaimedRef.current = true
-    return true
-  }, [])
-
-  const releaseAutoAnalyse = useCallback(() => {
-    analyseClaimedRef.current = false
+    writeUpFiredRef.current = false
+    // A new recording in this note supersedes its old failure. Another note's is left alone.
+    setWriteUps((prev) => withoutNote(prev, noteId))
   }, [])
 
   const isCapturing =
@@ -220,6 +227,44 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
     noteStarted(pending.noteId, pending.args)
     session.startRecording(...pending.args)
   }, [boundNoteId, session, noteStarted])
+
+  useEffect(() => {
+    if (writeUpFiredRef.current || recording === null) return
+    // For the ONE commit between a new note's claim and its start, the binding has moved but
+    // `recording` still names the previous meeting, and the session still holds that meeting's
+    // 'stopped' status and words. Acting on it would write up the wrong note.
+    if (recording.noteId !== boundNoteId) return
+    if (
+      !shouldAutoWriteUp({
+        status: session.status,
+        autoAnalyse: recording.autoAnalyse,
+        transcript: session.transcript,
+        diarization: session.diarization,
+      })
+    ) {
+      return
+    }
+    writeUpFiredRef.current = true
+    const noteId = recording.noteId
+    void (async () => {
+      // Yield first: this is an effect body, and a synchronous setState here is the
+      // react-hooks/set-state-in-effect gate, which tsc and vitest both miss.
+      await Promise.resolve()
+      setWriteUps((prev) => ({ ...prev, [noteId]: { state: 'running' } }))
+      const startedAt = Date.now()
+      try {
+        await analyseNote(noteId)
+        setWriteUps((prev) => withoutNote(prev, noteId))
+        // What the note screen's own refresh does, done here because the note may not be on
+        // screen: its summary, discussion and decisions are regenerated, and actions extracted.
+        void qc.invalidateQueries({ queryKey: keys.note(noteId) })
+        void qc.invalidateQueries({ queryKey: keys.actions(noteId) })
+      } catch (err) {
+        const { message } = reportAnalyseFailure(err, { noteId, trigger: 'auto', startedAt })
+        setWriteUps((prev) => ({ ...prev, [noteId]: { state: 'failed', message } }))
+      }
+    })()
+  }, [recording, boundNoteId, session.status, session.transcript, session.diarization, qc])
 
   // No release effect, and no "have I seen it active yet?" latch. Deriving the claim from the
   // status instead of storing it removes the start/idle race those existed for: there is no
@@ -402,6 +447,8 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
     setFinishingDestination(null)
   }, [])
 
+  const isSessionLeaving = useCallback(() => leavingRef.current, [])
+
   // The slice's regression detector. If this provider ever unmounts while a capture is still
   // live, the recording has been destroyed under the user and the transcript is gone — the
   // exact failure 51-C exists to prevent, and one that is otherwise invisible until someone
@@ -439,23 +486,24 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
       recordingNoteId,
       busyNoteId,
       recordedNoteId: recording?.noteId ?? null,
-      autoAnalyseChoice: recording?.autoAnalyse ?? true,
-      claimAutoAnalyse,
-      releaseAutoAnalyse,
+      writeUps,
+      clearAutoWriteUp,
       startIn,
       guardLeave,
       clearSessionLeave: cancelLeave,
+      isSessionLeaving,
     }),
     [
       boundNoteId,
       recordingNoteId,
       busyNoteId,
       recording,
-      claimAutoAnalyse,
-      releaseAutoAnalyse,
+      writeUps,
+      clearAutoWriteUp,
       startIn,
       guardLeave,
       cancelLeave,
+      isSessionLeaving,
     ],
   )
 
@@ -473,4 +521,15 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
       </RecordingLiveContext>
     </RecordingControlContext>
   )
+}
+
+/** `prev` without `noteId` — the same object when there was nothing to remove, so no re-render. */
+function withoutNote(
+  prev: Readonly<Record<string, AutoWriteUp>>,
+  noteId: string,
+): Readonly<Record<string, AutoWriteUp>> {
+  if (!(noteId in prev)) return prev
+  const next = { ...prev }
+  delete next[noteId]
+  return next
 }

@@ -6,7 +6,7 @@ import { AuthProvider } from '../auth/AuthContext'
 import { clearToken } from '../auth/tokenStore'
 import { ToastProvider } from '../components/ToastProvider'
 import type { TranscriptionStatus, UseTranscriptionResult } from '../hooks/useTranscription'
-import { render, screen, waitFor, within } from '../test/render'
+import { act, render, screen, waitFor, within } from '../test/render'
 import { server } from '../test/setup'
 
 // 51-C review finding: a meeting you glance away from was never written up.
@@ -37,10 +37,16 @@ vi.mock('../components/LazyNoteEditor', () => ({
   ),
 }))
 
+/** When set, Stop takes the on-device shape: 'finalising' for minutes, until `finishSaving`. */
+let slowStop = false
+/** Set by the mocked hook; ends that save from outside any note. */
+let finishSaving: () => void = () => {}
+
 vi.mock('../hooks/useTranscription', () => ({
   useTranscription: (): UseTranscriptionResult => {
     const [status, setStatus] = useState<TranscriptionStatus>('idle')
     const [transcript, setTranscript] = useState('')
+    finishSaving = () => setStatus('stopped')
     return {
       status,
       transcript,
@@ -54,7 +60,7 @@ vi.mock('../hooks/useTranscription', () => ({
         setStatus('recording')
         setTranscript('we agreed to ship on Friday')
       },
-      stopRecording: () => setStatus('stopped'),
+      stopRecording: () => setStatus(slowStop ? 'finalising' : 'stopped'),
       awaitCommit: async () => {},
       reset: () => {
         setStatus('idle')
@@ -99,6 +105,7 @@ const renderApp = () =>
 beforeEach(() => {
   analysed = []
   failNextAnalyse = false
+  slowStop = false
   window.history.replaceState({}, '', '/')
   server.use(
     http.get('/api/w/:wsId/notes/cards', () => HttpResponse.json({ cards: [STANDUP, CLIENT_CALL] })),
@@ -107,7 +114,9 @@ beforeEach(() => {
       HttpResponse.json({
         noteId: params.noteId,
         title: params.noteId === 'note-1' ? 'Standup' : 'Client call',
-        content: '',
+        // Client call has notes of its own, so its Analyse button is live — the button the
+        // write-up must not be confused with.
+        content: params.noteId === 'note-2' ? 'agenda: renewal terms' : '',
         date: today,
         tags: [],
         transcriptIsDiarized: false,
@@ -188,10 +197,12 @@ describe('51-C — the write-up still runs after looking at another note', () =>
     expect(analysed).toEqual(['note-1'])
   })
 
-  // The one-shot claim is taken BEFORE the request goes out, so a write-up that fails has to
-  // hand it back or it can never be retried — the error message is local to the control and
-  // dies with the next tab switch, leaving the meeting un-analysed and nothing saying so.
-  it('can try again when the automatic write-up fails', async () => {
+  // A failed write-up must stay SAID. Before the write-up belonged to the recording, its error
+  // lived in the record control and died with the next tab switch, so the meeting was left
+  // un-analysed with nothing on screen saying so — and the workaround was to silently re-run it
+  // on the way back. Now the failure outlives the switch, and the Analyse button it points at is
+  // the remedy.
+  it('still tells me the write-up failed after I look at another note, and Analyse fixes it', async () => {
     renderApp()
     failNextAnalyse = true
     await recordInStandup()
@@ -200,22 +211,28 @@ describe('51-C — the write-up still runs after looking at another note', () =>
     expect(await screen.findByTestId('transcription-analyse-error')).toBeInTheDocument()
 
     await openTab('Client call')
+    // The failure belongs to Standup, not to whatever note is on screen.
+    expect(screen.queryByTestId('transcription-analyse-error')).toBeNull()
     await openTab('Standup')
 
-    await waitFor(() => expect(analysed).toEqual(['note-1', 'note-1']))
+    expect(await screen.findByTestId('transcription-analyse-error')).toBeInTheDocument()
+    expect(analysed).toEqual(['note-1'])
 
-    // And the retry, having SUCCEEDED, holds the claim — otherwise every further glance at
-    // another note would write the meeting up again.
+    await userEvent.click(screen.getByTestId('transcription-analyse-button'))
+    await waitFor(() => expect(analysed).toEqual(['note-1', 'note-1']))
+    await waitFor(() => expect(screen.queryByTestId('transcription-analyse-error')).toBeNull())
+
+    // Fixed means fixed: the error does not come back, and nothing re-runs, on the next glance.
     await openTab('Client call')
     await openTab('Standup')
     await waitFor(() => expect(screen.getByTestId('record-control')).toBeInTheDocument())
+    expect(screen.queryByTestId('transcription-analyse-error')).toBeNull()
     expect(analysed).toEqual(['note-1', 'note-1'])
   })
 
-  // The app's own remedy path, and the last way the one-shot claim leaked: the automatic
-  // write-up fails, the error message invites you to press Analyse, you do, and it works. The
-  // failure had handed the claim back and the manual success never took it, so the next glance
-  // at another note wrote the meeting up a third time — over the summary just produced.
+  // The app's own remedy path: the automatic write-up fails, the error message invites you to
+  // press Analyse, you do, and it works. An earlier version wrote the meeting up a third time on
+  // the next glance at another note — over the summary just produced.
   it('does not write it up again after I fix a failed write-up with the Analyse button', async () => {
     renderApp()
     failNextAnalyse = true
@@ -255,6 +272,48 @@ describe('51-C — the write-up still runs after looking at another note', () =>
 
     await waitFor(() => expect(screen.getByTestId('record-control')).toBeInTheDocument())
     expect(analysed).toEqual(['note-1', 'note-1'])
+  })
+
+  // Round-5 review: analysing a DIFFERENT note mid-meeting took the meeting's write-up. The one
+  // write-up a recording is owed was a single app-wide flag, and any successful Analyse took it.
+  it('still writes the meeting up after I analyse a different note mid-recording', async () => {
+    renderApp()
+    await recordInStandup()
+
+    await openTab('Client call')
+    await userEvent.click(screen.getByTestId('transcription-analyse-button'))
+    await waitFor(() => expect(analysed).toEqual(['note-2']))
+
+    await openTab('Standup')
+    await userEvent.click(screen.getByTestId('transcription-stop-button'))
+
+    await waitFor(() => expect(analysed).toEqual(['note-2', 'note-1']))
+  })
+
+  // Round-5 review: on-device, Stop is followed by minutes of saving. Reading another note
+  // through that window meant the write-up waited for you to come back — and starting a
+  // recording in the other note first erased it for good. The write-up belongs to the meeting,
+  // so it runs when the meeting has finished saving, wherever you are.
+  it('writes the meeting up when it finishes saving, even if I am reading another note', async () => {
+    renderApp()
+    slowStop = true
+    await recordInStandup()
+    await userEvent.click(screen.getByTestId('transcription-stop-button'))
+    await screen.findByTestId('transcription-finalising')
+
+    await openTab('Client call')
+    act(() => finishSaving())
+
+    await waitFor(() => expect(analysed).toEqual(['note-1']))
+
+    // And recording the next meeting straight away writes THAT one up too, without re-running
+    // the first.
+    slowStop = false
+    await userEvent.click(screen.getByTestId('transcription-record-button'))
+    await screen.findByTestId('transcription-timer')
+    await userEvent.click(screen.getByTestId('transcription-stop-button'))
+
+    await waitFor(() => expect(analysed).toEqual(['note-1', 'note-2']))
   })
 
   it('does not write it up when I turned the automatic write-up off before recording', async () => {
