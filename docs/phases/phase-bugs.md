@@ -25,6 +25,7 @@ Ordered by severity, then by id.
 | BUG-78 | A truncated or hand-edited sign-in link drops you at the sign-in screen and claims your browser is blocking storage — and the message comes back on every reload. | Open | BUG-71, BUG-60, BUG-15 |
 | BUG-80 | A topic you add from the agenda strip can land in an invisible checklist at the very top of the note — the header lists it, but you cannot find it in the note to edit it in place. | Open | BUG-76 |
 | BUG-82 | After a recording with speaker separation, the note can end up never analysed with nothing said on screen and nothing recorded as an error — the same silent outcome BUG-77 is about, on the half BUG-77's fix cannot reach. | Open | BUG-77 |
+| BUG-83 | A change can be blocked by a red check that has nothing to do with it: the test that searching keeps your open notes in view failed once in a full run and passed 5 of 5 on its own. Fast-follow after 51-C merges. | Open | — |
 
 Further bugs will be appended as they are identified.
 
@@ -239,3 +240,18 @@ Reproduced against a real editor: adding `Renewals` to that body yields `- [ ] \
 **Fix direction:** treat a non-`Analysed` outcome in `MaybeAnalyseAsync` as a failure — log it at Warning/Error naming the outcome, and give the user a way to find out (the note has no summary and no explanation). Consider whether the note should carry a "not analysed" state the UI can show, rather than looking identical to a note nobody asked to analyse.
 
 **Not a theory of [BUG-77]'s trigger.** This was found by reading the code while documenting what BUG-77's browser-side record does *not* cover. Whether the 2026-08-10 occurrence came through this path is unknown and unevidenced — the two share a symptom, nothing more.
+
+---
+
+## BUG-83 — The "searching keeps my open notes in view" test fails at random under load
+
+**What it costs:** a full frontend test run goes red for a reason unrelated to the change under test — a local run that sends someone diagnosing the wrong thing, or a PR check that blocks a merge until re-run.
+
+**Evidence, 2026-09-11** (found while fixing 51-C review round 5, on `slice/51-c-recording-tab`):
+- Failed once in a full `npx vitest run` (1224 passed, 1 failed), on a Windows ARM laptop.
+- Passed 5 of 5 run alone, and in the next full run.
+- Not touched by 51-C: the branch's diff to `OpenNoteTabs.test.tsx` leaves this spec unchanged. It came in with 51-B (#452).
+
+**Likely cause, unconfirmed:** the spec types into search, then waits for the deferred search pass (`useDeferredValue`) with `waitFor`'s default 1000 ms timeout. Under a full parallel run the deferred pass can take longer than that.
+
+**Fix to try:** give that `waitFor` an explicit, generous timeout, then prove it with 10 clean full runs, and confirm the assertion still fails when the deferred pass never runs (break it once and watch it go red).
