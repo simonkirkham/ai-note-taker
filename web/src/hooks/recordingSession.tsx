@@ -246,6 +246,11 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
     }
     writeUpFiredRef.current = true
     const noteId = recording.noteId
+    // Built NOW, not after the request: both keys read the current workspace, and a workspace
+    // switch is not guarded once the meeting has stopped saving. Built after the await, they
+    // would refresh the new workspace's entries and leave this note's summary stale.
+    const noteKey = keys.note(noteId)
+    const actionsKey = keys.actions(noteId)
     void (async () => {
       // Yield first: this is an effect body, and a synchronous setState here is the
       // react-hooks/set-state-in-effect gate, which tsc and vitest both miss.
@@ -257,8 +262,8 @@ export function RecordingSessionProvider({ children }: { children: React.ReactNo
         setWriteUps((prev) => withoutNote(prev, noteId))
         // What the note screen's own refresh does, done here because the note may not be on
         // screen: its summary, discussion and decisions are regenerated, and actions extracted.
-        void qc.invalidateQueries({ queryKey: keys.note(noteId) })
-        void qc.invalidateQueries({ queryKey: keys.actions(noteId) })
+        void qc.invalidateQueries({ queryKey: noteKey })
+        void qc.invalidateQueries({ queryKey: actionsKey })
       } catch (err) {
         const { message } = reportAnalyseFailure(err, { noteId, trigger: 'auto', startedAt })
         setWriteUps((prev) => ({ ...prev, [noteId]: { state: 'failed', message } }))

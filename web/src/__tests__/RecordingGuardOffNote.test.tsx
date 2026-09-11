@@ -312,6 +312,10 @@ describe('the leave guard follows the recording, not the note on screen', () => 
     // ...and nothing else. The note's own guard used to raise "Still recording — close this
     // tab?" underneath, about a meeting already stopped, beside a banner saying it was saving.
     expect(screen.queryByTestId('confirm-leave-button')).toBeNull()
+    // The close itself is declined, deliberately: a leave is already under way, and the session
+    // refuses every guarded exit until it lands — the same refusal that stops a second Sign out
+    // click signing out before the transcript is saved. The banner is the explanation.
+    expect(tab('Standup')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /sign in with google/i })).toBeNull()
 
     // And when the save lands, the sign-out it was warning about actually happens.
