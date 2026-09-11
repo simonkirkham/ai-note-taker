@@ -1,4 +1,4 @@
-# Phase 51 — Open-note bar redesign _(In Progress — 51-A, 51-B done 2026-08-10)_
+# Phase 51 — Open-note bar redesign _(Done 2026-09-11)_
 
 **Goal:** the notes you have open stay in front of you wherever you are in the app, instead of vanishing the moment you go back to your notes list and reappearing all at once when you open something.
 
@@ -8,7 +8,7 @@
 |-------|--------------------|--------|------------|
 | 51-A | A design, validated in a clickable prototype, for how the open-note bar should behave | Done | — |
 | 51-B | My open notes stay visible on every screen, with my notes list as the first tab | Done | 51-A |
-| 51-C | A recording keeps running while I read another note | In Progress | 51-B |
+| 51-C | A recording keeps running while I read another note | Done | 51-B |
 
 51-A was a **prototype spike**; it closed on 2026-08-10 with direction A locked. 51-B's scenarios below are the confirmed ones it produced.
 
@@ -88,8 +88,7 @@ Scenario: My notes stays reachable with many notes open
   Then  the "My notes" tab is still visible
 ```
 
-### Slice 51-C — A recording keeps running in a background tab
-
+### Slice 51-C — A recording keeps running in a background tab _(Done 2026-09-11)_
 - **User value:** I can look something up in another note while a meeting is still being recorded, without stopping the recording or losing what's been captured.
 - **How it works:**
   - Switching away from a note that is recording no longer asks anything — the recording carries on in the background.
@@ -176,30 +175,20 @@ Scenario: Only one note records at a time
 - **Single-recorder rule:** the record control in a non-recording tab is disabled with a reason while another tab is live (today this is implicit — one note is mounted; it becomes explicit here).
 - **Tests:** vitest cannot prove "audio kept flowing" — assert the *hook is not torn down* (transcript state survives a tab switch, cleanup not called) and that the control is disabled elsewhere. E2E covers the tab indicator + no-confirm-on-switch; a real audio assertion is out of scope for the gate.
 - **Acceptance criteria:**
-  - [ ] Switching tabs while recording no longer prompts and does not stop the recording
-  - [ ] Returning to the recording tab shows the transcript captured while away
-  - [ ] The recording tab is marked as recording in the bar
-  - [ ] Closing a recording tab confirms first and stops the recording cleanly
-  - [ ] A second recording cannot be started from another tab while one is live
+  - [x] Switching tabs while recording no longer prompts and does not stop the recording
+  - [x] Returning to the recording tab shows the transcript captured while away
+  - [x] The recording tab is marked as recording in the bar
+  - [x] Closing a recording tab confirms first and stops the recording cleanly
+  - [x] A second recording cannot be started from another tab while one is live
 
-### 51-C — outstanding from review (PR #468, REQUEST CHANGES)
+### 51-C — review outcome _(PR #468, 6 rounds, deploy #776)_
 
-**Fixed in-branch:** the claim was released only on `status === 'idle'`, which Stop never reaches — so the app was recordable once per page load, every other note stayed locked out and the tab kept a pulsing dot. Re-recording the same note was also stranded by React's same-value `setState` bailout. Both came from conflating two different things, now separated: `boundNoteId` (which note the session belongs to — outlives the capture so the commit and upload still target it) and `recordingNoteId` (derived from status — what locks other notes out and draws the marker). Specs added for the whole post-Stop phase, which had **no** coverage at all; that absence is what let both defects through a green PR.
-
-**Fixed — the leave guard is now session-owned.**
-
-It was registered by the mounted `NoteView`, gated on *that* note recording. Since this slice's whole purpose is to let the user be elsewhere while recording, the guard was absent in exactly the positions it creates, and `requestLeave` fell straight through to `proceed()`. Signing out then cleared the token before the transcript committed, the POST 401'd and nothing retried — BUG-55, reproduced on the headline flow. Closing the recording tab from another tab, and switching workspace, went the same way.
-
-`RecordingSessionProvider` now owns a `guardLeave` and renders an app-scoped confirm (`SessionLeaveConfirm`), so the guard follows the capture rather than the screen. `App`'s `requestLeave` prefers the mounted note's guard — which does strictly more, flushing that note's unsaved content draft — and falls back to the session's; exactly one is ever live. `handleCloseTab` now guards on the recording note as well as the active one. 9 specs in `RecordingGuardOffNote.test.tsx`, every one of which leaves the recording note before doing the dangerous thing, so none can be satisfied by the note-owned guard.
-
-**Deliberately left alone:** `NoteView`'s in-header confirm. Merging the two behind a variant prop would relayout a proven banner for no user-visible gain; they share testids and ARIA semantics, and both carry a comment saying a change to one is almost always a change to both.
-
-**Retracted, kept on purpose — "signing out after the save does not complete" was a defect in the spec's harness, not in the product.** An earlier revision of this doc recorded it as OPEN and the spec carried the assertion commented out. It was neither: with no `VITE_GOOGLE_CLIENT_ID` configured, `AuthContext` puts the app in no-auth mode, `signOut()` re-authenticates instead of signing out, and the sign-in screen can never appear — so the assertion was failing on the test environment, not on `confirmLeave`. `SignOutTranscriptCommit.test.tsx` stubs that env var, which is exactly why "the identical assertion passes for the note-owned guard" and why the difference was misread as a session-path bug. **Measured 2026-09-10:** with the stub added the assertion passes (9/9); with `proceed?.()` deleted from `confirmLeave` it and one sibling fail and the other 7 stay green — so it is now live, and specific. The lesson is the general one: a check that cannot express a pass in the environment it runs in accuses the code instead.
-
-**Fixed in review, 2026-09-10.** Each carries a spec that was watched fail for its own defect and stay green for the others:
+The design held; review found what the headline flow did around it. Every row below has a spec watched fail for its own defect. The *why* behind the rounds — and the one design move that ended them — is in [phase-51c-recording-tab.md](../learnings/phase-51c-recording-tab.md).
 
 | What broke for the user | Spec |
 | --- | --- |
+| The app could be recorded in once per page load: every other note stayed locked and the tab kept pulsing after Stop. | post-Stop specs |
+| Signing out, closing the recording tab or switching workspace from anywhere but the recording note lost the transcript with no warning (BUG-55 on the headline flow). The leave guard is now owned by the session. | `RecordingGuardOffNote.test.tsx` |
 | A meeting you glanced away from was never written up. Record, click another note's tab, come back, press Stop: the transcript saved and the automatic write-up silently never ran, with nothing on screen to say it was ever coming. The record control unmounts on a tab switch, and the flag gating the write-up lived in it. Both it and the one-shot latch now live in the session; so does the write-up choice, which a remount was resetting to its default. | `RecordingWriteUpSurvivesTabSwitch.test.tsx` (3) |
 | While recording, the whole app re-drew itself several times a second for the length of the meeting — sidebar, notes list, folder panel, workspace switcher, tab bar, **and the note you were reading**, editor included — on the same thread that feeds the on-device transcriber. Everything but the transcript moved to its own context; the transcript itself is now a subscription, so only the note that owns it is woken. Measured at the second attempt: the first split fixed everything except the largest consumer, and the spec as first written could not see it (25 re-renders, reported as clean). | `RecordingContextChurn.test.tsx` |
 | A "still recording — sign out?" prompt followed you to the next screen and could stack a second one on top of it, with the stale one still holding an armed sign-out. Confirms are now dropped on navigation. | `RecordingGuardOffNote.test.tsx` |
@@ -229,4 +218,4 @@ Run the `observability-brief` skill against 51-B's scenarios before implementati
 
 ### Deploy-time
 - 51-A: **zero** — prototype branch, never deployed.
-- 51-B and 51-C: **neutral.** Web-only — `detect-changes` reports `backend=false` and `cdk deploy` is skipped. **No API route is added, moved or renamed**, so the frontend-only-deploy route-contract hazard (Phase 34-B) does not apply.
+- 51-B: **neutral.** 51-C: **+~30 s per deploy, recurring** — `RecordingTabJourney` launches its own Chromium and a live Transcribe session in the E2E gate. Both web-only — `detect-changes` reports `backend=false` and `cdk deploy` is skipped. **No API route is added, moved or renamed**, so the frontend-only-deploy route-contract hazard (Phase 34-B) does not apply.

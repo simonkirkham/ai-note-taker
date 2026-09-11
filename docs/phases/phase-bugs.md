@@ -160,7 +160,7 @@ Worth keeping for two reasons. The failure was the same shape as the bug — som
 
 **Fix direction:** ask before creating, not after — route the guard around the whole of `handleNewNote` (`requestLeave(() => void handleNewNote(), "open the new note")`) so a declined leave never reaches the create. Check `handleOpenNextOccurrence` and the `/ai` create-note path in `NoteView` for the same create-then-guard ordering. Frontend-only; no event, projection or endpoint change.
 
-**Deliberately held until 51-C merges (2026-08-10).** 51-C removes the leave-prompt from `openNote`, and `handleNewNote` calls `openNote`. This bug's orphan exists **only** when the user declines that prompt — so if the prompt goes, the described mechanism may not survive, and wrapping `handleNewNote` in `requestLeave` would be either a no-op or something 51-C then has to neutralise. **This is a reason to sequence, not a diagnosis — nobody has verified it.** When 51-C lands, re-run the repro: if the orphan still appears it is a small fix on settled code; if it does not, close this row naming 51-C as what fixed it. Raised by the 51-C session, which carries the same interaction note from its side.
+**Unblocked 2026-09-11 — 51-C merged (#468).** It removed the leave-prompt from `openNote`, which `handleNewNote` calls, so re-check first whether the orphan can still happen: it existed only when the user declined that prompt. If it cannot, close this bug; if another create-then-guard path still produces it (`handleOpenNextOccurrence`, the `/ai` create-note path), fix that one.
 
 ---
 
