@@ -25,7 +25,7 @@ Ordered by severity, then by id.
 | BUG-78 | A truncated or hand-edited sign-in link drops you at the sign-in screen and claims your browser is blocking storage — and the message comes back on every reload. | Open | BUG-71, BUG-60, BUG-15 |
 | BUG-80 | A topic you add from the agenda strip can land in an invisible checklist at the very top of the note — the header lists it, but you cannot find it in the note to edit it in place. | Open | BUG-76 |
 | BUG-82 | After a recording with speaker separation, the note can end up never analysed with nothing said on screen and nothing recorded as an error — the same silent outcome BUG-77 is about, on the half BUG-77's fix cannot reach. | Open | BUG-77 |
-| BUG-83 | A change can be blocked by a red check that has nothing to do with it: the test that searching keeps your open notes in view failed once in a full run and passed 5 of 5 on its own. Fast-follow after 51-C merges. | Open | — |
+| BUG-83 | A change can be blocked by a red check that has nothing to do with it: the test that searching keeps your open notes in view failed once in a full run and passed 5 of 5 on its own. Fast-follow after 51-C merges; cause still unknown. | Open | — |
 
 Further bugs will be appended as they are identified.
 
@@ -254,6 +254,8 @@ Reproduced against a real editor: adding `Renewals` to that body yields `- [ ] \
 - Passed 5 of 5 run alone, and in the next full run.
 - Not touched by 51-C: the branch's diff to `OpenNoteTabs.test.tsx` leaves this spec unchanged. It came in with 51-B (#452).
 
-**Likely cause, unconfirmed:** the spec types into search, then waits for the deferred search pass (`useDeferredValue`) with `waitFor`'s default 1000 ms timeout. Under a full parallel run the deferred pass can take longer than that.
+**Cause: unknown.** The failure took **231 ms** — an assertion failing fast, not a wait running out. `waitFor`'s timeout is ruled out: locally the budget is already 4 s (`src/test/setup.ts`, TI-61), and a 5 s timeout was tried and reverted for that reason.
 
-**Fix to try:** give that `waitFor` an explicit, generous timeout, then prove it with 10 clean full runs, and confirm the assertion still fails when the deferred pass never runs (break it once and watch it go red).
+**Reproduction attempt, 2026-09-11:** 4 more full runs, all clean (1225/1225), before the machine ran low on memory and the loop was killed. So far 1 failure in 7 full runs on this laptop, none in CI.
+
+**Next step:** capture the assertion text when it next fails — in CI, `scripts/ci-logs.sh <pr>` on the red `frontend` check; locally, keep the full `npx vitest run` output instead of a filtered tail.
