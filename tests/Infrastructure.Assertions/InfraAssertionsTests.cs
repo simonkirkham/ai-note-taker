@@ -941,9 +941,9 @@ public class InfraAssertionsTests
         _template.HasResourceProperties("AWS::RUM::AppMonitor", Match.ObjectLike(new Dictionary<string, object>
         {
             ["Name"] = "notetaker-rum",
-            // No-domain template scopes the monitor to the CloudFront default domain,
-            // which is a token (Fn::GetAtt) here — assert presence, not a literal.
-            ["Domain"] = Match.AnyValue(),
+            // No-domain template scopes the monitor to the CloudFront default domain, a token
+            // (Fn::GetAtt) here — so assert only the literal desktop entry beside it.
+            ["DomainList"] = Match.ArrayWith(new object[] { "localhost" }),
             ["AppMonitorConfiguration"] = Match.ObjectLike(new Dictionary<string, object>
             {
                 ["EnableXRay"] = true,
@@ -960,7 +960,19 @@ public class InfraAssertionsTests
     {
         _domainTemplate.HasResourceProperties("AWS::RUM::AppMonitor", Match.ObjectLike(new Dictionary<string, object>
         {
-            ["Domain"] = "test.note-taker-ai.com"
+            ["DomainList"] = Match.ArrayWith(new object[] { "test.note-taker-ai.com" })
+        }));
+    }
+
+    [Fact]
+    public void Rum_AppMonitorAcceptsTheDesktopApp()
+    {
+        // TI-98: the desktop app serves the same frontend from http://localhost:5180, and RUM
+        // refuses an event whose page domain is not on the monitor ("domain localhost does not
+        // match", measured 2026-09-16). Without localhost every desktop fault is dropped.
+        _domainTemplate.HasResourceProperties("AWS::RUM::AppMonitor", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DomainList"] = Match.ArrayWith(new object[] { "test.note-taker-ai.com", "localhost" })
         }));
     }
 
