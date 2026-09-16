@@ -518,6 +518,16 @@ Slices and acceptance criteria: [docs/phases/phase-52.md](phases/phase-52.md)
 
 ---
 
+## Phase 53 — Update notice in the desktop app _(Not Started)_
+
+The desktop app checks for a newer published version on launch and hourly, and shows a dismissible notice with how old the running copy is, how many updates it has missed, and a copyable one-line command that updates it. Desktop only; no backend, events or CDK. The publish workflow starts keeping a short update history alongside the installer. A step toward the filed "desktop app auto-update" feature, not a replacement. Deploy-time impact: **neutral**.
+
+**Goal:** the desktop app tells you when a newer version is out, how far behind you are, and gives you the one command that updates it.
+
+Slices and acceptance criteria: [docs/phases/phase-53.md](phases/phase-53.md)
+
+---
+
 ## Standing tracks and planning docs
 
 Alongside the numbered phases above, work is tracked in five standing docs. The roadmap summarises them; each doc owns its content.
