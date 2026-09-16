@@ -161,6 +161,8 @@ aws cloudwatch get-metric-statistics --profile prod --region eu-west-2 \
 
 Caveat: silence also produces no saves. A long gap during a meeting that was genuinely quiet is not a failure. The `TranscriptionCompleted` text ending mid-sentence is what makes it one.
 
+**Known blind spot:** a failure before capture starts leaves no health record: refused credentials, a denied microphone, or the transcription library failing to load (a stale tab after a deploy). The user sees the error at once. On the server, only the credentials request appears in the Command log.
+
 ## Why did a note's analysis fail?
 
 **Establish WHICH of the two analysers ran first** — they fail into different places, and only one is covered by the browser event.

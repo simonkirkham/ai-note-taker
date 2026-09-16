@@ -69,6 +69,7 @@ Ordered by id. Status is `Open` or `In Progress`.
 | TI-97 | **On Windows, one of the repo's checks reports a failure that is not real.** | Open | — |
 | TI-98 | **A fault in the desktop app is never reported anywhere, so problems on the recording machine surface only if someone notices.** The fix is live; it counts once a real desktop session is seen reporting. | In Progress | — |
 | TI-99 | **When a meeting's transcript comes out incomplete, nothing records how much was captured or why it stopped — it took an hour of log archaeology to find out a transcript had died 34 minutes into an 88-minute meeting.** | In Progress | TI-98 |
+| TI-100 | **The merge check once reported an older release as the latest one, so a release still running could in principle be missed and a change merged on top of it.** | Open | — |
 
 > **Dependency upgrade audit (2026-06-11):** [report](dependency-audits/dependency-upgrade-audit-2026-06.md). The high and medium items are done; the low-urgency ones (T5 lint tooling, T6 Tiptap 3.26, T8 CDK 2.258, T9 Playwright 1.60, T10 xUnit v3) wait in the report until picked up.
 
@@ -1204,4 +1205,23 @@ Why it rides the save rather than RUM: the save is the one request every build m
 
 **Deploy-time:** neutral (one dashboard widget, no new resources beyond two metrics).
 
+**Shipped:** PR #482, deploy #778 (2026-09-16, production confirmed: Command Lambda updated 15:20:56Z). Beyond the table above, it also includes:
+- a health-only report (empty text) for a stall or an error before any text arrived;
+- field-by-field parsing, so a malformed health block never fails the save;
+- no alarm, by choice.
+
+It stays In Progress until a real desktop save is seen producing a `Transcript health` line. That needs the desktop app updated to an installer built after #482.
+
 **Close on:** a forced stream drop on a desktop build produces a Warning `Transcript health` line with the `error` end reason, and a coverage ratio under 0.8 on the dashboard. The code existing is not enough.
+
+---
+
+## TI-100. The branch-filtered deploy list can lag, and the merge gate reads that list
+
+**Symptom.** On 2026-09-16 at ~15:10Z, `scripts/merge-gate.sh 482` printed `MAIN DEPLOY: GREEN (#776)`. Deploy #777 had been created at 13:57Z and completed at 14:11Z. An unfiltered `gh run list --workflow deploy.yml` taken minutes later listed #777. The same script printed `#778` correctly at 15:25Z.
+
+**Severity:** Medium. The verdict happened to be right, because #777 was green. If the lagging list omits a run that is still `in_progress`, the gate fails open: it would report safe to merge onto a live deploy, which is the exact case it exists to stop.
+
+**Cause: unknown.** One observation, not reproduced. `deploy-status.sh` sorts by `createdAt`, so ordering is ruled out; the run was absent from, or stale in, the `gh run list --branch main` response. Whether that filter lags GitHub's unfiltered list is unestablished.
+
+**Fix direction.** Cross-check the branch-filtered list against an unfiltered `--workflow deploy.yml` list, filtering on `headBranch == main` client-side. Take the newest run from either list, and block when they disagree. Reproduce first by polling both forms every few seconds across one deploy's creation.
