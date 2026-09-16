@@ -68,6 +68,8 @@ Ordered by id. Status is `Open` or `In Progress`.
 | TI-96 | **The nightly quality check on meeting summaries produces no scores at all if the marking model sends one unreadable reply.** | Open | — |
 | TI-97 | **On Windows, one of the repo's checks reports a failure that is not real.** | Open | — |
 | TI-98 | **A fault in the desktop app is never reported anywhere, so problems on the recording machine surface only if someone notices.** The fix is in review; it counts once a real desktop session is seen reporting. | In Progress | — |
+| TI-98 | **A fault in the desktop app is never reported anywhere, so problems on the recording machine surface only if someone notices.** | Open | — |
+| TI-99 | **When a meeting's transcript comes out incomplete, nothing records how much was captured or why it stopped — it took an hour of log archaeology to find out a transcript had died 34 minutes into an 88-minute meeting.** | Open | TI-98 |
 
 > **Dependency upgrade audit (2026-06-11):** [report](dependency-audits/dependency-upgrade-audit-2026-06.md). The high and medium items are done; the low-urgency ones (T5 lint tooling, T6 Tiptap 3.26, T8 CDK 2.258, T9 Playwright 1.60, T10 xUnit v3) wait in the report until picked up.
 
@@ -1175,3 +1177,27 @@ C:\Program Files\GitHub CLI\gh.EXE
 - **Still unproven until seen:** that the monitoring service answers cross-origin requests from `http://localhost:5180`. Close only on a desktop session (page URL `localhost:5180`) appearing in the RUM log group.
 
 **Established.** The 7 failures above came from the desktop app (proven by `user_agent`, not inferred). Missing telemetry is a real gap, but for these 7 the older build is sufficient on its own to explain the absent records.
+
+---
+
+## TI-99. A transcript's health travels with the transcript, so an incomplete one is visible without browser telemetry
+
+**Symptom.** [BUG-85]: a live transcript stopped 34 minutes into an 88-minute meeting. The only way to find this was to infer it from the per-minute call count on the Command Lambda. The desktop app sends nothing else ([TI-98]). AWS publishes no per-stream end or error metric for live transcription.
+
+**Severity:** Medium. Losing the transcript is the bug; this item makes the next occurrence diagnosable in minutes, from the server alone.
+
+**What to add:**
+
+| # | Signal | Where it lands |
+|---|---|---|
+| 1 | The transcript save (`CompleteTranscription`) carries a health block: how the stream ended (`stopped` / `error` + message / `audioEnded` / `noResults`), seconds of audio sent, the service's own end-offset of the last finalised result, the time since the last finalised text, and the reconnect count | One structured log line per save, plus a `TranscriptCoverageRatio` metric (last-result offset ÷ duration) |
+| 2 | An alarm on low coverage (ratio < 0.8 on a recording over 5 min) | `notetaker-alarms` email — the user hears about it the same day, not when the analysis fails |
+| 3 | The draft autosave carries the same block, and the app sends one even when the text has not changed once no new text has arrived for 2 min | A `TranscriptStalled` Warning while it is happening, with the stream state at that moment |
+| 4 | The stream's catch saves the text captured so far, and records the error on it | Today an errored stream shows the error and saves nothing |
+| 5 | The runbook section "Why is a transcript incomplete?" and a saved query for desktop builds in use | `docs/observability.md` (the cadence method is already written) |
+
+Why it rides the save rather than RUM: the save is the one request every build makes, at the moment that matters. It reaches the server even when browser telemetry is missing, capped ([TI-78]) or blocked. The request contract changes, so the new fields must be optional: older installed builds keep working, and they log "health: absent".
+
+**Deploy-time:** neutral (one alarm, no new resources beyond a metric).
+
+**Close on:** a forced stream drop on a desktop build produces the `error` end reason, a coverage ratio under 0.8, and the alarm email. The alarm existing is not enough.

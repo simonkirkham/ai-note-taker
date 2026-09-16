@@ -20,6 +20,7 @@ Ordered by severity, then by id.
 | BUG-79 | An action item you add in the first second or two after making a note is silently thrown away for good, and while that happens everything else you do for the next half minute stops updating. | Open | — |
 | BUG-81 | Typing a title on a brand-new note and clicking Save can delete the note instead — the button changes from Save to Cancel under your cursor, and Cancel throws a new note away. | Open | — |
 | BUG-84 | Asking the app to analyse a longer meeting fails almost every time — 7 of the last 9 tries failed — and the message tells you to try again in a minute, which cannot help. | Open | TI-63 |
+| BUG-85 | The live transcript can silently stop part-way through a meeting while the recording timer keeps running — on 2026-09-16 the last 54 minutes of an 88-minute meeting were never transcribed, and nothing on screen said so until the analysis failed. | Open | TI-99 |
 | BUG-70 | Clicking "+ New Note" while recording and then choosing to keep recording still leaves a blank, untitled note behind on your home list. | Open — held behind 51-C | BUG-54, 51-C |
 | BUG-73 | Signing out while an on-device transcript is still finishing can park you for up to an hour with no way to leave — a real problem on a shared machine. | Open | BUG-55 |
 | BUG-75 | Reopening a note while its on-device transcript is still finishing shows no transcript, and nothing appears until you navigate again or reload. | Open | BUG-72 |
@@ -176,6 +177,36 @@ Worth keeping for two reasons. The failure was the same shape as the bug — som
 2. Stop-gap until then: stop telling the user to retry a timeout — say the meeting is too long to analyse in-app — and raise the server-side 45 s limit towards the 60 s Lambda ceiling, since successes already reach 44.5 s.
 
 **Not a theory of [BUG-77]'s trigger.** BUG-77's occurrence never reached the server; every failure here did.
+
+---
+
+## BUG-85 — The live transcript stops part-way through a meeting and nothing says so
+
+**Severity:** High — most of a meeting's transcript is lost for good, and the user only finds out afterwards. **Status:** Open. Found 2026-09-16 while tracing the "OGI: CL Scrum of Scrums" note (`0e666ad4…`).
+
+**Symptom:** a recording shows as running for the whole meeting. The saved transcript covers only its first part and ends mid-sentence. Speaker separation was not run, so nothing re-transcribed the audio afterwards.
+
+**Prod evidence (desktop build `1.0.0-20260811.211`, cloud live transcription):**
+
+| Time (UTC) | What happened |
+|---|---|
+| 10:34:06 | Note created and linked; one live stream opened (`AWS/Transcribe` `TotalRequestCount` = 1 at 10:34, no reconnect after) |
+| 10:34 → 11:08 | Command Lambda took 2-4 calls a minute — the 15 s draft autosave, which only fires when new finalised text has arrived (`useTranscription.ts` `saveCheckpoint` dedupe) |
+| **11:08 → 11:59** | **Zero** Command Lambda calls. No new finalised text for 51 minutes |
+| 12:02:40 | `TranscriptionCompleted`: `DurationSeconds` 5302 (88 min), 6,291 words, ending mid-sentence. No analysis request followed; the user saw an error |
+
+6,291 words over the 34 minutes to 11:08 is ~185 words/min — a normal speaking rate. The transcript is most likely complete up to 11:08 and empty after it.
+
+**Root cause: unknown.** Candidates, none evidenced:
+1. The stream errored. The catch in `useTranscription.ts` sets `status: 'error'` and shows the error text, but does not save the transcript captured so far.
+2. The audio source stopped delivering chunks, for example a device change or the shared-audio capture ending. `audioStream()` then waits forever, and the service ends the stream for lack of audio.
+3. The stream stayed open but returned no finalised results.
+
+Nothing records which one happened: the desktop build sends no browser telemetry ([TI-98]), and AWS publishes no per-stream end or error metric for streaming.
+
+**Observable?** No, except by inference from the draft-autosave cadence. That method is now in [observability.md](../observability.md#why-is-a-transcript-incomplete). [TI-99] adds the direct signal.
+
+**Fix direction:** the app should notice when no new text has arrived for a few minutes while audio is flowing. It should then tell the user, try to reopen the stream, and keep the text captured so far. Reproduce first by forcing each candidate above on a desktop build (kill the network, switch the audio device, end the screen share) and watching which one yields "timer running, no text".
 
 ---
 
