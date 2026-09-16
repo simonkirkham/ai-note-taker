@@ -19,6 +19,7 @@ Ordered by severity, then by id.
 | BUG-77 | You finish a recording and the note is never analysed. You are now told what actually stopped it — an unreachable server, a note that has gone, a service that is briefly down — instead of one catch-all sentence, and the failure is recorded so a repeat can be diagnosed. Why it happens at all is still unknown. | Open | TI-67, TI-78, BUG-33 |
 | BUG-79 | An action item you add in the first second or two after making a note is silently thrown away for good, and while that happens everything else you do for the next half minute stops updating. | Open | — |
 | BUG-81 | Typing a title on a brand-new note and clicking Save can delete the note instead — the button changes from Save to Cancel under your cursor, and Cancel throws a new note away. | Open | — |
+| BUG-84 | Asking the app to analyse a longer meeting fails almost every time — 7 of the last 9 tries failed — and the message tells you to try again in a minute, which cannot help. | Open | TI-63 |
 | BUG-70 | Clicking "+ New Note" while recording and then choosing to keep recording still leaves a blank, untitled note behind on your home list. | Open — held behind 51-C | BUG-54, 51-C |
 | BUG-73 | Signing out while an on-device transcript is still finishing can park you for up to an hour with no way to leave — a real problem on a shared machine. | Open | BUG-55 |
 | BUG-75 | Reopening a note while its on-device transcript is still finishing shows no transcript, and nothing appears until you navigate again or reload. | Open | BUG-72 |
@@ -150,6 +151,34 @@ Worth keeping for two reasons. The failure was the same shape as the bug — som
 
 **Fix direction:** two independent problems, and both are worth closing. (1) A destructive action must never occupy the same position as a non-destructive one, and must never appear under a cursor already moving toward the other — keep Cancel and Save in fixed, distinct positions, and never let a note flip to "empty" while a rename is settling. (2) The rename must cancel the in-flight note-detail query (`qc.cancelQueries`) before patching the cache, or an older response will keep overwriting a newer local truth. The second is the narrower fix; the first is what stops the class.
 
+## BUG-84 — Analysing a longer meeting times out, and the advice to retry cannot work
+
+**Severity:** High — the app's core output never appears for exactly the meetings that matter most, and the on-screen advice sends the user round a loop that cannot succeed. **Status:** Open. Found by observability review 2026-09-16.
+
+**Symptom:** you press *Analyse note* or *Generate final notes* on a meeting of any real length. The spinner runs ~23 s, then *"Analysis is temporarily unavailable. Try again in a minute."* Trying again fails the same way, every time.
+
+**Prod evidence (last 30 days, measured 2026-09-16):**
+
+| Measure | Value |
+|---|---|
+| In-app analyses (button, final notes, auto-analyse without speaker separation) | **9 — 2 succeeded, 7 failed**, every failure `Bedrock analysis exceeded its 23s deadline` → `TimeoutException` |
+| One note retried three times | `cb037bb6…` failed at 14:04:55, 14:05:24 and 14:27:48Z on 2026-09-07 |
+| Server-side re-analyses (after speaker separation, 45 s limit) | 21 — 18 succeeded, **3 failed at the 45 s limit** (2026-08-19, 09-02, 09-07) |
+| Successful analysis duration, weekly p50 since 2026-08-12 (`AnalysisDurationMs`) | 24 s, 36 s, 10 s, 24 s, 36 s. Max **44.5 s** — within 0.5 s of the server-side limit |
+| `notetaker-analysis-failed` alarm | Fired 7 times in 30 days; working as designed |
+
+**Root cause:** the in-app path runs analysis inside the 29 s Command Lambda with a 23 s model deadline ([BUG-58], `src/Api/Builder.cs:242`). That deadline was sized on the **previous** model, whose calls had a 2.6 s median. The prod model moved to Opus 4.6 on 2026-07-23 (MPI-11); a typical successful analysis now takes longer than the whole in-app budget. `MaxTokens = 2048` (`BedrockAnalysisService.cs`) lets a long meeting generate for well past 23 s. Two notes (`5607fb6b…` 2026-09-02, `6bfc279e…` 2026-09-07) failed in-app and then on the server-side path minutes later, so for the longest meetings neither path completes.
+
+**Observable?** Yes on the server — Error log, `AnalysisFailed` metric, alarm. Invisible to the user as a *class*: each failure reads as a one-off outage. Not visible in the browser record at all from the desktop app ([TI-98]).
+
+**Fix direction:**
+1. Durable: [TI-63] — run analysis off the request path with a longer limit, and let the note show "analysing…" until it lands. Its "~12-19% of analyses near or over budget" sizing predates the model change and is now wrong.
+2. Stop-gap until then: stop telling the user to retry a timeout — say the meeting is too long to analyse in-app — and raise the server-side 45 s limit towards the 60 s Lambda ceiling, since successes already reach 44.5 s.
+
+**Not a theory of [BUG-77]'s trigger.** BUG-77's occurrence never reached the server; every failure here did.
+
+---
+
 ## BUG-70 — "+ New Note" while recording leaves an orphan note behind
 
 **Severity:** Medium — clutter, not loss, but the app creates something the user explicitly declined. **Status:** Open. Pre-existing since [BUG-54] added the guard; surfaced by [CHANGE-33] review.
@@ -240,6 +269,8 @@ Reproduced against a real editor: adding `Renewals` to that body yields `- [ ] \
 | Alarms | The shared service does emit `AnalysisFailed` and an Error log in the completion Lambda's group, so the signal is not absent — but nothing ties it back to the user, and nothing tells them |
 
 **Fix direction:** treat a non-`Analysed` outcome in `MaybeAnalyseAsync` as a failure — log it at Warning/Error naming the outcome, and give the user a way to find out (the note has no summary and no explanation). Consider whether the note should carry a "not analysed" state the UI can show, rather than looking identical to a note nobody asked to analyse.
+
+**Prod evidence, 2026-09-16 review:** 3 of 21 server-side re-analyses in the last 30 days failed this way, all at the 45 s model deadline — see [BUG-84].
 
 **Not a theory of [BUG-77]'s trigger.** This was found by reading the code while documenting what BUG-77's browser-side record does *not* cover. Whether the 2026-08-10 occurrence came through this path is unknown and unevidenced — the two share a symptom, nothing more.
 
