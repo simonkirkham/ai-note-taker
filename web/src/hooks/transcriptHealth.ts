@@ -2,8 +2,8 @@ import type { TranscriptEndReason, TranscriptEngine, TranscriptHealth } from '..
 
 // TI-99: how long a recording may go without new finalised text before the checkpoint reports a
 // stall, and how often a continuing stall is re-reported.
-export const STALL_AFTER_MS = 120_000;
-export const STALL_REPEAT_MS = 5 * 60_000;
+const STALL_AFTER_MS = 120_000;
+const STALL_REPEAT_MS = 5 * 60_000;
 
 const MAX_ERROR_TEXT = 200;
 const PCM_BYTES_PER_SAMPLE = 2;
