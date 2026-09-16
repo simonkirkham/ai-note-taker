@@ -25,6 +25,7 @@ import SessionExpiredBanner from "./components/SessionExpiredBanner";
 import Sidebar from "./components/Sidebar";
 import SignInPage from "./components/SignInPage";
 import { useToast } from "./components/toastContext";
+import UpdateNotice from "./components/UpdateNotice";
 import { UNFILED_ID } from "./constants";
 import { findNode, findPath } from "./folderTree";
 import { RecordingSessionProvider } from "./hooks/recordingSession";
@@ -590,6 +591,8 @@ function AppContent({ signOut }: { signOut: () => void }) {
               the user home, so a banner rendered inside NoteView would be unmounted along with the
               only copy of the text it exists to hand back. */}
           <DeletedNoteRescue />
+          {/* 53-A: desktop only; renders nothing in a browser. */}
+          <UpdateNotice />
           {/* 51-B: no longer gated on `activeNoteId`. The bar is permanent — hiding it on the
               notes list, then bringing the whole row back on opening a note, is exactly the
               flicker this slice removes. */}

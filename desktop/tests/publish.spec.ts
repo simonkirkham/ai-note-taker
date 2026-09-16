@@ -64,3 +64,19 @@ test('update.ps1 is pure ASCII so Windows PowerShell 5.1 parses it correctly', (
   const nonAscii = [...script].filter((ch) => ch.charCodeAt(0) > 127)
   expect(nonAscii).toEqual([])
 })
+
+// 53-A — the update notice reads an update history published alongside the installer, and
+// offers a command that fetches update.ps1 from the same release.
+test('publish workflow appends to and uploads the update history', () => {
+  const wf = read('.github/workflows/publish-desktop.yml')
+  expect(wf).toContain('releases.json')
+  // Carries forward what the previous release published rather than starting over each time.
+  expect(wf).toMatch(/gh release download desktop-latest[^\n]*releases\.json/)
+  expect(wf).toContain('node desktop/scripts/append-history.mjs')
+})
+
+test('publish workflow bakes the build time into the app and publishes update.ps1', () => {
+  const wf = read('.github/workflows/publish-desktop.yml')
+  expect(wf).toContain('VITE_BUILD_TIME')
+  expect(wf).toContain('desktop/scripts/update.ps1')
+})

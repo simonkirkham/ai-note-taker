@@ -7,6 +7,9 @@ export type LocalTranscriptionStatus = {
   progress: number
 };
 
+// 53-A — one published update: the commit it was built from and when it was built.
+export type ReleaseEntry = { sha: string; builtAt: string };
+
 export interface DesktopBridge {
   isDesktop: true;
   platform: string;
@@ -25,6 +28,13 @@ export interface DesktopBridge {
     // BUG-53: the current live transcript (a full string, replace-not-append), emitted ~every 1.5s.
     onLive(cb: (text: string) => void): () => void;
     onError(cb: (message: string) => void): () => void;
+  };
+  // 53-A — absent in a shell built before the update notice existed.
+  updates?: {
+    // The published update history, or null when it could not be fetched or read.
+    getHistory(): Promise<ReleaseEntry[] | null>;
+    // Copies text to the system clipboard; false when the copy did not happen.
+    copy(text: string): Promise<boolean>;
   };
 }
 

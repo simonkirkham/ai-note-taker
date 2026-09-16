@@ -65,6 +65,9 @@ jobs:
           VER="1.0.0-$(date +%Y%m%d).${{ github.run_number }}"
           npm --prefix desktop version --no-git-tag-version --allow-same-version "$VER"
           echo "Building desktop installer version $VER"
+          # 53-A: one timestamp, baked into the app AND written to the update history, so the
+          # app can count the published updates built after itself.
+          echo "BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
 
       - name: Build the Windows installer
         if: steps.changed.outputs.build == 'true'
@@ -76,6 +79,8 @@ jobs:
           # where the app falls back to "Build dev". build-web.mjs passes the env through.
           VITE_BUILD_NUMBER: ${{ github.event.workflow_run.run_number }}
           VITE_BUILD_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          # 53-A: the update notice compares this against the published update history.
+          VITE_BUILD_TIME: ${{ env.BUILD_TIME }}
           # TI-98: build-web.mjs copies the monitoring snippet from the live site, which this
           # run follows. Fail rather than publish an installer whose faults reach nothing.
           REQUIRE_RUM_SNIPPET: "1"
@@ -88,9 +93,16 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           SHA=$(git rev-parse --short HEAD)
+          # 53-A: carry the update history forward before the old release is deleted. A first
+          # run (or a release without one) starts a fresh history.
+          mkdir -p history
+          gh release download desktop-latest --pattern releases.json --dir history --clobber || echo "No previous update history — starting one."
+          node desktop/scripts/append-history.mjs history/releases.json releases.json "$(git rev-parse HEAD)" "$BUILD_TIME"
           gh release delete desktop-latest --yes --cleanup-tag || true
           # Upload build-sha.txt (the bundled commit marker) alongside the .exe so
           # `npm run update` can version-check by pulling a tiny file, not the 82 MB installer.
-          gh release create desktop-latest desktop/release/*.exe desktop/web-dist/build-sha.txt \
+          # 53-A: releases.json feeds the in-app update notice; update.ps1 is what its copied
+          # command downloads and runs, so it works with no checkout.
+          gh release create desktop-latest desktop/release/*.exe desktop/web-dist/build-sha.txt releases.json desktop/scripts/update.ps1 \
             --title "AI Note Taker desktop ($SHA)" \
             --notes "Unsigned Windows installer built from $SHA (latest successful prod deploy). Update with \`npm run update\`. SmartScreen may warn on first run."
