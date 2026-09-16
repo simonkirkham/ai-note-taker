@@ -67,8 +67,8 @@ Ordered by id. Status is `Open` or `In Progress`.
 | TI-95 | **Changes can sit undelivered for weeks after a failed release, and nobody is told.** A 25-day gap has already happened. | Open | — |
 | TI-96 | **The nightly quality check on meeting summaries produces no scores at all if the marking model sends one unreadable reply.** | Open | — |
 | TI-97 | **On Windows, one of the repo's checks reports a failure that is not real.** | Open | — |
-| TI-99 | **When a meeting's transcript comes out incomplete, nothing records how much was captured or why it stopped — it took an hour of log archaeology to find out a transcript had died 34 minutes into an 88-minute meeting.** | In Progress | TI-98 |
 | TI-98 | **A fault in the desktop app is never reported anywhere, so problems on the recording machine surface only if someone notices.** The fix is in review; it counts once a real desktop session is seen reporting. | In Progress | — |
+| TI-99 | **When a meeting's transcript comes out incomplete, nothing records how much was captured or why it stopped — it took an hour of log archaeology to find out a transcript had died 34 minutes into an 88-minute meeting.** | In Progress | TI-98 |
 
 > **Dependency upgrade audit (2026-06-11):** [report](dependency-audits/dependency-upgrade-audit-2026-06.md). The high and medium items are done; the low-urgency ones (T5 lint tooling, T6 Tiptap 3.26, T8 CDK 2.258, T9 Playwright 1.60, T10 xUnit v3) wait in the report until picked up.
 
