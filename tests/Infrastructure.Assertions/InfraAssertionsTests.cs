@@ -921,8 +921,8 @@ public class InfraAssertionsTests
         _template.HasResourceProperties("AWS::RUM::AppMonitor", Match.ObjectLike(new Dictionary<string, object>
         {
             ["Name"] = "notetaker-rum",
-            // No-domain template scopes the monitor to the CloudFront default domain,
-            // which is a token (Fn::GetAtt) here — assert presence, not a literal.
+            // No-domain template scopes the monitor to the CloudFront default domain, a token
+            // (Fn::GetAtt) here — so assert only the literal desktop entry beside it.
             ["DomainList"] = Match.ArrayWith(new object[] { "localhost" }),
             ["AppMonitorConfiguration"] = Match.ObjectLike(new Dictionary<string, object>
             {
