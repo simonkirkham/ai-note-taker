@@ -753,14 +753,15 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
         // TI-99 / BUG-85: keep what was captured and say why the stream died. A DRAFT, not a
         // commit: the recording has not been stopped, so it goes to the recovery buffer that a
         // later commit (Stop is gone, but leaving the note still commits) supersedes and deletes.
+        // With nothing captured (the stream died at the start), the reason still goes up as a
+        // health-only report with empty text, which leaves the recoverable draft untouched.
         // After the teardown and guarded, so a reporting fault can never leave capture running.
         try {
           health.ended('error', err);
           const text = finalizedRef.current;
-          if (text && text !== resumePrefixRef.current) {
-            lastDraftRef.current = text;
-            void sendDraft(text, 'error').catch(() => {});
-          }
+          const hasText = !!text && text !== resumePrefixRef.current;
+          if (hasText) lastDraftRef.current = text;
+          if (hasText || health.hasStarted) void sendDraft(hasText ? text : '', 'error').catch(() => {});
         } catch (reportErr) {
           console.warn('Reporting the transcription error failed.', reportErr);
         }

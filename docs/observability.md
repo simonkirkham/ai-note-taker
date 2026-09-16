@@ -116,7 +116,7 @@ Drop the `level` filter and add `| filter message like /note <id>/` to see one r
 |---|---|---|
 | `inProgress` | A 15 s autosave while recording | Information |
 | `stalled` | No new text for 2 min while recording; repeats every 5 min while it lasts. Sent even when nothing was captured yet — that save carries no text and leaves the recoverable draft alone | Warning |
-| `error` | The live stream threw; `error=` names it. The text so far was saved as a recoverable draft | Warning |
+| `error` | The live stream threw; `error=` names it. The text so far was saved as a recoverable draft. If nothing had been captured, the report carries no text (the stream died at the start) | Warning |
 | `streamEnded` | The live stream ended on its own, without Stop | Warning |
 | `stopped` | The user pressed Stop, or left the note | Warning only if a 5 min+ recording has `ratio` under 0.8 |
 | `unknown` | The client sent a value outside the list | as above |

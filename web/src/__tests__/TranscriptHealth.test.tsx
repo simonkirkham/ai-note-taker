@@ -298,13 +298,45 @@ describe('a stream that errors', () => {
     expect(drafts[0].health).toMatchObject({ endReason: 'error', errorMessage: 'odd' })
   })
 
-  it('saves nothing when no text had been captured', async () => {
+  // The start-of-meeting version of the incident: the stream dies before any text arrives. The
+  // reason still reaches the server, as health only, and nothing is committed.
+  it('reports the error with health only when no text had been captured', async () => {
     const view = await startCloudRecording()
-    streams[0].push({ kind: 'error', error: namedError('Error', 'boom') })
+    at(30)
+    streams[0].push({ kind: 'error', error: namedError('BadRequestException', 'boom') })
+
+    await waitFor(() => expect(view.result.current.status).toBe('error'))
+    await waitFor(() => expect(drafts).toHaveLength(1))
+    expect(drafts[0].transcriptText).toBe('')
+    expect(drafts[0].health).toMatchObject({
+      endReason: 'error',
+      errorName: 'BadRequestException',
+      errorMessage: 'boom',
+      coveredSeconds: null,
+      secondsSinceLastText: null,
+    })
+    await new Promise((r) => setTimeout(r, 20))
+    expect(commits).toHaveLength(0)
+  })
+
+  it('sends nothing when recording never started (credentials refused)', async () => {
+    server.use(http.get('/api/transcription/credentials', () => new HttpResponse(null, { status: 403 })))
+    const view = renderHook(() => useTranscription('note-1'))
+    act(() => view.result.current.startRecording(false, false))
 
     await waitFor(() => expect(view.result.current.status).toBe('error'))
     await new Promise((r) => setTimeout(r, 20))
     expect(drafts).toHaveLength(0)
+  })
+
+  it('reports the error with health only on a resumed recording with no new text', async () => {
+    const view = await startCloudRecording('Speaker 1: earlier')
+    streams[0].push({ kind: 'error', error: namedError('Error', 'boom') })
+
+    await waitFor(() => expect(view.result.current.status).toBe('error'))
+    await waitFor(() => expect(drafts).toHaveLength(1))
+    expect(drafts[0].transcriptText).toBe('')
+    expect(drafts[0].health!.endReason).toBe('error')
   })
 
   it('still reports the error when the transcript is committed on leaving the note', async () => {

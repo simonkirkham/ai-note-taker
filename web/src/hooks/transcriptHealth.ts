@@ -80,6 +80,12 @@ export class TranscriptHealthTracker {
     this.startedAt = now;
   }
 
+  // False until capture is running — a failure before that (credentials refused, microphone
+  // denied) has no recording to report on.
+  get hasStarted(): boolean {
+    return this.startedAt !== 0;
+  }
+
   streamOpened(): void {
     this.coveredByEndedStreams += this.coveredByOpenStream;
     this.coveredByOpenStream = 0;

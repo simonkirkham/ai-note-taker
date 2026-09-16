@@ -311,6 +311,24 @@ public sealed class TranscriptHealthTests(ApiFactory factory) : IClassFixture<Ap
     }
 
     [Fact]
+    public async Task Given_a_stream_that_died_before_any_text_When_a_health_only_draft_is_saved_Then_the_error_is_logged()
+    {
+        var h = Build();
+        var noteId = await CreateNoteAsync(h.Client);
+
+        var resp = await DraftAsync(h.Client, noteId, 30,
+            new { engine = "cloud", endReason = "error", errorName = "BadRequestException", errorMessage = "boom", streamCount = 1 }, "");
+
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+        var line = Assert.Single(h.HealthLines);
+        Assert.Equal(LogLevel.Warning, line.Level);
+        Assert.Contains("end=error", line.Message);
+        Assert.Contains("error=BadRequestException: boom", line.Message);
+        Assert.Equal(0, h.Metrics.TranscriptStalls);
+        Assert.Null(DraftText(await GetNoteAsync(h.Client, noteId)));
+    }
+
+    [Fact]
     public async Task Given_empty_text_and_no_health_When_a_draft_is_saved_Then_it_is_still_rejected()
     {
         var h = Build();
