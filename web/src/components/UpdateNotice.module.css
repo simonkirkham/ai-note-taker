@@ -1,0 +1,85 @@
+/* 53-A — the desktop update notice. Same banner shape as DeletedNoteRescue, above the tab bar. */
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin: 0.5rem 0.75rem;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-primary-bg);
+  color: var(--color-text);
+}
+
+.body {
+  flex: 1;
+  min-width: 0;
+}
+
+.text {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.hint {
+  margin: 0.375rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+.commandRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.command {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+  padding: 0.375rem 0.5rem;
+  font-size: 0.75rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius);
+  user-select: all;
+}
+
+.copy,
+.dismiss {
+  font-family: inherit;
+  color: var(--color-text);
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color var(--transition), color var(--transition);
+}
+
+.copy {
+  padding: 0.375rem 0.875rem;
+  font-size: 0.875rem;
+}
+
+.dismiss {
+  padding: 0 0.5rem;
+  font-size: 1.125rem;
+  line-height: 1.75rem;
+  border-color: transparent;
+}
+
+.copy:hover,
+.dismiss:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.copy:focus-visible,
+.dismiss:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}

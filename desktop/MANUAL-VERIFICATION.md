@@ -233,6 +233,17 @@ The mid-recording "Still recording — …?" confirm names its destination, and 
 
 If it is ever raised: start a recording, click Home, then click a folder, and listen. Silence on the second click means the swap is not announced — move `aria-live` back onto the text span. A double reading means the label and content are both announced — drop the `aria-label`.
 
+## 53-A — the update notice
+
+Only visible once **two** updates have been published after 53-A merged: the first publish only starts the update history.
+
+| # | Check | ✓ |
+|---|---|---|
+| 1 | **Behind:** Given an installed copy older than the newest published update, When the app opens, Then a notice at the top reads "A newer version is available — your copy is N days old and M updates behind." | ☐ |
+| 2 | **Copy works:** When I press Copy, Then the button reads "Copied", and pasting into PowerShell and pressing Enter downloads, installs and reopens the app. | ☐ |
+| 3 | **Up to date after updating:** Given the app just reopened from row 2, Then no notice shows. | ☐ |
+| 4 | **Failure is quiet but logged:** Given the network is off, When the app opens, Then no notice shows and the console has a `[desktop] update check failed:` line. | ☐ |
+
 ## Troubleshooting
 
 - **`Error 400: redirect_uri_mismatch` immediately after adding `http://localhost:5180`** — the value is correct (`redirect_uri = window.location.origin = http://localhost:5180`: no trailing slash, `localhost` not `127.0.0.1`, port `5180`, `http` not `https`). The cause is **Google propagation lag** — a freshly added+saved redirect URI is not live immediately; it can take **~5 min to a few hours**. Confirm the running app's `window.location.origin` (DevTools console) reads exactly `http://localhost:5180`, then wait and retry. **No code change.** Hit and confirmed 2026-06-22: config was right on the first attempt; the URI simply had not propagated.

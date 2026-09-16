@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, session, desktopCapturer, screen } from 'electron'
+import { app, BrowserWindow, clipboard, ipcMain, Menu, net, session, desktopCapturer, screen } from 'electron'
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { startBundleServer } from './server'
@@ -7,6 +7,9 @@ import { buildSpellCheckMenu } from './spellCheckMenu'
 import { decidePermissionCheck, decidePermissionRequest } from './permissionPolicy'
 import { registerLocalTranscription, killWhisperServer } from './localTranscriptionIpc'
 import { killActiveWhisper } from './localTranscription'
+import { fetchHistory } from './updateCheck'
+import { isBundleOrigin } from './ipcOrigin'
+import { UPDATE_COMMAND } from './updateCommand'
 
 // Phase 31-A — Windows bundle-shell.
 // Serve the compiled web/ frontend from a localhost loopback origin and proxy
@@ -203,6 +206,18 @@ function logDecision(kind: 'request' | 'check', permission: string, allow: boole
   else console.warn(line)
 }
 
+// 53-A — the update notice's two main-process calls. net.fetch uses Chromium's network stack,
+// so it honours the system proxy the same way the window does.
+function registerUpdateNotice(): void {
+  const fromBundle = (event: Electron.IpcMainInvokeEvent) => isBundleOrigin(event.senderFrame?.url, BUNDLE_ORIGINS)
+  ipcMain.handle('updates:history', (event) => (fromBundle(event) ? fetchHistory((url, init) => net.fetch(url, init)) : null))
+  ipcMain.handle('updates:copy', (event) => {
+    if (!fromBundle(event)) return false
+    clipboard.writeText(UPDATE_COMMAND)
+    return clipboard.readText() === UPDATE_COMMAND
+  })
+}
+
 function logBuildSha(): void {
   const shaFile = path.join(WEB_DIST, 'build-sha.txt')
   const sha = existsSync(shaFile) ? readFileSync(shaFile, 'utf8').trim() : 'unknown'
@@ -218,6 +233,7 @@ void app.whenReady().then(async () => {
     resourcesPath: process.resourcesPath,
     getWindow: () => mainWindow,
   })
+  registerUpdateNotice()
   logBuildSha()
   createWindow()
   app.on('activate', () => {

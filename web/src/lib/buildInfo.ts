@@ -19,3 +19,9 @@ export function buildTitle(): string | undefined {
   const sha = (import.meta.env.VITE_BUILD_SHA ?? '').trim()
   return sha ? `${buildLabel()} — commit ${sha.slice(0, 7)}` : undefined
 }
+
+// 53-A — when this build was made, as the ISO timestamp the publish workflow also writes to the
+// update history. Empty off a published desktop build, which turns the update notice off.
+export function buildTime(): string {
+  return (import.meta.env.VITE_BUILD_TIME ?? '').trim()
+}

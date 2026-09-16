@@ -11,6 +11,7 @@ interface ImportMetaEnv {
   // sidebar. Both empty off a deploy → the app reads "Build dev".
   readonly VITE_BUILD_NUMBER: string
   readonly VITE_BUILD_SHA: string
+  readonly VITE_BUILD_TIME: string
 }
 
 interface ImportMeta {

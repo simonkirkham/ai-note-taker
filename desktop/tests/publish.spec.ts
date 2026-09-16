@@ -44,7 +44,7 @@ test('npm run update pulls the published installer and installs it', () => {
   expect(pkg.scripts!.update).toContain('update.ps1')
 
   const script = read('desktop/scripts/update.ps1')
-  expect(script).toContain('gh release download')
+  expect(script).toContain('releases/tags/desktop-latest')
   expect(script).toContain('/S') // silent NSIS install
 })
 
@@ -63,4 +63,50 @@ test('update.ps1 is pure ASCII so Windows PowerShell 5.1 parses it correctly', (
   const script = read('desktop/scripts/update.ps1')
   const nonAscii = [...script].filter((ch) => ch.charCodeAt(0) > 127)
   expect(nonAscii).toEqual([])
+})
+
+// 53-A — the update notice reads an update history published alongside the installer, and
+// offers a command that fetches update.ps1 from the same release.
+test('publish workflow appends to and uploads the update history', () => {
+  const wf = read('.github/workflows/publish-desktop.yml')
+  expect(wf).toContain('releases.json')
+  // Carries forward what the previous release published rather than starting over each time.
+  expect(wf).toMatch(/gh release download desktop-latest[^\n]*releases\.json/)
+  expect(wf).toContain('node desktop/scripts/append-history.mjs')
+})
+
+test('publish workflow bakes the build time into the app and publishes update.ps1', () => {
+  const wf = read('.github/workflows/publish-desktop.yml')
+  expect(wf).toContain('VITE_BUILD_TIME')
+  expect(wf).toContain('desktop/scripts/update.ps1')
+})
+
+// 53-A review: the in-app command runs on machines with no GitHub CLI. The script must reach
+// the public release anonymously, never through `gh`.
+test('update.ps1 does not need the GitHub CLI', () => {
+  const script = read('desktop/scripts/update.ps1')
+  expect(script).not.toMatch(/^\s*gh\s/m)
+  expect(script).toContain('Invoke-WebRequest')
+})
+
+test('the command the app shows is the one the desktop shell copies', () => {
+  const web = read('web/src/components/UpdateNotice.tsx')
+  const shell = read('desktop/src/updateCommand.ts')
+  const quoted = (text: string) => text.match(/UPDATE_COMMAND\s*=\s*\n?\s*('.*');/)?.[1]
+  expect(quoted(shell)).toBeTruthy()
+  expect(quoted(web)).toBe(quoted(shell))
+})
+
+test('publish workflow never deletes the release without a history to replace it', () => {
+  const wf = read('.github/workflows/publish-desktop.yml')
+  expect(wf.indexOf('test -s releases.json')).toBeGreaterThan(-1)
+  expect(wf.indexOf('test -s releases.json')).toBeLessThan(wf.indexOf('gh release delete'))
+})
+
+// 53-A review: a concurrency group keeps one pending run and cancels the one it replaces. A
+// queued web-change publish replaced by a backend-only one would then never be built, because
+// the build-or-skip check looks only at its own commit. A lost history entry is the cheaper risk.
+test('publish runs are never queued behind each other', () => {
+  const wf = read('.github/workflows/publish-desktop.yml')
+  expect(wf).not.toMatch(/^concurrency:/m)
 })

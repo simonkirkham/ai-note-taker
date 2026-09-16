@@ -9,6 +9,13 @@ export type LocalStatus = { modelReady: boolean; downloading: boolean; progress:
 contextBridge.exposeInMainWorld('desktop', {
   isDesktop: true,
   platform: process.platform,
+  // 53-A — the update notice. The fetch and the clipboard write both live in the main process:
+  // the history download has no CORS headers, and the permission policy does not grant the
+  // renderer clipboard access.
+  updates: {
+    getHistory: (): Promise<{ sha: string; builtAt: string }[] | null> => ipcRenderer.invoke('updates:history'),
+    copyUpdateCommand: (): Promise<boolean> => ipcRenderer.invoke('updates:copy'),
+  },
   local: {
     // Ask the main process to background-download models (idempotent). Called when the user
     // selects local mode, so cloud-only users never pull the weights.

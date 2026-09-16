@@ -21,15 +21,16 @@ npm run update           # version-check → (if newer) download → close app �
 
 It **version-checks first**: pulls a tiny `build-sha.txt`, compares it to the build you last
 installed, and prints "already up to date" and exits if they match — so running it when
-nothing changed is instant (no 82 MB download). Requires the **GitHub CLI** (`gh`) installed
-and signed in. The artifact always tracks the **latest successfully-deployed** version (the
+nothing changed is instant (no 82 MB download). Needs no GitHub CLI or sign-in: it reads the
+public release anonymously. The app also shows an update notice with a copyable one-line command
+that runs this same script without a checkout (Phase 53). The artifact always tracks the **latest successfully-deployed** version (the
 workflow runs on `Deploy` success), so this keeps the desktop's bundled frontend in lockstep
 with the live site. First run on a machine
 shows a one-time SmartScreen prompt (unsigned build).
 
 ## Build the installer locally
 
-Only needed if you don't want to wait for CI, or `gh` isn't available:
+Only needed if you don't want to wait for CI:
 
 ```powershell
 # one-time deps (run on Windows so node_modules has Windows-native binaries)

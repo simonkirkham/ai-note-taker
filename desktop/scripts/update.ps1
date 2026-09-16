@@ -1,8 +1,11 @@
 # Update the installed AI Note Taker desktop app by PULLING the latest published installer
 # from GitHub Releases - no local build. Version-checks first (tiny build-sha.txt) and only
 # downloads the 82 MB installer when it's actually newer. Download -> close app -> silent
-# install -> relaunch. Requires the GitHub CLI (`gh`). Run from desktop/: `npm run update`.
+# install -> relaunch. Reads the public release anonymously - no GitHub CLI or sign-in needed.
+# Run from desktop/ (`npm run update`), or via the command the app's update notice copies.
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue' # the progress bar makes Invoke-WebRequest many times slower
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
 $repo = 'simonkirkham/ai-note-taker'
 $dir = Join-Path $env:TEMP 'ainote-update'
@@ -17,9 +20,16 @@ $stateFile = Join-Path $env:LOCALAPPDATA 'ai-note-taker-update\installed-sha.txt
 $shaPath = Join-Path $dir 'build-sha.txt'
 Remove-Item $shaPath -ErrorAction SilentlyContinue
 $publishedSha = ''
+# The release's asset list (name -> download URL). A failure here is fatal: there is nothing to
+# install without it, and saying so beats a misleading "no installer found" later.
+$release = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/tags/desktop-latest" -Headers @{ 'User-Agent' = 'ai-note-taker-update' }
+$assets = @($release.assets)
 try {
-  gh release download desktop-latest --repo $repo --pattern 'build-sha.txt' --dir $dir --clobber 2>$null
-  if (Test-Path $shaPath) { $publishedSha = (Get-Content $shaPath -Raw).Trim() }
+  $shaAsset = $assets | Where-Object { $_.name -eq 'build-sha.txt' } | Select-Object -First 1
+  if ($shaAsset) {
+    Invoke-WebRequest -Uri $shaAsset.browser_download_url -OutFile $shaPath -UseBasicParsing
+    $publishedSha = (Get-Content $shaPath -Raw).Trim()
+  }
 } catch {
   $publishedSha = ''
 }
@@ -38,10 +48,11 @@ $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'x64' }
 Get-ChildItem $dir -Filter '*.exe' -ErrorAction SilentlyContinue | Remove-Item -Force
 $label = if ($publishedSha) { $publishedSha.Substring(0, [Math]::Min(7, $publishedSha.Length)) } else { 'latest' }
 Write-Host "Build $label available - downloading $arch installer..."
-gh release download desktop-latest --repo $repo --pattern "*-$arch.exe" --dir $dir --clobber
+$exeAsset = $assets | Where-Object { $_.name -like "*-$arch.exe" } | Select-Object -First 1
+if (-not $exeAsset) { throw "No $arch installer (.exe) found in the desktop-latest release." }
+Invoke-WebRequest -Uri $exeAsset.browser_download_url -OutFile (Join-Path $dir $exeAsset.name) -UseBasicParsing
 
-$exe = Get-ChildItem $dir -Filter "*-$arch.exe" | Select-Object -First 1
-if (-not $exe) { throw "No $arch installer (.exe) found in the desktop-latest release." }
+$exe = Get-Item (Join-Path $dir $exeAsset.name)
 
 Write-Host 'Closing the running app (if any)...'
 # Process name tracks electron-builder.json productName; shortcut below tracks nsis.shortcutName.
