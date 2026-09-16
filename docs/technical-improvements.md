@@ -1,126 +1,83 @@
 # Technical Improvements
 
-Technical, infrastructure, and developer-experience items to address in the future. These are **not user-facing features** — they're refactors, upgrades, CI/CD work, and hardening that keep the system healthy. Review this list when planning a phase or when an item becomes urgent.
+**Goal:** one list of the open refactors, upgrades, CI and hardening work that keeps the app healthy — none of it is a user-facing feature.
 
-For the other tracks see:
+Other tracks: [features](future-features.md) · [bugs](phases/phase-bugs.md) · [minor changes](phases/phase-minor-changes.md) · [done items (archive)](technical-improvements-archive.md).
 
-- **Features** → [docs/future-features.md](future-features.md)
-- **Bugs** → [docs/phases/phase-bugs.md](phases/phase-bugs.md)
-- **Minor tweaks & changes** → [docs/phases/phase-minor-changes.md](phases/phase-minor-changes.md)
+**How this doc is written.**
 
-Each entry records what it is, why it matters, where it was raised, and any dependency. **The Summary table below is the at-a-glance index — scan its Status column for what's outstanding, and keep that cell in sync when an item is actioned** (the detailed section for each item carries the full status + history).
+1. The Summary table is the review surface: one or two lines per item, opening in bold on what the person using the app (or working on it) experiences.
+2. Everything else — evidence, diagnosis, fix direction, history — lives in that item's section below the divider.
+3. A finished item is condensed into the [archive](technical-improvements-archive.md) and its row **and** section deleted here.
+4. Never hand-pick an id — run `scripts/next-doc-id.sh ti`.
+5. Never leave a blank line inside the table — it ends the table, and every row after it renders as plain text.
+
+---
 
 ## Summary
 
-Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (graduated to a phase, or actioned in place). Outstanding work is every 🔲 and 🟡 row.
+Ordered by id. Status is `Open` or `In Progress`.
 
-**Every row re-verified against the codebase on 2026-08-09.** One item changed state — **TI-44 → ✅ Done** (its hypothesis was disproven; the symptom closed via BUG-31/BUG-48). Every other 🔲/🟡 row was confirmed still outstanding at the named code site; only stale line numbers, file paths, and counts were corrected. Rows below carry the evidence.
+| Item | Summary | Status | Depends on |
+|------|---------|--------|------------|
+| TI-3 | **Web-app state sits further from where it is used than it needs to, so screens are harder to change safely.** The performance half shipped; keeping state close is now a standing convention. | In Progress | — |
+| TI-7 | **A broken or circular import in the web app is caught only when the build runs, not by the linter.** Every other rule in this item has shipped. | In Progress | — |
+| TI-17 | **A new feature backed by a new read model shows nothing in production until someone remembers a manual backfill.** | Open | — |
+| TI-20 | **The workspace list slows down as total data grows, because every load reads the whole table.** | Open | TI-33 |
+| TI-23 | **Some kinds of edit do not retry when two saves collide, so the collision reaches the user.** Deferred on purpose until a second case needs it. | Open | TI-66 |
+| TI-24 | **A production release can hang at its sign-in-to-AWS step.** A timeout now stops the hang; the cause is still unknown. | In Progress | — |
+| TI-25 | **A pasted image could be saved with a broken link, and no test would notice.** | Open | — |
+| TI-33 | **The home note list slows down as notes pile up — about 0.8 s at 234 notes — because every load reads the whole table.** | Open | TI-20 |
+| TI-34 | **Seven living docs still describe the backend as one server when it is three, which misleads anyone debugging it.** | Open | — |
+| TI-40 | **Production health can only be checked from this machine, so no weekly automatic health sweep can run.** | Open | — |
+| TI-45 | **When the note editor fails to load, it is recorded but never raises an alarm.** | Open | — |
+| TI-46 | **Search will slow down as notes grow, because every search re-reads every note from scratch.** Fine at today's volume — measure before acting. | Open | — |
+| TI-48 | **A long recording is held entirely in memory until Stop — about 230 MB for two hours — then uploaded in one go.** | Open | — |
+| TI-49 | **A crafted calendar-feed address could make the server reach internal addresses.** Only the account owner can set the address. | Open | — |
+| TI-50 | **Every home-page load and day change re-downloads the whole calendar feed.** | Open | — |
+| TI-51 | **Renaming, deleting or re-colouring a workspace straight after creating it can wrongly say it was not found.** | Open | TI-20 |
+| TI-52 | **The first note you open after an overnight gap can spin for several seconds while the background updater wakes up.** The visible failure is already fixed; this is the permanent fix. | Open | — |
+| TI-54 | **A real fault in the Claude connector cannot be diagnosed, and harmless "note not found" replies show up as errors.** | Open | — |
+| TI-55 | **The Claude connector has no rate limit, and its list calls read whole tables on every call.** | Open | TI-20, TI-33 |
+| TI-56 | **If saving your sign-in stops working, nobody is alerted — you find out when you are signed out.** | Open | — |
+| TI-57 | **The to-do list cannot be rebuilt from history if its stored copy is ever lost or wrong.** | Open | — |
+| TI-59 | **Nothing proves the Windows desktop build can actually transcribe before it ships.** | Open | — |
+| TI-60 | **Live transcription getting slower in the installed desktop app would ship unnoticed.** | Open | TI-59 |
+| TI-61 | **A routing test fails on a busy machine though nothing is wrong, costing a re-run and a fresh investigation.** | In Progress | — |
+| TI-62 | **The release pipeline's warm-up step exists in two copies that will drift, and a broken copy stops every release.** | Open | — |
+| TI-63 | **Analysing a longer meeting fails, because analysis must finish inside a 29-second request.** This now blocks BUG-84. | Open | — |
+| TI-65 | **An action list, folder tree or workspace list can snap back to an older copy moments after you change it.** The home note list is fixed; three lists remain. | In Progress | — |
+| TI-66 | **An edit can be lost when two saves collide, because each kind of edit has to remember to retry.** | Open | — |
+| TI-70 | **A broken workflow file reaches the main branch unflagged and shows up as an unexplained red X on every commit.** | Open | — |
+| TI-72 | **An API deployed by hand answers its first request more slowly than the same code shipped by the pipeline, and nothing says so.** | Open | — |
+| TI-74 | **Move the same note twice while syncing is stuck and the second move snaps back.** | Open | TI-65 |
+| TI-75 | **Switching workspace at the wrong moment can show one workspace's notes under the other's name.** | Open | — |
+| TI-78 | **A browser fault late in a long session is silently never reported.** | Open | — |
+| TI-79 | **An agent waiting on a build can hang forever and stop answering messages.** Checked-in scripts are now refused if they wait this way; ad-hoc waits rely on a written rule. | In Progress | — |
+| TI-82 | **Merged branches pile up on GitHub — 247 at last count — because the documented merge step silently fails to delete them.** | Open | — |
+| TI-85 | **The check proving the save-then-read test still works could one day pass while proving nothing.** | Open | — |
+| TI-87 | **A dropped connection while installing dependencies paints a red X on a pull request that did nothing wrong.** | Open | — |
+| TI-88 | **A merge can be called safe and then refused seconds later, and the cleanup that follows can close the pull request.** | Open | — |
+| TI-89 | **On a Mac, the merge-safety self-test reports nine false failures and blames itself, when the machine's date command is the real cause.** | Open | — |
+| TI-90 | **A change can land on the main branch with nothing checked against it, and nothing says so.** A daily check now names such changes; the cause is unknown. | In Progress | — |
+| TI-91 | **The merge-safety check can say "safe" while a release is running, if the machine's clock is over ten minutes fast.** | Open | — |
+| TI-92 | **A finished item can stay in this list looking like open work, because the check for half-archived items covers bugs only.** | Open | — |
+| TI-93 | **A change the release pipeline never saw can still be reported as checked.** | Open | TI-90 |
+| TI-94 | **A merge can quietly restore deleted work — no conflict, every check green — so closed items reappear and finished changes are undone.** | Open | — |
+| TI-95 | **Changes can sit undelivered for weeks after a failed release, and nobody is told.** A 25-day gap has already happened. | Open | — |
+| TI-96 | **The nightly quality check on meeting summaries produces no scores at all if the marking model sends one unreadable reply.** | Open | — |
+| TI-97 | **On Windows, one of the repo's checks reports a failure that is not real.** | Open | — |
+| TI-98 | **A fault in the desktop app is never reported anywhere, so problems on the recording machine surface only if someone notices.** | Open | — |
 
-| ID    | Item                                                                           | Status                                                                                                                                  |
-| ----- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
-| TI-1  | Decide on a server-state library (TanStack/SWR) vs hand-rolled                 | ✅ Done — ADR 0010 (stay hand-rolled)                                                                                                   |
-| TI-2  | Stricter TypeScript compiler flags beyond `strict`                             | ✅ Done — → Phase 19 (19-B/19-C)                                                                                                        |
-| TI-3  | Frontend state-management hygiene — colocation + Context perf                  | 🟡 Partly — Context perf done (19-D); **colocation Open** (ongoing convention)                                                          |
-| TI-4  | Core Web Vitals — bundle budget + CLS + transitions                            | ✅ Done — → Phase 19 (19-I)                                                                                                             |
-| TI-5  | Network resilience — retry transient failures with backoff                     | ✅ Done — 20-G                                                                                                                          |
-| TI-6  | XSS hardening — allowlist URL schemes on `href`/`src`                          | ✅ Done — → Phase 19                                                                                                                    |
-| TI-7  | ESLint `jsx-a11y` + `import` rules + `@/` alias                                | 🟡 **Partly** — `@/` alias, `import-x/order`, **jsx-a11y (19-F3)**, **typed-lint (19-B `recommendedTypeChecked`)** all done; only `import-x/no-unresolved`/`no-cycle` (needs `eslint-import-resolver-typescript`) remain |
-| TI-8  | Migrate `App.css` to CSS Modules                                               | ✅ Done — 14-P                                                                                                                          |
-| TI-9  | Upgrade GitHub Actions to Node.js 24                                           | ✅ Done                                                                                                                                 |
-| TI-10 | Resolve ESLint warnings in `AuthContext.tsx`                                   | ✅ Done — #172                                                                                                                          |
-| TI-11 | Add `cdk synth` to the pre-commit hook                                         | ✅ Done — #208                                                                                                                          |
-| TI-12 | Split the single API Lambda (CQRS + async projectors)                          | ✅ Done — → Phase 27 (Stage 1)                                                                                                          |
-| TI-13 | Reduce Lambda SnapStart costs                                                  | ✅ Done                                                                                                                                 |
-| TI-14 | Break down the monolithic `App.css`                                            | ✅ Done — 14-P (merged into the CSS-Modules migration)                                                                                  |
-| TI-15 | Add a shared modal focus-trap utility                                          | ✅ Done — #211                                                                                                                          |
-| TI-16 | Make the projection-rebuild endpoint robust                                    | ✅ Done — → Phase 24                                                                                                                    |
-| TI-17 | Auto-backfill a new projection on deploy                                       | 🔲 **Open** — still a real gap (no rebuild step in `.github/workflows`); P24 dependency now cleared. P23 shipped, so re-home as a standalone deploy-job step / next projection-adding slice |
-| TI-18 | Rebuild emits delete tombstones for `NoteSearchView`                           | ✅ **Done** — Phase 24-B upsert-and-reconcile prunes deleted notes + hard-deletes stale tombstones                                       |
-| TI-19 | Stabilise the flaky `TagsJourney` E2E                                          | ✅ **Done** — correctness fix [BUG-22](phases/phase-bugs-archive.md#bug-22--multi-tag-add-drops-a-pill-under-ryw-2-async-reads--consistency-token-slot-overwritten-by-an-older-version) (deploy #551, E2E 20/20 first-try); residual test-robustness follow-up closed — tag-pill assertions now reload-tolerant |
-| TI-20 | `WorkspaceList` reads via full table Scan, not a per-user GSI                  | 🔲 **Open** — confirmed still `Scan`+`ConsistentRead` (`DynamoDbWorkspaceListStore`); P23 shipped without it, so "fold into P23" is moot — re-home as a standalone GSI slice (pair with TI-33) |
-| TI-21 | CI pipeline hygiene — skip no-op deploys, cancel superseded, cache Playwright  | ✅ Done                                                                                                                                 |
-| TI-22 | Skip backend publish + `cdk deploy` on frontend-only pushes                    | ✅ Done — `detect-changes` gate (2026-06-11)                                                                                            |
-| TI-23 | Generalise append-retry-on-conflict beyond `NoteCommandHandler`                | 🔲 **Open (deliberately deferred)** — `ActionItemCommandHandler` has no retry by design (single-user app). BUG-28 already added store-level `TransactionConflict`→`ConcurrencyException` for all aggregates; only the shared retry-loop extraction is left — do it only if a 2nd handler needs it |
-| TI-24 | `deploy-production` hangs at "Configure AWS credentials"                       | 🟡 Mitigated — `timeout-minutes` shipped (#222); **root cause Open**                                                                    |
-| TI-25 | Add a `NoteEditor` component test for the image-ordering invariant             | 🔲 **Open** — `NoteEditor.test.tsx` now exists (link-hardening + BUG-24 resolve-before-parse) but does **not** cover the 25-B paste→presign→PUT invariant (no `blob:`/unmapped `src` reaches `onChange`; PUT failure removes the node); add those cases |
-| TI-26 | Zero-downtime deployments — frontend stale-chunk 404s; backend canary/rollback | ✅ Done — → Phase 26                                                                                                                    |
-| TI-27 | Frontend build Node 20 → 24 + lockfile regen (dep-audit T1)                    | ✅ Done — #237, deploy #528                                                                                                             |
-| TI-28 | ASP.NET 10 servicing + AWS SDK patch bumps (dep-audit T7)                      | ✅ Done — #241, deploy #530                                                                                                             |
-| TI-29 | Vite 5 → 7 + Vitest 2 → 4 (dep-audit T2)                                       | ✅ Done — #245, deploy #535 (held at Vite 7; Vite 8 now GA = future)                                                                    |
-| TI-30 | React 18 → 19 (dep-audit T3)                                                   | ✅ Done — #246, deploy #536 (zero code changes)                                                                                         |
-| TI-31 | TypeScript 5.6 → 6.0 (dep-audit T4)                                            | ✅ Done — #249, deploy #539 (dropped deprecated `baseUrl`)                                                                              |
-| TI-32 | Prime the ASP.NET pipeline before the SnapStart snapshot (first-request ~7 s)   | ✅ **Done** — #260, deploy #552. Priming hook live; cold p50 7.92→4.82 s (−39%, n=7 prod). Residual CPU gap → TI-36                  |
-| TI-33 | `NoteCardList` reads via full-table `Scan` + `ConsistentRead`, not a GSI/Query  | 🔲 **Open** — confirmed still `Scan`+`ConsistentRead` (`DynamoDbNoteCardListStore`); ~840 ms at 234 rows, O(all notes). P23 shipped without it — re-home as a standalone GSI slice with TI-20; also re-check whether `ConsistencyGate` makes the strong read redundant |
-| TI-34 | Make Lambda naming specific & correct everywhere                                | 🔲 **Open — premise updated** — 27-D **shipped**, so the live functions ARE **Command + Query + Projector** Lambda (CDK ids correct). **15 files** still say "API Lambda"/"single Lambda" (re-grepped 2026-08-09), of which **7 are living docs** that actively mislead: `CLAUDE.md` (Stack: "behind a single Lambda"), `architecture.md`, `observability.md`, `roadmap.md`, `adr/README.md`, `adr/0009`, `guides/debugging-with-x-ray.md`. The other 8 are era-stamped (phase-12/18/25/27, learnings, workflow-log, this doc + its archive) and should stay |
-| TI-35 | ReadyToRun-publish the API Lambda (AOT-precompile to cut first-request JIT)     | ✅ **Done** — #260, deploy #552. R2R live (IL_ONLY cleared on Api/AWSSDK/JwtBearer); part of the −39% cold-start cut. Pairs with TI-32 |
-| TI-36 | Raise API Lambda memory 256→512 MB to cut residual cold-start CPU time          | ✅ **Done** — #270, deploy #562. 512 MB live (prod config confirmed); cold p50 4.82→2.24 s, warm 118→29 ms. End-to-end 7.92→2.24 s (−72%) |
-| TI-37 | Capture **all** frontend errors in RUM — failed resource loads (`<img>` 403s) are invisible | ✅ **Done** — #268, deploy #557 (2026-06-13). Capture-phase `window` error listener forwards `<img>`/`<script>`/`<link>` load failures to RUM via `cwr('recordError')` (rides `JsErrorCount`); real JS errors skipped to avoid double-count. Dashboard widget retitled |
-| TI-38 | Expected 409/404 outcomes log at `Error` on the ops dashboard — framework double-logs | ✅ **Done** — #267, deploy #556 (2026-06-13). Replaced `UseExceptionHandler` with a try/catch middleware that maps every exception itself, removing ASP.NET's `ExceptionHandlerMiddleware` from the pipeline — each request now logs exactly one line at the `Map()`-implied level (Warning for 409/404, Error once for 500s) |
-| TI-39 | Chronic cold-start E2E flakiness red-gates nearly every deploy | ✅ **Done** — 2026-06-13. Was **four stacked causes**, not one (BUG-26 umbrella): projector cold-lag → fixed by a warm-up that **drains the projector to head** before the suite + 15 s global Expect timeout + reload-tolerant asserts **and actions**; plus two real bugs found en route ([BUG-27] lost-write contention, [BUG-29] projector image-purge IAM). Residual concurrent-multi-tag race carved out as [BUG-28] (quarantined). Write-up: [docs/learnings/deploy-gate-deflake-stacked-causes.md](learnings/deploy-gate-deflake-stacked-causes.md) |
-| TI-40 | Scoped read-only AWS creds so a cloud routine can run `observability-review` automatically | 🔲 **Open** — raised 2026-06-13. The `observability-review` skill exists but a scheduled **cloud** agent can't reach prod (`--profile prod` is local-only), so a weekly automated sweep is impossible today. Add a least-privilege read-only CloudWatch-Logs/Metrics + RUM + X-Ray role (OIDC-federated, no static keys) the cloud runner can assume, connect GitHub, and wire the weekly routine |
-| TI-41 | Fold the `GetActions` cross-stream re-poll into `ConsistencyGate` (existence wait)            | ✅ **Done** — #289, deploy #589 (2026-06-15) via **Option B**. `GetActions` had a hand-rolled `Task.Delay(100)×10` loop *beside* the gate to ride out note-vs-action cross-stream projector lag. Added `IConsistencyGate.WaitForPresenceAsync<T>` (bounded presence-poll, shares the version wait's interval/cap/delay/logging) and replaced the loop with it — the only `Task.Delay` flagged as a smell in the 2026-06-14 audit is gone |
-| TI-42 | Residual E2E flake — post-reload cards list reads empty (`FilterBackNavigation`/`NoteDelete`/`NoteReadYourWrites`) | ✅ **Done — confirmed 2026-08-09** (fix PR #390, deploy #694). The projector-lag mechanism this item describes is closed, and the **two** post-fix hits prove it rather than contradict it: #703 (`NoteDelete`) and #714 (`FilterBackNavigation`) both show every cards read **gated and fresh** — so the gate worked — with `page.Url` on the **note-detail route**, i.e. an *absent* list, not a lagging one. That residual was a **different, navigation** defect, closed by [BUG-38] #418 (`SaveAndReturnAsync` now awaits the URL leaving `/notes/`) + [BUG-61] #425. Deploy **#720 is #418's own sha**, and both hits predate it. **21 consecutive clean deploys #720–#740**, per-attempt (`flake-watch.sh 695`), 38/40 across the whole window |
-| TI-43 | Hard 120 s per-test E2E timeout so no test can hang the deploy gate                          | ✅ **Done** — PR #293, deploy #595 (2026-06-17). `E2EFactAttribute : FactAttribute(Timeout=120_000)` across all journeys. Closes the 44-min-hang class (PR #291). Verified it fires (xUnit `Timeout` is silently ignored when parallelization is disabled — confirmed via a throwaway probe) |
-| TI-44 | Close BUG-31 layer 3 — note-detail read hangs `loadingDetail` ~30 s after reopen+edit         | ✅ **Done — hypothesis disproven, symptom closed** (re-verified 2026-08-09). Layer 3 was **not** a stuck gated read: the note held only the image, so removing it left content blank → the header renders `cancel-button` instead of `save-button` **by design**, and the click never resolved. Fixed in [BUG-31] (PR #397, deploy #701) by giving the note durable body text; journey **un-quarantined** (no `Skip` in `tests/Browser.E2E/`) and **6/6 clean** (#701–#706). The residual stale-refetch-blanks-a-note was carved out as [BUG-48] and is **Done** (#436). No 30 s `loadingDetail` UX cliff exists |
-| TI-45 | `lazyChunkError` RUM event isn't alarmable — uses `recordEvent`, not `recordError`                | 🔲 **Open** — raised 2026-06-18 (Hawk nit, PR #300). 19-I1's `LazyNoteEditor` reports a failed editor-chunk import via `recordRumEvent('lazyChunkError', …)` → `cwr('recordEvent')`, which lands in the RUM log group (consistent with the `deadNoteLink` precedent) but does **not** increment `JsErrorCount` or fire the error-rate alarm. Deliberate at ship (meets the 19-I1 spec). Decide whether a failed editor load should be *alarming* — if so, route it through `recordError` like `rum.ts:reportResourceError`. Low urgency (lazy-chunk failures are rare and self-heal via the chunk-reload guard) |
-| TI-46 | Pre-tokenize search fields into the `NoteSearchView` projection (search is O(notes × tokens × terms) per query) | 🔲 **Open** — raised 2026-06-22 (Hawk perf note, PR #312/BUG-35). The word-level ranker re-tokenizes every field (`Title`/`Body`/`FinalNotesText`/`ActionItemsText`/each tag) of **every** note on **every** query — a `GeneratedRegex.Split` + LINQ per field plus an O(token²) `Fuzz.Ratio` per token for terms ≥ 4 chars. Fine at current single-user scale and the 50-result cap; **do not act until measured** (per the measure-first guardrail). When the corpus grows, fold the token list into the `NoteSearchView` projection at fold-time (one event-version bump + rebuild) so the per-query regex cost disappears and ranking reads precomputed tokens. Low urgency — premature at present volume |
-| TI-47 | Calendar auth: replace the out-of-band SSM minting tool with proper in-app OAuth + a per-user server-side refresh-token store | ✅ **Graduated → [Phase 34](phases/phase-34.md)** (2026-06-23) — absorbed as Phase 34's in-app-OAuth foundation (34-A: token store + connect flow; 34-D: retire the SSM path). _Original note:_ Both Google (Phase 9) and Microsoft (32-A) mint a refresh token via a one-shot CLI into a single SSM parameter — fine for this single-user app, wrong for multi-user. The real pattern: in-app "Connect calendar" → OAuth auth-code + PKCE → backend exchanges the code → refresh token persisted **per user keyed by `sub`** (graduates onto the existing `DynamoDbRefreshTokenStore`/auth-tokens table) → self-service "reconnect" banner on `invalid_grant`. Aligns with Phase 30's Google server-side-token-store direction. Low urgency while single-user; prerequisite for ever sharing the app |
-| TI-48 | Multipart/chunked upload for long call recordings (33-A buffers the whole WAV in memory) | 🔲 **Open** — raised 2026-06-23 (Phase 33-A). The recording upload buffers every PCM chunk in memory for the whole meeting and PUTs one WAV on Stop (~1.9 MB/min at 16 kHz mono 16-bit → a 2 h meeting ≈ 230 MB, approaching the 500 MB advisory cap). Fine for the single-user MVP. When long meetings matter, stream to S3 via multipart upload (flush buffered chunks past a threshold) so memory stays bounded and the upload overlaps the recording instead of firing all-at-once on Stop. Low urgency |
-| TI-49 | ICS feed SSRF: close the DNS-rebinding TOCTOU with a `ConnectCallback` | 🔲 **Open** — raised 2026-06-25 (Phase 34-E, Hawk #2). `IcsUrlValidator.IsAllowed` resolves the user-supplied feed host and rejects private/internal IPs, but `HttpClient` then re-resolves DNS independently for the actual GET — so a rebinding host that answers public at check-time and private (e.g. `169.254.169.254` metadata) at fetch-time slips through (time-of-check ≠ time-of-use). The *trivially* exploitable redirect vector **is** closed (`AllowAutoRedirect=false`) and a 5 MB body cap is in. Accepted as a residual for the single-user app (the only "attacker" is the owner pasting a hostile URL into their own server). Fix: a `SocketsHttpHandler.ConnectCallback` on both ICS clients that resolves once, validates the connected `IPEndPoint` against `IcsUrlValidator`, and dials that IP directly (preserving the Host header for SNI/vhost) — so the IP checked == the IP connected to. Low urgency. Documented inline in `IcsUrlValidator.cs` + `docs/phases/phase-34.md` (34-E) |
-| TI-50 | ICS feed: cache the fetched/parsed feed instead of re-downloading every read | 🔲 **Open** — raised 2026-06-25 (Phase 34-E). `IcsFeedCalendarClient` (v1) re-downloads **and re-parses the entire ICS feed on every meetings read** — each Home load, day-navigation, and reminder check — with no server-side cache (10 s timeout). Fine at single-user scale, and a published ICS already lags Outlook by hours so frequent re-fetching adds little. When it matters, add a short in-memory cache keyed by URL+date with a small TTL (a few minutes) so repeated reads in the window reuse the parsed result. Low urgency. Documented inline in `IcsFeedCalendarClient.cs` (class header) + `docs/phases/phase-34.md` (34-E decision #5) |
-| TI-51 | Authorize workspace mutations from the event stream, not the async `WorkspaceListView` | 🔲 **Open** — raised 2026-06-25 (Phase 36-A, Hawk #1); re-verified 2026-08-09 at `src/Api/Handlers/WorkspaceHandlers.cs:139` (the check lives in the **endpoint handlers**, not `WorkspaceCommandHandler`). All three workspace mutations (`RenameWorkspace`, `DeleteWorkspace`, `SetWorkspaceTheme` — lines 67/92/119) gate ownership via `OwnsAsync` → `IWorkspaceListStore.GetAllAsync` (the **async** projection). Right after `POST /workspaces` the projector can lag, so a legitimate owner can get a spurious **404** (BUG-30 class). It is **fail-closed** (a lagging projection can only false-*deny*, never cross-user-*grant*) and the UI gates the picker behind the consistency-gated `GET /workspaces`, so it's not reachable in the real flow — hence low urgency, not a security hole. Fix **all three together** (don't diverge one handler): authorize from the event stream on the Command Lambda — read the stream and check the `WorkspaceCreated` envelope's `Metadata.UserId == currentUser` (user id rides the event metadata, see `ProjectionUpdater.ApplyWorkspaceEventsAsync`). Pairs with TI-20 (`WorkspaceList` GSI). Low urgency |
-| TI-52 | Keep the Projector Lambda warm to eliminate cold-start read-your-writes lag | 🔲 **Open** — raised 2026-06-30 (observability-review; deferred alternative to the [BUG-31] fix). The projector is a stream-triggered .NET Lambda with **no SnapStart and no keep-warm** (`NoteTakerStack.cs:673`, re-verified 2026-08-09), so after an idle gap (overnight/weekend) its first invocation cold-starts ~7 s while the read gate waits only 2 s → a fresh note reads missing/stale (11 gate timeouts/14 d in prod, at morning low-traffic hours). **BUG-31 is fixed the cheap way instead** — raise the `ConsistencyGate` cap 2 s→8 s so the reader tolerates the cold start (zero cost). This TI is the *durable* follow-up if the one-off cold spinner still bothers: keep the projector warm so cold reads stay fast. Two ways — (a) **scheduled ping**: an EventBridge rule invokes the projector every ~5 min with a synthetic event the handler no-ops → **~$0.00/month** but needs a warmer code path + is "almost always" warm (AWS can still reclaim between pings); (b) **provisioned concurrency = 1**: guaranteed warm, no code change, but **~$5.40/month 24/7** (~$3.60 active-hours-only) — recurring spend the "match resilience cost to scale" guardrail disfavours for a single-user app (cf. the 26-C canary revert). Prefer (a) if picked up. Low urgency — the gate-cap fix already removes the user-visible failure. |
-| TI-53 | `desktop/tests/*.spec.ts` never run in CI — the desktop suites are hand-run only | ✅ **Done** — delivered by #430 (deploy #728), written up as [TI-58](#ti-58-desktop-specs-run-in-the-pr-gate). **Filed twice:** raised here 2026-08-06 (Hawk, PR #417) and again as TI-58 on 2026-08-07 during [BUG-56], because the register was not checked before adding. Kept as the original record; TI-58 carries the detail. |
-| TI-54 | Every MCP tool failure logs as an `Error` with no exception detail — expected not-founds pollute the error view, real faults are undiagnosable | 🔲 **Open** — raised 2026-08-06 (observability-review). Both halves of the [TI-38] problem at once. The MCP SDK logs `"get_note" threw an unhandled exception.` (logger `ModelContextProtocol.Server.McpServer`) at **Error** for a deliberately-thrown `McpException` — i.e. for an *expected* business outcome. Verified live: calling `get_note` with a nonexistent GUID against prod on 2026-08-06 12:45:22 produced exactly the line, and the 2 prod Errors in the 14-day window (2026-08-05 12:03, 2026-08-06 08:05, `user_agent: Claude-User`) are the same benign shape. **Over-reporting:** every "note not found" from an MCP client shows up in the dashboard "All errors" widget as a backend Error. **Under-reporting (the worse half):** the line carries **no `exception_type` and no `stack_trace`**, so a *genuine* unhandled fault inside any MCP tool is byte-identical to a benign not-found and cannot be diagnosed at all. Fix: log MCP tool outcomes ourselves — map a deliberate `McpException` to Warning and log real exceptions with type + stack (an invocation filter around the tool call), or drop the `ModelContextProtocol.Server.McpServer` category out of the Error view and emit our own truthful line. **Deploy-time: neutral** (logging config only). Medium urgency — the MCP surface is now large (35-F reads + 41-A writes) and is currently a blind spot |
-| TI-55 | MCP `/mcp` connector — per-`sub` rate limiting + bound the per-call projection scans | 🔲 **Open** — raised 2026-06-25 (35-F dual security review, both APPROVE; the two non-blocking LOW findings). An allowlisted OAuth token can issue unbounded `tools/call`s (`MCP_ALLOWED_CIDRS` is empty = allow-all in prod), and `list_notes`/`get_action_items` do a full-table `Scan` per call. Item 2 folds into TI-33/TI-20 (same `Scan`→`Query` change). Cost/latency, not confidentiality — the user filter is correct. |
-| TI-56 | Alarm on `RefreshTokenStoreWriteFault` (sustained > 0) | 🔲 **Open** — raised 2026-07-29 (`obs-auth-login`, PR #411). The metric ships; the Phase 30 obs table specced the alarm, consciously deferred to avoid churning the DefaultPolicy/alarm-count infra assertions in the observability slice. Add the alarm on the existing `notetaker-alarms` SNS topic and update the alarm-count assertion in the same slice. |
-| TI-57 | `TodoList` read model is not wired into `ProjectionRebuildHandler` (projector-maintained only) | 🔲 **Open** — raised 2026-06-25 (Hawk nit, PR #350/37-A). The whole `TodoList` projection (todo + action rows, and now `Position` from 37-A) is built only by the async projector; `ProjectionRebuildHandler` has no `ITodoListStore`/`TodoListProjection`, so a rebuild can't re-derive it from the event stream — breaking the "projections are rebuildable" guardrail for this one read model. Pre-existing (not introduced by 37-A). Fix: wire `TodoListProjection` into `ProjectionRebuildHandler` mirroring `WorkspaceListProjection`. Low urgency (projector is the steady-state writer; no backfill needed today) |
-| TI-58 | Desktop specs run in the PR gate (headless + Electron under xvfb) | ✅ **Done** — this slice. Nothing ran `desktop/tests/` before: `pr.yml` had no desktop job and `publish-desktop.yml` packages without testing. BUG-52/53/56 all reached a user's machine as a result. |
-| TI-59 | Windows desktop CI job — packaging + a REAL whisper-server smoke test | 🔲 **Open** — raised 2026-08-07 ([BUG-56]). Un-gate `whisperServer.integration.spec.ts` on `windows-latest` with a cached `base.en` + a fixed WAV, resolving the binary through the production resolver (`whisperServerBinPath()`, added by [BUG-56] / #426) exactly as production does. This is the tier that proves the live engine actually transcribes. |
-| TI-60 | Packaged-installer journey with injected audio | 🔲 **Open** — raised 2026-08-07 ([BUG-56]). Drive the *packaged* app end to end with a known WAV pushed through a test seam (not a virtual-audio driver) and assert live transcript text appears within a latency budget. The only tier that would catch a live-latency regression. |
-| TI-61 | **A routing test fails on a busy machine even though nothing is wrong with it**, costing a thrown-away run and — the expensive part — a fresh investigation to re-establish that it is not a regression | 🟡 **In Progress** — mitigated, not closed. PR #470 raised the local-only budgets; the test ran to **5780 ms against a 5000 ms ceiling** under contention where unloaded it is 293 ms. **Stays open because two other files are predicted to exceed the new budget** — see [TI-61](#ti-61-a-routing-test-fails-on-a-busy-machine) |
-| TI-62 | `deploy.yml` still carries its own inline copy of the projector warm/drain bash | 🔲 **Open** — raised 2026-08-07 (alongside the on-demand E2E workflow). The warm-and-drain logic now lives in `scripts/warm-projector.sh`, used by `.github/workflows/e2e.yml`; `deploy.yml`'s `Warm the API + projector before E2E` step is a byte-for-byte duplicate of it. Deliberately NOT switched over in the same change: the merge queue was mid-flight through that exact workflow and a broken `deploy.yml` reds the shared gate for every slice and session. Two copies of a guardrail-critical step will drift — the drain is precisely what stops a cold projector red-gating the suite. Fix: replace the inline step with `bash scripts/warm-projector.sh` (same `API_URL`/`TOKEN` env), and verify on the next deploy that the step still logs `projector caught up to head`. Low risk, but do it on a quiet gate. |
-| TI-63 | Move note analysis off the synchronous request path | 🔲 **Open** — raised 2026-08-07 (BUG-58). Analysis runs inside the **29s** Command Lambda: 90d of prod data shows command-hosted Converse calls at median 2.6s but 17.9 / 21.5 / 23.6 / 26.4s in the tail, with a further **3.0-5.9s** of sequential post-Bedrock appends (`TagNote` per tag, `AddActionItem` per action, each re-reading an 89KB stream). Four invocations hit exactly 29.0s in 14 days — killed. BUG-58's 23s client deadline converts those kills into a visible 503, but it cannot create budget that isn't there: **any analysis needing >23s+tail simply cannot complete synchronously**, and a kill part-way through the appends leaves a note with a new summary and tags but no action items, with no event marking it incomplete. Fix: run analysis asynchronously (job + poll, or a dedicated Lambda off a queue with a longer timeout, mirroring the TranscribeCompletion path that already has 60s), so duration stops being bounded by the API request. Medium urgency — the deadline makes the failure visible and retriable, so this is about the ~12-19% of analyses that are near or over budget, not about data loss. **2026-09-16: sizing is stale — since the Opus 4.6 switch, 7 of 9 in-app analyses in 30 days timed out; see [BUG-84](phases/phase-bugs.md#bug-84--analysing-a-longer-meeting-times-out-and-the-advice-to-retry-cannot-work), which this now blocks.** |
-| TI-65 | **An action list, folder tree or workspace list can still snap back to an older copy moments after the user changes it** | 🟡 **Partly done** — raised 2026-08-08 (Hawk, PR #436 / [BUG-48]). The home note list shipped 2026-08-11 (PR #459); `getActions`, `getFolders` and `getWorkspaces` remain. Detail in [TI-65](#ti-65-the-other-three-gatedread-callers-can-still-store-a-stale-body-over-good-data) below. |
-| TI-66 | Extract the read-rebuild-append retry shared by three command handlers | 🔲 **Open** — raised 2026-08-10 (Hawk, PR #446 / 50-B). `TodoOrderCommandHandler` now carries a third near-identical copy of read → rebuild → handle → append → catch `ConcurrencyException` → backoff+jitter → `WriteContentionException` on exhaustion (`NoteCommandHandler`, `TodoCommandHandler`, `TodoOrderCommandHandler`). The copies drifted once already: the todo-order one was simply **missing**, which is what made 50-B's paired writes race into a 409 the client silently drops. A shared `AppendWithRetryAsync` helper makes the retry the default rather than something each handler must remember. |
-| TI-68 | **The pre-commit hook's vitest run is unreliable on WSL — capping worker threads makes it both reliable AND ~4x faster** | ✅ **Done** — PR #455, merged 2026-08-10. Raised 2026-08-10 (51-B). The hook runs the full 1030-test suite on every commit touching `web/`. Unconstrained on WSL it fails non-deterministically with scattered `Test timed out in 5000ms` errors on files that cannot fail for a real reason (`taskListMarkdownRoundTrip.test.ts` is a pure string function with no async at all). **Measured on 51-B, same commit, same tree:** unconstrained → 8 failed / 1214 s, then 33 failed / 835 s; `VITEST_MAX_THREADS=3` → 1030 passed / 154 s, but **3 is marginal** — a later run at 3 still failed (5 failed / 714 s, timeouts in `ContextMemoization`, `ListView`, `useDocumentTitle`, none touched by the change). `VITEST_MAX_THREADS=2` → **1032 passed / 139 s**, and was the only setting that passed first time. Across 51-B the hook blocked 5 commit attempts and cost ~90 min without ever finding a real fault. Capping is *faster*, not a tradeoff — over-subscribed vmThreads workers thrash on the Windows FS (`setup` alone was 9179 s cumulative in the failing run vs 872 s capped). Cost 3 blocked commit attempts, ~50 min, on a change that was green throughout. **Do NOT "fix" this by forcing `CI=true`** — that selects the `forks` pool, which `web/vite.config.ts` documents as segfaulting on WSL; tried during 51-B and it was worse (53 `Failed to start forks worker` errors, 44 of 97 files never ran). **Fix (PR #455):** set top-level **`maxWorkers`** in `web/vite.config.ts` for the non-CI branch only (CI uses `forks` and is unaffected), so every clone gets the reliable path without needing to know the env var. **Correction — this row originally prescribed `poolOptions.vmThreads.maxThreads`, which Vitest 4 REMOVED and accepts as a silent deprecated no-op**: written that way the cap looks configured, reviews as correct, and never applies. Caught only by reading the deprecation warning on a throwaway single-file run. Same shape as [BUG-65]'s guards that could not fire and [TI-67]'s never-emitting RUM events — do not follow the prescribed fix literally without checking the option still exists. **Cap is deliberately NOT derived from core count:** the contention is filesystem and concurrent-session bound, not CPU bound, so more cores do not buy more workers; 2 is the measured safe value, bounded below via `availableParallelism()` for small machines. **What the evidence actually supports — read this before designing another experiment.** The claim is *"capping prevents the contention"*, **not** *"capping survives contention"*. Two capped runs are 2+2=4 workers on a 16-core box, which is not a contended condition at all — so a capped-overlap experiment **cannot reproduce the failure by construction**, and two green capped runs are the expected result rather than a test of the fix. Proof is the asymmetry: uncapped+contended fails reproducibly (**3 independent runs, 2 sessions** — 8 failed/1214 s, 33 failed/835 s, 12 failed/1204 s), capped has **never** failed in 6 runs, including one at load 14.29 against a heavy competing suite (1043 passed/328 s) and one straight through the pre-commit hook first time (1043 passed/299 s). Two paired overlapping capped runs (2026-08-10 18:46:40 and 18:46:45) were both clean at 1043/0. |
-| TI-69 | **Every push left a red X on the commit that meant nothing was broken — 162 of them — and the on-demand E2E runner they came from had never once been usable** | ✅ **Done** — raised 2026-08-10, fixed 2026-08-10 (PR #453). Every push, to `main` and to every slice branch alike, created a failing `E2E (on demand)` run with **zero jobs**: nothing ran, no test failed. **Cost:** every commit carried a false red mark — the signal that teaches people to stop reading CI — and the 10-clean-run flake bar still had no cheap way to be met, which is the exact job this workflow was added to do. **Cause:** `timeout-minutes: ${{ fromJSON(inputs.runs) * 4 + 15 }}` (line 61). GitHub Actions expressions have **no arithmetic operators**, so this is a *parse* error, not a runtime one — the file never loaded, `on:` was never read, and `workflow_dispatch` was never registered. An unparseable workflow is reported by GitHub as a zero-job failing run on push, named by its file path rather than its declared `name:`. Verbatim from the API on a dispatch attempt: `HTTP 422: failed to parse workflow: (Line: 61, Col: 22): Unexpected symbol: '+'`. **Corrects this row's original diagnosis, which was inferred from the run list alone:** no second workflow or repo setting ever added a push trigger, and it did not begin at 14:34Z on 2026-08-10 — **all 162 runs since the workflow was introduced in #429 on 2026-08-07 are this**, and there has never been a successful or dispatched run. The giveaway was available all along: `gh run view <id>` says *"This run likely failed because of a workflow file issue"*, and `gh workflow run` returns the parse error verbatim — neither was checked. **Fix:** compute the timeout in bash in a small `plan` job and pass it via `needs`, which *is* an allowed context in `timeout-minutes`; keep arithmetic out of `${{ }}`. Input validation moved there too, so a bad `runs` fails in ~20s rather than after Playwright install while the shared `deploy` concurrency group is held. **Proof:** the fixing branch's push produced no `e2e.yml` run — the first push in the repo's history not to — while a parallel branch pushed minutes later still did. **Verified end to end:** run [#166](https://github.com/simonkirkham/ai-note-taker/actions/runs/31408911704) is the workflow's first ever green run — `plan` sized the timeout, the suite ran, and the account guard printed `Target account 739754704263 matches E2E_TEST_ACCOUNT_ID.` after [PR #454] moved it to job level. |
-| TI-70 | **Nothing stops a broken workflow file reaching `main`, so the next one also shows up as an unexplained red X on everyone's commits rather than as a failed check** | 🔲 **Open** — raised 2026-08-10, out of [TI-69]. That defect survived 3 days and 162 red marks, and was first written up with a confidently wrong root cause, because an unparseable workflow does not fail like a test: it produces a zero-job run named by its file path, attached to a push the workflow does not even subscribe to, with no annotation on the PR that introduced it. **Cost:** every commit in the repo carries a false red X until someone happens to run the one command that reveals the parse error, and the affected workflow silently does not exist in the meantime. **Fix direction:** run `actionlint` (single Go binary, ~2s, no runtime deps) over `.github/workflows/**` and `.github/actions/**` in `docs-check.yml`, which is the workflow that already exists to gate paths `pr.yml` ignores — note `pr.yml` paths-ignores nothing relevant here, but `docs-check.yml` is the cheaper host. There is no pre-commit hook to mirror it in (removed 2026-08-11), so CI is the only host, on the same terms as `check-doc-ids.sh` (CI is the real gate; the hook needs per-clone `core.hooksPath`). actionlint catches the exact class — expression syntax, unavailable contexts, unknown keys — plus shellcheck over `run:` blocks, of which this file has many. **Verify with:** re-introducing `${{ fromJSON(inputs.runs) * 4 + 15 }}` must fail the check. **Detail, and the checks that must run before this is archived, in [TI-70](#ti-70-what-must-be-true-before-ti-70-is-archived) below.** |
-| TI-72 | **An API deployed by hand is measurably slower to answer its first request than the identical code shipped by CI, and nothing says so** | 🔲 **Open** — raised 2026-08-10 (Hawk, PR #457 / [TI-64]). Every documented by-hand publish — `README.md`, `CLAUDE.md` `## How to run` — omits `-r linux-x64 --self-contained false`, the flag pair `pr.yml:62` and `deploy.yml:168,523` use to ReadyToRun-precompile the API Lambda. TI-35 shipped R2R precisely to cut first-request JIT; a manual `cdk deploy` from a clone silently undoes it and leaves prod that way until the next CI deploy. **Fix:** make the documented publish match CI's flags exactly, and prefer a single `scripts/publish-lambdas.sh` the docs, the hook and the workflows all call, so the flags exist once. |
-| TI-74 | **Move the same note twice while the sync is stuck and the second move snaps back — the first move used up that note's protection** | 🔲 **Open** — raised 2026-08-11 (Hawk, PR #459 / [TI-65]). Detail in [TI-74](#ti-74-the-stale-list-guards-budget-is-keyed-by-note-not-by-write) below. |
-| TI-75 | **Switch workspace at the wrong moment and the app can show one workspace's notes under the other's name** | 🔲 **Open** — raised 2026-08-11 (Hawk, PR #459). Detail in [TI-75](#ti-75-gatedreads-retries-re-resolve-the-workspace-url-mid-gate) below. |
-| TI-80 | **A broken workflow committed straight to `main` still reaches everyone unchecked — the new lint only ever runs on pull requests** | ✅ **Done** — raised 2026-08-11 (reviewer, PR #464 / [TI-70]), fixed 2026-08-12 (PR [#471](https://github.com/simonkirkham/ai-note-taker/pull/471), squash `14c6c034`). Two independent Hawk reviews, both **Approved with minor comments**, no must-fix in either; their should-fixes are filed as [TI-83] and [TI-84] rather than taken as further rounds. [TI-70] closes the PR route; this is the other one. `docs-check.yml` declared `on: pull_request` only, and `CLAUDE.md` routes doc edits directly to `main`, so a workflow file changed by a direct push was linted by nothing — the same 162-red-X outcome [TI-69] produced. The prescribed fix held: `push: branches: [ main ]` with the same `paths:` list, both jobs, one file changed. **One thing the row did not predict** — the `concurrency` group had to change too; detail in [TI-80](#ti-80-the-push-trigger-needed-a-concurrency-change-the-row-did-not-predict) below. **Verified, not asserted:** six pushes on `proof/ti80-push` produced no run when the branch was outside the filter, green when clean, **red on TI-69's actual line** (`parser did not reach end of input ... "*", "INTEGER"`, run 31542276296), green again with the guard's exit code deliberately swallowed while `doc-ids` stayed unchanged, and red again on revert. Full evidence in the PR comment. **The one gap the PR recorded as unproven — `main` specifically — closed on merge:** the squash commit was itself the first push to `main` under the new trigger, producing run [31572859601](https://github.com/simonkirkham/ai-note-taker/actions/runs/31572859601), `event=push`, `branch=main`, `workflows: success` in 7s. Nothing was inferred; the run exists. |
-| TI-79 | **An agent waiting for a build or a test run to finish can hang forever without saying so, and stops answering anyone trying to reach it** | 🟡 **Partly done / mitigated** — PR [#479](https://github.com/simonkirkham/ai-note-taker/pull/479), open. CI now refuses this shape in any committed script; the ad-hoc case it actually happened in is covered by a written rule, not a check, and cannot be. Detail in [TI-79](#ti-79-a-wait-loop-that-scans-process-cmdlines-can-never-exit) below. |
-| TI-85 | **The check that proves our read-your-writes probe still works can be fooled by a read the previous page started, so it could one day pass while proving nothing** | 🔲 **Open** — raised 2026-08-12 (Hawk, PR #473 / [BUG-79], classified should-fix; not blocking, and the reviewer said so). `AppPage.ObserveActionsReadTokenAsync` clears the probe **before** reloading, so its sampling window includes any read the outgoing page starts between the route being installed and the reload. In the ungated arm such a read still carries the token, which would report the control as gated and fail the check for a reason unrelated to what it tests. **Why it is a should-fix and not a must-fix:** the ungated path has never once reported a token across ~25 recorded runs (batches of 6/10, 5/10 and 10/10); every observed failure was the *gated* arm losing its seed, which is fixed. So this is a latent hole, not an active one. **Fix:** take a sequence-number boundary just before the reload and ignore anything recorded below it. The same change closes the sibling race on the ungated arm's `ryw.*` delete, which is a live-page write with the same exposure — do that deletion in an init script too, added first so the gated arm's later seed still wins. **Why it matters beyond this one test:** it is the same class as the bug the probe was built for — a measurement that looks like a property of the system turning out to be a property of when it was taken. |
-| TI-82 | **247 merged branches sit on the remote because the documented merge step silently fails to delete them, and the docs said that failure was harmless** | 🔲 **Open** — raised 2026-08-11 ([TI-80] session, from the coordinator's measurement). Detail in [TI-82](#ti-82-the-documented-merge-step-deletes-neither-branch) below. |
-| TI-78 | **A browser fault that happens late in a long session still goes unreported, and nothing says so** | 🔲 **Open** — raised 2026-08-11 ([TI-67] review). The injected RUM snippet in `.github/workflows/deploy.yml` never sets `sessionEventLimit`, so the client default of **200** applies: `canRecord()` is `session.record && !isLimitExceeded()`, and `isLimitExceeded()` is `session.eventCount >= 200`. With `telemetries: ["errors","performance","http"]` at `sessionSampleRate: 1`, HTTP and performance events alone can exhaust that inside one 30-minute session — after which **every** custom event is dropped silently (`sessionLimitExceeded++`, nothing logged). This lands hardest on exactly the signals [TI-67] just enabled, because faults tend to happen *after* someone has been working a while, and it is the same self-concealing shape TI-67 existed to fix. **Fix:** set `sessionEventLimit` explicitly in the snippet (0 = unlimited), and confirm by reading an event back late in a session rather than by reading the config. |
-| TI-87 | **A dropped connection while installing dependencies paints a red X on a pull request that did nothing wrong** | 🔲 **Open** — raised 2026-08-13 (hit by [CHANGE-41], PR #475, run [31677449442](https://github.com/simonkirkham/ai-note-taker/actions/runs/31677449442)). The `desktop` job's `npm --prefix desktop ci` runs Electron's `postinstall`, which downloads the ~100 MB Electron binary from GitHub releases. One `RequestError: socket hang up` failed the job in 17 s; a plain re-run passed with nothing changed. **Same class as [TI-84]** — an unretried, uncached network fetch turning a transient blip into a red check — and the same two fixes apply: retries (`npm config set fetch-retries` does **not** cover Electron's own download; it reads `ELECTRON_GET_...` / needs a retry wrapper) and an `actions/cache` on the Electron download cache keyed by version, which also removes a ~60 s download from every run. **Worth fixing together with [TI-84]**, since one cache-and-retry pass covers both. **Bound the retry, don't just add one** — [TI-84]'s review found that a naive retry delay is a lower bound, not an upper one: a rate-limited response carrying `Retry-After: 120` makes the client wait the longer of the two and blow the job's timeout, converting a 6-second red X that *names the failed download* into a timeout that names nothing. Whatever retry this uses needs an explicit total-time cap. |
-| TI-88 | **A merge can be waved through as safe and then refused seconds later, and the cleanup that follows can close the pull request** | 🔲 **Open** — raised 2026-08-13, hit live on PR [#469](https://github.com/simonkirkham/ai-note-taker/pull/469): the gate printed `GREEN — safe to merge`, the merge was refused ~3 s later on conflicts, and the branch cleanup that assumed it had landed auto-closed the PR. Detail in [TI-88](#ti-88-a-gate-verdict-has-an-expiry-and-the-window-between-reading-it-and-acting-on-it-is-where-it-fails) below. |
-| TI-89 | **On a Mac, the self-test that guards the merge gate reports nine failures accusing the merge-gate logic, when the only thing wrong is the machine's `date` command** | 🔲 **Open** — raised 2026-08-13 (Hawk, PR [#469](https://github.com/simonkirkham/ai-note-taker/pull/469) / [TI-81], should-fix). Measured, not argued: `scripts/test-merge-gate.sh:84-85` builds its clock fixtures with `date -u -d '-45 minutes'`, which only GNU coreutils supports. Run against a `date` without `-d`, the suite prints **`MERGE-GATE SELF-TEST: FAILED`, 45 PASS / 9 FAIL**, and every failure message names orphaned run records rather than the clock. Fix: one guard that exits loudly if `date -u -d` is unsupported. CI is `ubuntu-latest`, so it costs nobody today. Detail in [TI-89](#ti-89-the-merge-gates-self-test-blames-the-merge-gate-when-the-machines-date-command-is-the-problem) below. |
-| TI-91 | **The merge gate can say it is safe to merge while a deploy is genuinely running, if the clock on the machine reading it is more than ten minutes fast** | 🔲 **Open** — raised 2026-08-13. **Derived from reading `scripts/deploy-status.sh`, not from an observed miss** — and no reading taken afterwards could establish whether one has already happened. Detail in [TI-91](#ti-91-a-fast-clock-turns-the-merge-gates-stale-run-discount-into-a-fail-open) below. |
-| TI-92 | **A tracking item can be half-archived — copied into the archive but never deleted from the live list — and nothing notices, because the check that catches exactly this looks only at bugs** | 🔲 **Open** — raised 2026-08-13. **34 TI ids sit in both files today**, all pre-existing, so finished work reads as outstanding on the one column the human scans. Detail in [TI-92](#ti-92-half-archived-ti-items-are-invisible-because-the-live-vs-archive-check-covers-bugs-only) below. |
-| TI-90 | **A change can land in the main codebase with nothing checked against it at all, and nothing anywhere reports it** | 🟡 **In Progress** — raised 2026-08-13. Measured: commit `4727672f` carries **zero** check-suites from **any** app, while `14a4a48f`, `fb286458` and `c12fa2c9` around it each carry two. A daily backstop now reconciles `main` against its check-suites and names any such commit; the cause of the undelivered push event is still unknown. **The backstop is live, and its FIRST live run found a second instance** (PR #478, merged 87610e0f; run 34328044188, 2026-09-09). Over the last 50 commits on `main` it named two that nothing ever ran against: `4727672f` (the original evidence) and `95ff86cc`, which landed **2026-09-08** — so this is still happening, not a one-off from August. The registration check in the detail table was wrong as first written and is corrected there. Detail in [TI-90](#ti-90-a-commit-can-reach-main-with-no-check-suite-from-any-app-and-the-absence-is-why-nobody-noticed) below. |
-| TI-93 | **The backstop that catches an unchecked commit accepts any robot's answer, so a commit whose build pipeline never ran can still be reported as checked** | 🔲 **Open** — raised 2026-08-13 ([TI-90] review, PR #478). Detail in [TI-93](#ti-93-the-backstop-accepts-any-apps-check-suite-so-a-commit-the-build-pipeline-never-saw-still-reads-as-checked) below. |
-| TI-94 | **A merge can quietly put back work someone deliberately deleted — no conflict, no marker, every check green — so a closed item reappears as open work and another session's finished change is undone** | 🔲 **Open** — raised 2026-08-13. **Three confirmed instances in one day; only one was visible to any existing check, and one sat on `main` for 10 straight commits.** Archiving is exactly the delete-versus-surrounding-context operation the `merge=union` driver resolves wrongly, so it will recur. Interim gate, usable today: zero deleted lines in the diff against the **merge base** on an append-only file — diffing against `origin/main` instead reads every line `main` gained since your branch point as your deletion (**86** falsely accused vs **0** real, same branch, measured). Detail in [TI-94](#ti-94-a-merge-silently-restores-a-deleted-section-and-nothing-detects-it) below. |
-
-| TI-95 | **Changes can sit undelivered for weeks while everything looks healthy — the last deployment failed, nothing since then triggered another, and nobody is told** | 🔲 **Open** — raised 2026-09-08. **Observed: main's last deploy failed 2026-08-14 and the next one ran 2026-09-08, a 25-day gap in which the app received nothing.** Every commit between touched only docs/scripts/`.claude`, which `deploy.yml` paths-ignores, so no run re-tested the red state and no signal existed to notice it. Detail in [TI-95](#ti-95-a-failed-deploy-can-go-unnoticed-for-weeks-because-nothing-re-runs-it) below. |
-| TI-96 | **The nightly check on how good the app's meeting summaries are stopped running, and the reason is that the model doing the marking replied with something the tool could not read.** One unreadable reply aborts the whole night's run, so no scores are produced at all. | 🔲 **Open** — raised 2026-09-09. First failure after at least four consecutive good nights. Detail in [TI-96](#ti-96-one-unreadable-reply-from-the-marking-model-throws-away-the-whole-nights-quality-scores) below. |
-| TI-97 | **On a Windows machine, one of the repo's own checks says it has failed when it has not.** Running the checks before pushing reports a failure that the real build machine does not see, so the honest response — stop and investigate — is wasted every time, and the dishonest one is to learn to ignore a red check. | 🔲 **Open** — raised 2026-09-09. Detail in [TI-97](#ti-97-a-self-test-reports-a-false-failure-on-a-windows-machine-because-its-stand-in-for-github-is-invisible-there) below. |
-| TI-98 | **A fault in the desktop app is never reported anywhere — no error, no failed request, no failed analysis — so problems on the machine used for recording can only be found if someone notices and says so.** | 🔲 **Open** — raised 2026-09-16 (observability review). Detail in [TI-98](#ti-98-the-desktop-app-ships-with-no-browser-telemetry-so-its-faults-reach-nothing) below. |
-
-**2026-06-17 deploy-gate stabilisation session:** proved **10 consecutive green deploys** (#595 ×10). Root-caused and fixed a **44-min E2E suite hang** (PR #291's fire-and-forget response-body read on the reload loop) → replaced with a hang-proof, sync-only diagnostic (PR #292) and a **hard 120 s per-test cap** (**TI-43 done**, PR #293). **TI-42** cards-list flake did not recur in 13+ runs (not reproduced ≠ fixed; diagnostic now in place). **BUG-31** turned out to be three stacked causes — original image-reappear symptom fixed, `SaveAndReturnAsync` cards-refetch sync fixed (PR #297, suite-wide win), and a residual stuck-note-detail-read layer carved out as **TI-44**. Full write-up: [docs/learnings/e2e-gate-hang-and-the-diagnostic-that-caused-it.md](learnings/e2e-gate-hang-and-the-diagnostic-that-caused-it.md).
-
-> Items carry stable IDs in claim order (the `ID` column above); each detailed section below repeats its ID. Do not cache the highest id here — it goes stale on every claim (it read `TI-71` when the table already held `TI-72`); read it off the table, or run the script. **Never hand-pick the next id — run `scripts/next-doc-id.sh ti`.** Reference an item as `TI-N`. The dep-audit `T#` tags are retained in parentheses for cross-reference with the audit report.
-
-> **Dependency upgrade audit (2026-06-11):** full inventory + LTS recommendations in [docs/dependency-audits/dependency-upgrade-audit-2026-06.md](dependency-audits/dependency-upgrade-audit-2026-06.md). High + medium-urgency items (T1, T7, T2, T3, T4) are **all ✅ done** (TI-27/28/29/30/31). Low-urgency items (T5 lint-tooling batch, T6 Tiptap 3.26, T8 CDK 2.258, T9 Playwright 1.60, T10 xUnit v3) stay in the audit doc until picked up.
+> **Dependency upgrade audit (2026-06-11):** [report](dependency-audits/dependency-upgrade-audit-2026-06.md). The high and medium items are done; the low-urgency ones (T5 lint tooling, T6 Tiptap 3.26, T8 CDK 2.258, T9 Playwright 1.60, T10 xUnit v3) wait in the report until picked up.
 
 ---
 
-> **Done items are condensed in [technical-improvements-archive.md](technical-improvements-archive.md)** (one terse entry each, IDs/anchors preserved). The Summary table above stays the full index; only **open / partly-done** items keep a detailed section below.
-
----
+# Detail _(evidence and fix direction — skip when reviewing)_
 
 ## TI-3. Frontend state-management hygiene — colocation + Context performance
+
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: Frontend state-management hygiene — colocation + Context perf — 🟡 Partly — Context perf done (19-D); **colocation Open** (ongoing convention)
 
 **Context-performance half ✅ Done** as **[Phase 19-D](phases/phase-19.md)** (2026-06-05): `AuthContext`/`ToastContext` provider values memoised, Auth actions `useCallback`-wrapped. **Colocation half — Open:** state colocation (keep state nearest its consumer; prefer component composition over Context for prop drilling) stays an ongoing convention, not a slice — candidate to fold into the `frontend-react` skill if it recurs in review.
 
@@ -130,6 +87,8 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 ---
 
 ## TI-7. ESLint `jsx-a11y` (blocked on ESLint 10) + `import` rules follow-up + `@/` alias
+
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: ESLint `jsx-a11y` + `import` rules + `@/` alias — 🟡 **Partly** — `@/` alias, `import-x/order`, **jsx-a11y (19-F3)**, **typed-lint (19-B `recommendedTypeChecked`)** all done; only `import-x/no-unresolved`/`no-cycle` (needs `eslint-import-resolver-typescript`) remain
 
 **Status of the three originals (Phase 14):**
 
@@ -149,6 +108,8 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 
 ## TI-17. Auto-backfill a new projection on deploy (new projections ship empty)
 
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: Auto-backfill a new projection on deploy — 🔲 **Open** — still a real gap (no rebuild step in `.github/workflows`); P24 dependency now cleared. P23 shipped, so re-home as a standalone deploy-job step / next projection-adding slice
+
 **What:** A deploy creates a new projection's table but **never populates it** — there is no automatic rebuild — so a newly-shipped projection holds only entities written _after_ the deploy. The feature reads empty in prod while every test passes. The current mitigation is a manual post-deploy `POST /admin/projections/rebuild` (now a mandatory Scribe step + CLAUDE.md guardrail for projection-adding slices), but that is human-triggered and was missed once.
 
 **Confirmed in prod, 2026-06-08:** Phase 22 search returned **no results** because `notetaker-proj-notesearchview` had 1 of ~12 live notes — the 22-A deploy created the table but nothing rebuilt it. A manual rebuild fixed it.
@@ -163,13 +124,9 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 
 ---
 
-## TI-19. Stabilise the flaky `TagsJourney` E2E (post-deploy gate fails intermittently)
-
-✅ **Done** — condensed history in [technical-improvements-archive.md#ti-19](technical-improvements-archive.md#ti-19-stabilise-the-flaky-tagsjourney-e2e-post-deploy-gate-fails-intermittently). _(Stub retained here so the inbound `phase-bugs.md` link still resolves.)_
-
----
-
 ## TI-20. `WorkspaceList` reads via full table Scan, not a per-user GSI
+
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: `WorkspaceList` reads via full table Scan, not a per-user GSI — 🔲 **Open** — confirmed still `Scan`+`ConsistentRead` (`DynamoDbWorkspaceListStore`); P23 shipped without it, so "fold into P23" is moot — re-home as a standalone GSI slice (pair with TI-33)
 
 `DynamoDbWorkspaceListStore.GetAllAsync` does a paginated cross-user `Scan` (`ConsistentRead = true`) and is called on **every** `GET /workspaces`, every rename (`ApplyRenamedAsync` re-scans to point-update one row), and every ownership check (`OwnsAsync`). The closest precedent, `NoteSearchView`, uses a `UserId-index` GSI + `Query` for exactly this access pattern.
 
@@ -186,6 +143,8 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 
 ## TI-23. Generalise append-retry-on-conflict beyond `NoteCommandHandler`
 
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: Generalise append-retry-on-conflict beyond `NoteCommandHandler` — 🔲 **Open (deliberately deferred)** — `ActionItemCommandHandler` has no retry by design (single-user app). BUG-28 already added store-level `TransactionConflict`→`ConcurrencyException` for all aggregates; only the shared retry-loop extraction is left — do it only if a 2nd handler needs it
+
 BUG-17 (PR #217) added a bounded retry-on-`ConcurrencyException` (re-read→re-run→re-append) to `NoteCommandHandler.ExecuteAsync` only. `ActionItemCommandHandler` shares the same optimistic-concurrency append but was left out: it interleaves projection writes with its append (not the clean read→handle→append cycle), and its streams are keyed per action item, so the BUG-17 multi-writer-on-one-stream race is far less likely there.
 
 **Why worth doing:** the latent lost-write still exists for rapid concurrent writes to a single action-item stream (e.g. fast complete/reopen toggles). **Fix:** extract a shared `AppendWithRetry` helper (or a handler base method) so the retry is defined once and applied wherever the read→handle→append pattern lives, rather than duplicated. Do it only if a second handler needs it — don't abstract for one caller.
@@ -198,6 +157,8 @@ BUG-17 (PR #217) added a bounded retry-on-`ConcurrencyException` (re-read→re-r
 ---
 
 ## TI-24. `deploy-production` hangs at "Configure AWS credentials"
+
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: `deploy-production` hangs at "Configure AWS credentials" — 🟡 Mitigated — `timeout-minutes` shipped (#222); **root cause Open**
 
 **Mitigated 2026-06-11** — added `timeout-minutes: 5` to the `Configure AWS credentials` step in **both** deploy jobs (`deploy-test` + `deploy-production`). A silent 30+ min hang now fails fast and is recovered by a rerun, so it no longer blocks a green main indefinitely. Root cause still **unconfirmed** (capture the step log next time it hangs); a version bump or step-level retry remains a possible follow-up.
 
@@ -212,6 +173,8 @@ The `deploy-production` job in `deploy.yml` intermittently (~half of deploys dur
 
 ## TI-25. Add a `NoteEditor` component test for the image upload/serialize ordering invariant
 
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: Add a `NoteEditor` component test for the image-ordering invariant — 🔲 **Open** — `NoteEditor.test.tsx` now exists (link-hardening + BUG-24 resolve-before-parse) but does **not** cover the 25-B paste→presign→PUT invariant (no `blob:`/unmapped `src` reaches `onChange`; PUT failure removes the node); add those cases
+
 Phase 25-B shipped (then fixed) an **ordering bug** that every unit test passed and only the deploy-time E2E (`NoteImageJourney`) caught: the image node was inserted with a `blob:` src _before_ its stable key was mapped, so a save during the upload window dropped the image. The fix (presign-first) re-encodes the load-bearing invariant — _seed the `src→key` map before inserting the node_ — as two adjacent statements in `NoteEditor.tsx` with **nothing pinning the order below the slow deploy E2E gate**. The pure `noteImages.test.ts` covers only the rewrite helpers.
 
 **Why it matters:** a future refactor of `NoteEditor` could reorder seed-vs-insert and silently reintroduce the data-loss bug; CI wouldn't catch it until a ~15-min deploy E2E (which itself flakes/hangs). **Fix:** a `NoteEditor.test.tsx` (RTL + mocked `presignUpload`/`fetch`) asserting (a) `onChange` is never called with a `blob:`/unmapped src during a paste→presign→PUT sequence — the first `onChange` after insert already carries the key; and (b) on PUT failure the node is removed and `onChange` re-fires without the key. Tiptap-in-jsdom made this non-trivial, so it was deferred from the slice.
@@ -224,6 +187,8 @@ Phase 25-B shipped (then fixed) an **ordering bug** that every unit test passed 
 ---
 
 ## TI-33. `NoteCardList` reads via full-table `Scan` with `ConsistentRead`, not a per-user/workspace GSI + `Query`
+
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: `NoteCardList` reads via full-table `Scan` + `ConsistentRead`, not a GSI/Query — 🔲 **Open** — confirmed still `Scan`+`ConsistentRead` (`DynamoDbNoteCardListStore`); ~840 ms at 234 rows, O(all notes). P23 shipped without it — re-home as a standalone GSI slice with TI-20; also re-check whether `ConsistencyGate` makes the strong read redundant
 
 `DynamoDbNoteCardListStore.QueryAllAsync` (`src/EventStore/Projections/DynamoDbNoteCardListStore.cs:130`) does a **paginated full-table `Scan` with `ConsistentRead = true`**, then sorts client-side by `CreatedAt`. It backs the notes-list GET. Same anti-pattern as **TI-20** (`WorkspaceList`), on the larger and faster-growing table.
 
@@ -244,6 +209,8 @@ Phase 25-B shipped (then fixed) an **ordering bug** that every unit test passed 
 
 ## TI-34 — Make Lambda naming specific & correct everywhere
 
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: Make Lambda naming specific & correct everywhere — 🔲 **Open — premise updated** — 27-D **shipped**, so the live functions ARE **Command + Query + Projector** Lambda (CDK ids correct). **15 files** still say "API Lambda"/"single Lambda" (re-grepped 2026-08-09), of which **7 are living docs** that actively mislead: `CLAUDE.md` (Stack: "behind a single Lambda"), `architecture.md`, `observability.md`, `roadmap.md`, `adr/README.md`, `adr/0009`, `guides/debugging-with-x-ray.md`. The other 8 are era-stamped (phase-12/18/25/27, learnings, workflow-log, this doc + its archive) and should stay
+
 **What:** Audit every reference to "Lambda" / "the function" across CDK ids, `CLAUDE.md`, ADRs, phase docs, and code comments, and make each one specific to the function it means. There are now **two** Lambdas, so generic "the Lambda" is ambiguous.
 
 **Correct names — current state (27-D shipped):** the deployment now has **three** functions: **Command Lambda** (`CommandFunction` — writes + side-service GETs + admin rebuild), **Query Lambda** (`QueryFunction` — reads), and **Projector Lambda** (`ProjectorFunction` — async stream consumer). The CDK construct ids are already correct.
@@ -259,6 +226,8 @@ Phase 25-B shipped (then fixed) an **ordering bug** that every unit test passed 
 ---
 
 ## TI-40. Scoped read-only AWS creds so a cloud routine can run `observability-review` automatically
+
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: Scoped read-only AWS creds so a cloud routine can run `observability-review` automatically — 🔲 **Open** — raised 2026-06-13. The `observability-review` skill exists but a scheduled **cloud** agent can't reach prod (`--profile prod` is local-only), so a weekly automated sweep is impossible today. Add a least-privilege read-only CloudWatch-Logs/Metrics + RUM + X-Ray role (OIDC-federated, no static keys) the cloud runner can assume, connect GitHub, and wire the weekly routine
 
 **Goal:** a hands-off **weekly** `observability-review` (sweep deployed signals → triage → file bugs/TI) running as a scheduled **cloud** agent, with no human in the loop and no standing security risk.
 
@@ -284,19 +253,51 @@ Phase 25-B shipped (then fixed) an **ordering bug** that every unit test passed 
 
 ---
 
-## TI-42. Residual cold-start E2E flake — `NoteReadYourWritesJourney.Renamed_note_appears_in_the_cards_list` (~1/10)
+## TI-45. `lazyChunkError` RUM event isn't alarmable — uses `recordEvent`, not `recordError`
 
-✅ **Done** — condensed history in [technical-improvements-archive.md#ti-42](technical-improvements-archive.md#ti-42-residual-cold-start-e2e-flake--notereadyourwritesjourneyrenamed_note_appears_in_the_cards_list-110). _(Stub retained so inbound links still resolve.)_
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: `lazyChunkError` RUM event isn't alarmable — uses `recordEvent`, not `recordError` — 🔲 **Open** — raised 2026-06-18 (Hawk nit, PR #300). 19-I1's `LazyNoteEditor` reports a failed editor-chunk import via `recordRumEvent('lazyChunkError', …)` → `cwr('recordEvent')`, which lands in the RUM log group (consistent with the `deadNoteLink` precedent) but does **not** increment `JsErrorCount` or fire the error-rate alarm. Deliberate at ship (meets the 19-I1 spec). Decide whether a failed editor load should be *alarming* — if so, route it through `recordError` like `rum.ts:reportResourceError`. Low urgency (lazy-chunk failures are rare and self-heal via the chunk-reload guard)
 
 ---
 
-## TI-44. Close BUG-31 layer 3 — note-detail read stays `loadingDetail` ~30 s after reopen+edit
+## TI-46. Pre-tokenize search fields into the `NoteSearchView` projection (search is O(notes × tokens × terms) per query)
 
-✅ **Done** — condensed history in [technical-improvements-archive.md#ti-44](technical-improvements-archive.md#ti-44-close-bug-31-layer-3--note-detail-read-stays-loadingdetail-30-s-after-reopenedit). _(Stub retained so inbound links still resolve.)_
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: Pre-tokenize search fields into the `NoteSearchView` projection (search is O(notes × tokens × terms) per query) — 🔲 **Open** — raised 2026-06-22 (Hawk perf note, PR #312/BUG-35). The word-level ranker re-tokenizes every field (`Title`/`Body`/`FinalNotesText`/`ActionItemsText`/each tag) of **every** note on **every** query — a `GeneratedRegex.Split` + LINQ per field plus an O(token²) `Fuzz.Ratio` per token for terms ≥ 4 chars. Fine at current single-user scale and the 50-result cap; **do not act until measured** (per the measure-first guardrail). When the corpus grows, fold the token list into the `NoteSearchView` projection at fold-time (one event-version bump + rebuild) so the per-query regex cost disappears and ranking reads precomputed tokens. Low urgency — premature at present volume
+
+---
+
+## TI-48. Multipart/chunked upload for long call recordings (33-A buffers the whole WAV in memory)
+
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: Multipart/chunked upload for long call recordings (33-A buffers the whole WAV in memory) — 🔲 **Open** — raised 2026-06-23 (Phase 33-A). The recording upload buffers every PCM chunk in memory for the whole meeting and PUTs one WAV on Stop (~1.9 MB/min at 16 kHz mono 16-bit → a 2 h meeting ≈ 230 MB, approaching the 500 MB advisory cap). Fine for the single-user MVP. When long meetings matter, stream to S3 via multipart upload (flush buffered chunks past a threshold) so memory stays bounded and the upload overlaps the recording instead of firing all-at-once on Stop. Low urgency
+
+---
+
+## TI-49. ICS feed SSRF: close the DNS-rebinding TOCTOU with a `ConnectCallback`
+
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: ICS feed SSRF: close the DNS-rebinding TOCTOU with a `ConnectCallback` — 🔲 **Open** — raised 2026-06-25 (Phase 34-E, Hawk #2). `IcsUrlValidator.IsAllowed` resolves the user-supplied feed host and rejects private/internal IPs, but `HttpClient` then re-resolves DNS independently for the actual GET — so a rebinding host that answers public at check-time and private (e.g. `169.254.169.254` metadata) at fetch-time slips through (time-of-check ≠ time-of-use). The *trivially* exploitable redirect vector **is** closed (`AllowAutoRedirect=false`) and a 5 MB body cap is in. Accepted as a residual for the single-user app (the only "attacker" is the owner pasting a hostile URL into their own server). Fix: a `SocketsHttpHandler.ConnectCallback` on both ICS clients that resolves once, validates the connected `IPEndPoint` against `IcsUrlValidator`, and dials that IP directly (preserving the Host header for SNI/vhost) — so the IP checked == the IP connected to. Low urgency. Documented inline in `IcsUrlValidator.cs` + `docs/phases/phase-34.md` (34-E)
+
+---
+
+## TI-50. ICS feed: cache the fetched/parsed feed instead of re-downloading every read
+
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: ICS feed: cache the fetched/parsed feed instead of re-downloading every read — 🔲 **Open** — raised 2026-06-25 (Phase 34-E). `IcsFeedCalendarClient` (v1) re-downloads **and re-parses the entire ICS feed on every meetings read** — each Home load, day-navigation, and reminder check — with no server-side cache (10 s timeout). Fine at single-user scale, and a published ICS already lags Outlook by hours so frequent re-fetching adds little. When it matters, add a short in-memory cache keyed by URL+date with a small TTL (a few minutes) so repeated reads in the window reuse the parsed result. Low urgency. Documented inline in `IcsFeedCalendarClient.cs` (class header) + `docs/phases/phase-34.md` (34-E decision #5)
+
+---
+
+## TI-51. Authorize workspace mutations from the event stream, not the async `WorkspaceListView`
+
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: Authorize workspace mutations from the event stream, not the async `WorkspaceListView` — 🔲 **Open** — raised 2026-06-25 (Phase 36-A, Hawk #1); re-verified 2026-08-09 at `src/Api/Handlers/WorkspaceHandlers.cs:139` (the check lives in the **endpoint handlers**, not `WorkspaceCommandHandler`). All three workspace mutations (`RenameWorkspace`, `DeleteWorkspace`, `SetWorkspaceTheme` — lines 67/92/119) gate ownership via `OwnsAsync` → `IWorkspaceListStore.GetAllAsync` (the **async** projection). Right after `POST /workspaces` the projector can lag, so a legitimate owner can get a spurious **404** (BUG-30 class). It is **fail-closed** (a lagging projection can only false-*deny*, never cross-user-*grant*) and the UI gates the picker behind the consistency-gated `GET /workspaces`, so it's not reachable in the real flow — hence low urgency, not a security hole. Fix **all three together** (don't diverge one handler): authorize from the event stream on the Command Lambda — read the stream and check the `WorkspaceCreated` envelope's `Metadata.UserId == currentUser` (user id rides the event metadata, see `ProjectionUpdater.ApplyWorkspaceEventsAsync`). Pairs with TI-20 (`WorkspaceList` GSI). Low urgency
+
+---
+
+## TI-52. Keep the Projector Lambda warm to eliminate cold-start read-your-writes lag
+
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: Keep the Projector Lambda warm to eliminate cold-start read-your-writes lag — 🔲 **Open** — raised 2026-06-30 (observability-review; deferred alternative to the [BUG-31] fix). The projector is a stream-triggered .NET Lambda with **no SnapStart and no keep-warm** (`NoteTakerStack.cs:673`, re-verified 2026-08-09), so after an idle gap (overnight/weekend) its first invocation cold-starts ~7 s while the read gate waits only 2 s → a fresh note reads missing/stale (11 gate timeouts/14 d in prod, at morning low-traffic hours). **BUG-31 is fixed the cheap way instead** — raise the `ConsistencyGate` cap 2 s→8 s so the reader tolerates the cold start (zero cost). This TI is the *durable* follow-up if the one-off cold spinner still bothers: keep the projector warm so cold reads stay fast. Two ways — (a) **scheduled ping**: an EventBridge rule invokes the projector every ~5 min with a synthetic event the handler no-ops → **~$0.00/month** but needs a warmer code path + is "almost always" warm (AWS can still reclaim between pings); (b) **provisioned concurrency = 1**: guaranteed warm, no code change, but **~$5.40/month 24/7** (~$3.60 active-hours-only) — recurring spend the "match resilience cost to scale" guardrail disfavours for a single-user app (cf. the 26-C canary revert). Prefer (a) if picked up. Low urgency — the gate-cap fix already removes the user-visible failure.
 
 ---
 
 ## TI-54. MCP tool failures log as `Error` with no exception detail
+
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: Every MCP tool failure logs as an `Error` with no exception detail — expected not-founds pollute the error view, real faults are undiagnosable — 🔲 **Open** — raised 2026-08-06 (observability-review). Both halves of the [TI-38] problem at once. The MCP SDK logs `"get_note" threw an unhandled exception.` (logger `ModelContextProtocol.Server.McpServer`) at **Error** for a deliberately-thrown `McpException` — i.e. for an *expected* business outcome. Verified live: calling `get_note` with a nonexistent GUID against prod on 2026-08-06 12:45:22 produced exactly the line, and the 2 prod Errors in the 14-day window (2026-08-05 12:03, 2026-08-06 08:05, `user_agent: Claude-User`) are the same benign shape. **Over-reporting:** every "note not found" from an MCP client shows up in the dashboard "All errors" widget as a backend Error. **Under-reporting (the worse half):** the line carries **no `exception_type` and no `stack_trace`**, so a *genuine* unhandled fault inside any MCP tool is byte-identical to a benign not-found and cannot be diagnosed at all. Fix: log MCP tool outcomes ourselves — map a deliberate `McpException` to Warning and log real exceptions with type + stack (an invocation filter around the tool call), or drop the `ModelContextProtocol.Server.McpServer` category out of the Error view and emit our own truthful line. **Deploy-time: neutral** (logging config only). Medium urgency — the MCP surface is now large (35-F reads + 41-A writes) and is currently a blind spot
 
 Every MCP tool failure — expected or genuine — reaches CloudWatch as the same opaque line, so the error view is simultaneously noisy and blind.
 
@@ -326,7 +327,12 @@ The first is preferable — it fixes the blind spot rather than hiding the noise
 
 **Deploy-time delta:** none — logging configuration and a filter; no IAM, no infra, no traffic-shifting.
 **Raised in:** observability-review, 2026-08-06.
+
+---
+
 ## TI-55. MCP `/mcp` connector — per-`sub` rate limiting + bound the per-call projection scans
+
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: MCP `/mcp` connector — per-`sub` rate limiting + bound the per-call projection scans — 🔲 **Open** — raised 2026-06-25 (35-F dual security review, both APPROVE; the two non-blocking LOW findings). An allowlisted OAuth token can issue unbounded `tools/call`s (`MCP_ALLOWED_CIDRS` is empty = allow-all in prod), and `list_notes`/`get_action_items` do a full-table `Scan` per call. Item 2 folds into TI-33/TI-20 (same `Scan`→`Query` change). Cost/latency, not confidentiality — the user filter is correct.
 
 From the 35-F dual security review (both APPROVE; these were the two non-blocking LOW findings):
 
@@ -337,7 +343,11 @@ From the 35-F dual security review (both APPROVE; these were the two non-blockin
 **Raised in:** 35-F security audit (PR #345), 2026-06-25.
 **Depends on:** TI-33 / TI-20 for item 2.
 
+---
+
 ## TI-56. Alarm on `RefreshTokenStoreWriteFault` (sustained > 0)
+
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: Alarm on `RefreshTokenStoreWriteFault` (sustained > 0) — 🔲 **Open** — raised 2026-07-29 (`obs-auth-login`, PR #411). The metric ships; the Phase 30 obs table specced the alarm, consciously deferred to avoid churning the DefaultPolicy/alarm-count infra assertions in the observability slice. Add the alarm on the existing `notetaker-alarms` SNS topic and update the alarm-count assertion in the same slice.
 
 The `obs-auth-login` slice (PR #411) shipped the `RefreshTokenStoreWriteFault` metric (a durable-token store write failed on `/auth/token` or `/auth/refresh` rotation → the user silently loses long-lived sign-in). The Phase 30 obs table specced an **alarm on sustained > 0**; the metric ships, the alarm was consciously deferred to here to avoid churning the DefaultPolicy/alarm-count infra assertions in the observability slice.
 
@@ -348,21 +358,17 @@ The `obs-auth-login` slice (PR #411) shipped the `RefreshTokenStoreWriteFault` m
 **Deploy-time delta:** none material (one alarm construct; no IAM, no traffic-shifting).
 **Raised in:** `obs-auth-login` (PR #411), 2026-07-29 — deferred from the Phase 30 obs table.
 
-## TI-58. Desktop specs run in the PR gate
+---
 
-_Duplicate of [TI-53](#summary), which was filed for the same gap on 2026-08-06 and missed when this was raised. TI-53 is the original; this section is the delivery record._
+## TI-57. `TodoList` read model is not wired into `ProjectionRebuildHandler` (projector-maintained only)
 
-Before it, **nothing anywhere ran `desktop/tests/`**. `pr.yml` had `backend`/`frontend`/`eventstore` jobs and zero references to `desktop/`; `publish-desktop.yml` builds the installer on `windows-latest` but runs no tests. The entire Electron shell — IPC wiring, the local-transcription engine, packaging config — was proven only by whatever a human ran locally. [BUG-52], [BUG-53] and [BUG-56] all reached a user's machine through that gap.
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: `TodoList` read model is not wired into `ProjectionRebuildHandler` (projector-maintained only) — 🔲 **Open** — raised 2026-06-25 (Hawk nit, PR #350/37-A). The whole `TodoList` projection (todo + action rows, and now `Position` from 37-A) is built only by the async projector; `ProjectionRebuildHandler` has no `ITodoListStore`/`TodoListProjection`, so a rebuild can't re-derive it from the event stream — breaking the "projections are rebuildable" guardrail for this one read model. Pre-existing (not introduced by 37-A). Fix: wire `TodoListProjection` into `ProjectionRebuildHandler` mirroring `WorkspaceListProjection`. Low urgency (projector is the steady-state writer; no backfill needed today)
 
-- New `desktop` job on `ubuntu-latest`: `npm ci` (web + desktop) → `npm --prefix desktop run build` → `xvfb-run npm run test:e2e`.
-- Ubuntu, not Windows: every spec is pure logic, config assertions, or Electron-under-xvfb. `web/` is a real dependency — `run build` stages the frontend into `desktop/web-dist`, which `server.spec.ts`/`shell.e2e.ts` serve and assert against.
-- The real-binary specs self-skip when their env vars are unset, so this job stays fast; proving the actual binaries is [TI-59].
-- **This closes the pure/headless gap only.** `whisperBinPath()` branches on `process.platform`, and an ubuntu runner always takes the Linux arm — so the Windows-specific half of the BUG-56 risk class is still uncovered until [TI-59]. Verified green on the first run: 77 passed, 5 skipped (the env-gated real-binary specs), 1m00s, fully parallel with `backend`.
-
-**Deploy-time delta:** none — PR-side only, runs parallel to the existing jobs. No change to `deploy.yml`.
-**Raised in:** [BUG-56], 2026-08-07.
+---
 
 ## TI-59. Windows desktop CI job — packaging + a real whisper-server smoke test
+
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: Windows desktop CI job — packaging + a REAL whisper-server smoke test — 🔲 **Open** — raised 2026-08-07 ([BUG-56]). Un-gate `whisperServer.integration.spec.ts` on `windows-latest` with a cached `base.en` + a fixed WAV, resolving the binary through the production resolver (`whisperServerBinPath()`, added by [BUG-56] / #426) exactly as production does. This is the tier that proves the live engine actually transcribes.
 
 The lesson of [BUG-56] is **not** "we needed more runners". `whisperServer.integration.spec.ts` already exercised the real `whisper-server` binary and passed — because it took the binary from a hand-supplied `WHISPER_SERVER_BIN` while production resolved `whisperBinPath()`. The test and the app disagreed about which binary production uses, and nothing asserted the production wiring. So the load-bearing requirement here is:
 
@@ -376,7 +382,11 @@ The lesson of [BUG-56] is **not** "we needed more runners". `whisperServer.integ
 **Raised in:** [BUG-56], 2026-08-07.
 **Depends on:** TI-58.
 
+---
+
 ## TI-60. Packaged-installer journey with injected audio
+
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: Packaged-installer journey with injected audio — 🔲 **Open** — raised 2026-08-07 ([BUG-56]). Drive the *packaged* app end to end with a known WAV pushed through a test seam (not a virtual-audio driver) and assert live transcript text appears within a latency budget. The only tier that would catch a live-latency regression.
 
 The tier that catches what [TI-59] cannot: latency and the whole capture→engine→transcript→note path, against the artefact the user actually installs.
 
@@ -388,7 +398,125 @@ The tier that catches what [TI-59] cannot: latency and the whole capture→engin
 **Raised in:** [BUG-56], 2026-08-07.
 **Depends on:** TI-59.
 
+---
+
+## TI-61. A routing test fails on a busy machine
+
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: **A routing test fails on a busy machine even though nothing is wrong with it**, costing a thrown-away run and — the expensive part — a fresh investigation to re-establish that it is not a regression — 🟡 **In Progress** — mitigated, not closed. PR #470 raised the local-only budgets; the test ran to **5780 ms against a 5000 ms ceiling** under contention where unloaded it is 293 ms. **Stays open because two other files are predicted to exceed the new budget** — see [TI-61](#ti-61-a-routing-test-fails-on-a-busy-machine)
+
+**What it costs.** A CI run or a deliberate local suite run is thrown away on a test nobody
+touched. The expensive part is not the run — it is that the next person has to re-derive from
+scratch that it is not a regression. That has now happened at least twice.
+
+**The measurement that settles it.** Under deliberate contention (32 CPU spinners, no other
+suites, `ratio1` 1.97 rising to 2.91):
+
+| Test | median | max | ceiling |
+| --- | --- | --- | --- |
+| `Back returns to the home screen` | 3966 ms | **5780 ms** | 5000 ms |
+| `opening a note pushes a /notes/:id URL` | 2334 ms | 3379 ms | 5000 ms |
+| `Forward reopens the note` | 1840 ms | 2949 ms | 5000 ms |
+
+The binding test exceeds the ceiling on its own, and sits at 79% of it even when it passes.
+Unloaded and alone it is 293 ms — the box's effective speed varies by 10-56x, and a fixed
+wall-clock deadline cannot tell "slow machine" from "hung test" across that range. A per-test
+timeout exists to catch hangs, not to assert machine speed.
+
+### Still open: two files are predicted to exceed the new budget
+
+This is why the row is 🟡 and not ✅. Ranking every test file by its slowest test (full suite,
+unloaded — relative durations rank the same without contention):
+
+| slowest test | file | |
+| --- | --- | --- |
+| 2455 ms | `staleDetailRefetch.test.tsx` | work-bound |
+| 2437 ms | `staleCardsRefetch.test.tsx` | work-bound |
+| 1125 ms | `Routing.test.tsx` | work-bound — the file that has actually been failing |
+| 1039 ms | `HomeSearch.test.tsx` | **discount** — 4 real `setTimeout` sleeps, which do not inflate under CPU starvation |
+
+`Routing` inflated 1125 -> 5780 ms (~5.1x) under deliberate contention. **The same multiple on
+2455 ms is ~12500 ms, which exceeds the 12000 ms budget PR #470 sets.** Both files are genuinely
+work-bound — no fake timers, no sleeps — so they should inflate the same way.
+
+**Remedy, when one of them fails — do this, not something else:**
+
+1. Reproduce it under deliberate contention and record the *measured* worst duration.
+2. Raise `LOCAL_TEST_TIMEOUT_MS` in `web/vite.config.ts` to **that file's worst x2**.
+3. **Do not raise it pre-emptively.** ~12500 ms is an extrapolation; neither file has been measured
+   under contention. Sizing a budget off an unmeasured multiple is the error this investigation
+   refused three times (a role-query theory that measured 15 ms, an underpowered 2/10-vs-0/10 A/B,
+   and a reviewer's suggested 25000 ms). A measured number is checkable six months later; a guess
+   is indistinguishable from a measurement, including in whether it was already too small.
+
+**Post-merge observation owed, and by whom.** Nothing about this fix is verifiable from a green
+deploy — the change only takes effect on a *locally contended* run, which CI never performs. The
+observation that would prove it is a local full-suite run under load that previously failed and now
+passes; that was taken before merge (control red at 5000 ms, candidate 0 failures / 60 under
+identical contention). **No further observation is owed, and no future session should record this
+as Done on the strength of a deploy** — the row closes only when the two files above have been
+measured, or when they have gone long enough without failing that the exposure is judged closed.
+
+**Fix.** `testTimeout` 12000 (= worst observed 5780 x2) and `asyncUtilTimeout` 4000
+(= longest succeeding wait 1735 x2), **local only**, mirroring the existing `LOCAL_MAX_THREADS`
+precedent. CI keeps 5000/1000 — it runs the frontend job alone on native Linux, so a genuine
+hang still fails there. `testBudgets.test.ts` asserts the split in both directions, so CI is its
+own positive control against the raised budget leaking into it.
+
+### Corrections to the original row — it was wrong on every specific
+
+The row as filed on 2026-08-06 said the failing assertion was `findByTestId('note-title-input')`
+after `window.history.forward()`, missing its 1000 ms budget because the *render* was slow.
+Measured, none of it holds:
+
+| The row said | Measured |
+| --- | --- |
+| `Forward reopens the note` | Every reproduction failed in **`Back returns to the home screen`** |
+| `findByTestId(...)`, 1000 ms budget | `Test timed out in 5000ms` — the **per-test** budget, a different ceiling |
+| the render misses the window | The render is fine. `<h1>{heading}</h1>` has no data gate; one pass of the role query costs **15 ms** under load |
+| "second observation of the same failure" (34-C) | **Unverified, and now withdrawn.** The cited `token-log.md` entry names no test at all — only "the one flake (Routing.test)". It was an inference presented as an observation |
+
+The row's own arithmetic was the tell: the steps *before* the failing assertion ran 2.65x their
+unloaded time while the assertion blew a >9x anomaly. A uniformly slower box cannot produce that.
+
+### Withdrawn: the poll-vs-mutation theory, and the 48-site claim built on it
+
+An intermediate diagnosis held that `waitFor` on a non-DOM value (`window.location.pathname`) is
+structurally worse under starvation, because RTL's MutationObserver cannot see a non-DOM value
+and only the 50 ms poll remains. **Measured head to head, it is backwards:** poll `backWait`
+165 ms against mutation `backWait` 199 ms. The 1735 ms figure that made the theory look
+overwhelming came from a run carrying three other sessions' suites; alone on the box the same
+step is 165 ms. It was contention, not the wake mechanism.
+
+Consequently **the count of 48 `waitFor(pathname)` sites across 9 files is a scope measurement,
+not 48 defects**, and `OpenNoteTabs.test.tsx` (23 of them) is *not* predicted to be the next
+casualty on that basis. If the mechanism is a fixed deadline against variable machine speed,
+exposure scales with **total test duration**, not with the number of pathname waits.
+
+### Read the load figures as period-specific
+
+Every figure here was gathered while the pre-commit hook still ran full suites on every commit
+across parallel sessions. That hook was removed the same night (`dba8fce8`), so ambient load on
+this box will be materially lower from now on. The numbers are real, but nobody should read
+`ratio1` 2.28 as this machine's resting state — which makes 12000 ms more conservative than it
+looks, and that is the right direction for a budget whose only job is to catch a genuine hang.
+
+---
+
+## TI-62. `deploy.yml` still carries its own inline copy of the projector warm/drain bash
+
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: `deploy.yml` still carries its own inline copy of the projector warm/drain bash — 🔲 **Open** — raised 2026-08-07 (alongside the on-demand E2E workflow). The warm-and-drain logic now lives in `scripts/warm-projector.sh`, used by `.github/workflows/e2e.yml`; `deploy.yml`'s `Warm the API + projector before E2E` step is a byte-for-byte duplicate of it. Deliberately NOT switched over in the same change: the merge queue was mid-flight through that exact workflow and a broken `deploy.yml` reds the shared gate for every slice and session. Two copies of a guardrail-critical step will drift — the drain is precisely what stops a cold projector red-gating the suite. Fix: replace the inline step with `bash scripts/warm-projector.sh` (same `API_URL`/`TOKEN` env), and verify on the next deploy that the step still logs `projector caught up to head`. Low risk, but do it on a quiet gate.
+
+---
+
+## TI-63. Move note analysis off the synchronous request path
+
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: Move note analysis off the synchronous request path — 🔲 **Open** — raised 2026-08-07 (BUG-58). Analysis runs inside the **29s** Command Lambda: 90d of prod data shows command-hosted Converse calls at median 2.6s but 17.9 / 21.5 / 23.6 / 26.4s in the tail, with a further **3.0-5.9s** of sequential post-Bedrock appends (`TagNote` per tag, `AddActionItem` per action, each re-reading an 89KB stream). Four invocations hit exactly 29.0s in 14 days — killed. BUG-58's 23s client deadline converts those kills into a visible 503, but it cannot create budget that isn't there: **any analysis needing >23s+tail simply cannot complete synchronously**, and a kill part-way through the appends leaves a note with a new summary and tags but no action items, with no event marking it incomplete. Fix: run analysis asynchronously (job + poll, or a dedicated Lambda off a queue with a longer timeout, mirroring the TranscribeCompletion path that already has 60s), so duration stops being bounded by the API request. Medium urgency — the deadline makes the failure visible and retriable, so this is about the ~12-19% of analyses that are near or over budget, not about data loss. **2026-09-16: sizing is stale — since the Opus 4.6 switch, 7 of 9 in-app analyses in 30 days timed out; see [BUG-84](phases/phase-bugs.md#bug-84--analysing-a-longer-meeting-times-out-and-the-advice-to-retry-cannot-work), which this now blocks.**
+
+---
+
 ## TI-65. The other three `gatedRead` callers can still store a stale body over good data
+
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: **An action list, folder tree or workspace list can still snap back to an older copy moments after the user changes it** — 🟡 **Partly done** — raised 2026-08-08 (Hawk, PR #436 / [BUG-48]). The home note list shipped 2026-08-11 (PR #459); `getActions`, `getFolders` and `getWorkspaces` remain. Detail in [TI-65](#ti-65-the-other-three-gatedread-callers-can-still-store-a-stale-body-over-good-data) below.
 
 [BUG-48] proved the class: a RYW-gated read that exhausts its retries returns `X-Consistency: stale` — the projector's **older** state — and React Query stores it, overwriting fresher cached data. That fix covered **note detail only**.
 
@@ -417,6 +545,61 @@ The tier that catches what [TI-59] cannot: latency and the whole capture→engin
 **Raised in:** Hawk review of PR #436 (BUG-48), 2026-08-08.
 **Depends on:** —
 
+---
+
+## TI-66. Extract the read-rebuild-append retry shared by three command handlers
+
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: Extract the read-rebuild-append retry shared by three command handlers — 🔲 **Open** — raised 2026-08-10 (Hawk, PR #446 / 50-B). `TodoOrderCommandHandler` now carries a third near-identical copy of read → rebuild → handle → append → catch `ConcurrencyException` → backoff+jitter → `WriteContentionException` on exhaustion (`NoteCommandHandler`, `TodoCommandHandler`, `TodoOrderCommandHandler`). The copies drifted once already: the todo-order one was simply **missing**, which is what made 50-B's paired writes race into a 409 the client silently drops. A shared `AppendWithRetryAsync` helper makes the retry the default rather than something each handler must remember.
+
+**Problem:** `NoteCommandHandler`, `TodoCommandHandler` and now `TodoOrderCommandHandler` each carry their own copy of the same loop: read the stream → rebuild the aggregate → handle → append at the read version → catch `ConcurrencyException` → exponential backoff with jitter → `WriteContentionException` (503) once the budget is exhausted. Same constants, same comments, three places.
+
+**Why it matters:** the copies have already drifted in the worst possible direction — `TodoOrderCommandHandler` had **no retry at all**. That went unnoticed until 50-B made its two writes race each other on the stable-id `todo-order#{workspaceId}` stream, where the loser's raw `ConcurrencyException` became a 409 the client treats as a duplicate and silently drops (BUG-27's class). A missing retry is invisible until concurrency arrives; making it opt-out rather than opt-in removes the whole failure mode.
+
+**Fix:** extract `AppendWithRetryAsync(streamId, rebuild, handle, ct)` (or an equivalent seam) and route all three handlers through it, so a new handler gets the retry by default. Keep `NoteCommandHandler`'s extra concerns (existence check, ownership check, no-op short-circuit) as callbacks rather than folding them into the shared helper.
+
+**Deploy-time delta:** none — pure refactor of existing handler code.
+**Raised in:** Hawk review of PR #446 (50-B), 2026-08-10.
+**Depends on:** —
+
+---
+
+## TI-70. What must be true before TI-70 is archived
+
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: **Nothing stops a broken workflow file reaching `main`, so the next one also shows up as an unexplained red X on everyone's commits rather than as a failed check** — 🔲 **Open** — raised 2026-08-10, out of [TI-69]. That defect survived 3 days and 162 red marks, and was first written up with a confidently wrong root cause, because an unparseable workflow does not fail like a test: it produces a zero-job run named by its file path, attached to a push the workflow does not even subscribe to, with no annotation on the PR that introduced it. **Cost:** every commit in the repo carries a false red X until someone happens to run the one command that reveals the parse error, and the affected workflow silently does not exist in the meantime. **Fix direction:** run `actionlint` (single Go binary, ~2s, no runtime deps) over `.github/workflows/**` and `.github/actions/**` in `docs-check.yml`, which is the workflow that already exists to gate paths `pr.yml` ignores — note `pr.yml` paths-ignores nothing relevant here, but `docs-check.yml` is the cheaper host. There is no pre-commit hook to mirror it in (removed 2026-08-11), so CI is the only host, on the same terms as `check-doc-ids.sh` (CI is the real gate; the hook needs per-clone `core.hooksPath`). actionlint catches the exact class — expression syntax, unavailable contexts, unknown keys — plus shellcheck over `run:` blocks, of which this file has many. **Verify with:** re-introducing `${{ fromJSON(inputs.runs) * 4 + 15 }}` must fail the check. **Detail, and the checks that must run before this is archived, in [TI-70](#ti-70-what-must-be-true-before-ti-70-is-archived) below.**
+
+**Merged 2026-08-11** — PR [#464](https://github.com/simonkirkham/ai-note-taker/pull/464), squash `a43574e6`, deploy #763. **All seven rows ticked as of 2026-08-11**; row 7, the last and the only one testing the merged state, is recorded below. This section exists because the item's own subject is checks nobody watched run, so its own closing conditions must live somewhere durable rather than in a merged PR description nobody re-reads.
+
+**Row 7 was ticked on 2026-08-11 by [TI-80]'s PR [#471](https://github.com/simonkirkham/ai-note-taker/pull/471)**, which was the predicted candidate — its diff is `docs-check.yml` and nothing else. The check was read *by name* out of `gh pr checks 471`, not inferred from a green PR (`pr.yml` also runs on `.github/**`, so green proves nothing here).
+
+| # | Check | State |
+| --- | --- | --- |
+| 1 | The TI-69 line (`timeout-minutes: ${{ fromJSON(inputs.runs) * 4 + 15 }}`) fails the check **in CI** | ✅ PR #465, run 31475167456 — `parser did not reach end of input ...`, exit 1 |
+| 2 | The same line fails it **in the pre-commit hook** | ✅ commit refused, `HEAD` unchanged |
+| 3 | Green on the real tree, with shellcheck present (CI parity) | ✅ exit 0; re-run after the #463 merge resolution |
+| 4 | **Injected defect** — disable the failure path and confirm the red case passes | ✅ `"$bin" -color \|\| true` → exit 0 with the defect still present; reverted |
+| 5 | A PR whose diff is **only** `.github/workflows/**` gets a `workflows` run | ✅ PR #467 (base `proof/ti70-base`, head `proof/ti70-head`) — changed files = `[.github/workflows/e2e.yml]`, `workflows` pass. (The proof branch was cut before [TI-77] merged, so its `paths:` list is a **subset** of the shipped one — but it contains `.github/workflows/**`, the entry under test, and path filters are OR'd, so a superset cannot stop a glob matching.) |
+| 6 | A workflow-only PR got **no** `Docs Check` run before this change | ✅ PR #466 — `gh run list` returns only `PR Checks` |
+| 7 | **After merge:** the first real PR touching only `.github/workflows/**` shows a `Repo Checks / workflows` run | ✅ **2026-08-11, [TI-80]'s PR [#471](https://github.com/simonkirkham/ai-note-taker/pull/471)** — `gh pr view 471 --json files` = `[.github/workflows/docs-check.yml]`, one path, nothing else. `gh pr checks 471` lists the check **by name**: `workflows  pass  6s`, run [31541957717](https://github.com/simonkirkham/ai-note-taker/actions/runs/31541957717) (`event: pull_request`), alongside `doc-ids  pass  20s`. Not inferred from a green PR. Verified by the TI-80 session |
+
+**All seven rows are ticked and [TI-80] has merged, so TI-70 is ready to archive — that is the next action on it, and it was deliberately not done here.** Terms: condense to one entry in [technical-improvements-archive.md](technical-improvements-archive.md), keep the `## TI-70` heading so inbound anchors resolve, delete the row and this section. Two things the archive entry must carry rather than drop: known limit **3** below is **permanent** (see it for why), and known limit **4** is now **closed** by [TI-80] — the gate runs on a direct push to `main`, watched doing so at run [31572859601](https://github.com/simonkirkham/ai-note-taker/actions/runs/31572859601).
+
+Rows 1-6 were all demonstrated on a branch; row 7 was the only one that tested the merged `paths:` filter on `main`, which is the half TI-69 actually fell through.
+
+**Known limits, so nobody assumes coverage that is not there:**
+
+1. A TI-69-shaped defect **inside a composite action's `run:` block** is not caught. actionlint validates a local action's metadata (YAML parse, `runs.using`) via the workflow that `uses:` it, but never lints the shell inside it — measured, exit 0 on both an unused variable and an unquoted expansion.
+2. An action referenced by **no** workflow is never looked at.
+3. **`docs-check.yml` is the one workflow the gate cannot protect — and this is a permanent limit, not a to-do.** Broken, it does not load, so it cannot run the lint that would have caught it: the check is hosted by the file it would need to check, and no arrangement of triggers escapes that. True on both the pull-request and the push route, so [TI-80] does not change it. Nothing in the repo covers this file; the only defence is that a change to it is small, deliberate, and made by someone who has just read this line. Do not file it as work — carry it into the archive entry as a stated limit. Raised by Hawk on PR #471.
+4. ~~**The gate never runs on a push to `main`.**~~ **CLOSED 2026-08-12 by [TI-80]** (PR [#471](https://github.com/simonkirkham/ai-note-taker/pull/471), squash `14c6c034`). The limit was real: `docs-check.yml` was `pull_request`-only, so a workflow file changed by a **direct commit to `main`** — the route `CLAUDE.md` explicitly uses for doc edits — was linted by nothing anywhere, `.githooks/pre-commit` having been deleted on 2026-08-11. **Watched closing:** TI-80's own merge commit was itself the first push to `main` under the new trigger, and produced run [31572859601](https://github.com/simonkirkham/ai-note-taker/actions/runs/31572859601) — `event=push`, `branch=main`, `workflows: success` in 7s. That is the `main` case TI-80's PR had honestly recorded as unproven, closed by the merge rather than by argument.
+
+---
+
+## TI-72. An API deployed by hand is measurably slower to answer its first request than the identical code shipped by CI, and nothing says so
+
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: **An API deployed by hand is measurably slower to answer its first request than the identical code shipped by CI, and nothing says so** — 🔲 **Open** — raised 2026-08-10 (Hawk, PR #457 / [TI-64]). Every documented by-hand publish — `README.md`, `CLAUDE.md` `## How to run` — omits `-r linux-x64 --self-contained false`, the flag pair `pr.yml:62` and `deploy.yml:168,523` use to ReadyToRun-precompile the API Lambda. TI-35 shipped R2R precisely to cut first-request JIT; a manual `cdk deploy` from a clone silently undoes it and leaves prod that way until the next CI deploy. **Fix:** make the documented publish match CI's flags exactly, and prefer a single `scripts/publish-lambdas.sh` the docs, the hook and the workflows all call, so the flags exist once.
+
+---
+
 ## TI-74. The stale-list guard's budget is keyed by note, not by write
 
 **What the user hits:** drag a note into folder A while the projector is behind, then drag it into folder B before it catches up — the second move snaps back to A on the home list, because the note's protection allowance was already spent on the first move. Every note gets its own allowance, but a note gets only one allowance however many times the user changes it.
@@ -430,6 +613,8 @@ The tier that catches what [TI-59] cannot: latency and the whole capture→engin
 **Deploy-time delta:** none — frontend only.
 **Raised in:** Hawk review of PR #459 ([TI-65]), 2026-08-11.
 **Depends on:** —
+
+---
 
 ## TI-75. `gatedRead`'s retries re-resolve the workspace URL mid-gate
 
@@ -445,21 +630,260 @@ The tier that catches what [TI-59] cannot: latency and the whole capture→engin
 **Raised in:** Hawk review of PR #459, 2026-08-11.
 **Depends on:** —
 
-## TI-66. Extract the read-rebuild-append retry shared by three command handlers
+---
 
-**Problem:** `NoteCommandHandler`, `TodoCommandHandler` and now `TodoOrderCommandHandler` each carry their own copy of the same loop: read the stream → rebuild the aggregate → handle → append at the read version → catch `ConcurrencyException` → exponential backoff with jitter → `WriteContentionException` (503) once the budget is exhausted. Same constants, same comments, three places.
+## TI-78. A browser fault that happens late in a long session still goes unreported, and nothing says so
 
-**Why it matters:** the copies have already drifted in the worst possible direction — `TodoOrderCommandHandler` had **no retry at all**. That went unnoticed until 50-B made its two writes race each other on the stable-id `todo-order#{workspaceId}` stream, where the loser's raw `ConcurrencyException` became a 409 the client treats as a duplicate and silently drops (BUG-27's class). A missing retry is invisible until concurrency arrives; making it opt-out rather than opt-in removes the whole failure mode.
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: **A browser fault that happens late in a long session still goes unreported, and nothing says so** — 🔲 **Open** — raised 2026-08-11 ([TI-67] review). The injected RUM snippet in `.github/workflows/deploy.yml` never sets `sessionEventLimit`, so the client default of **200** applies: `canRecord()` is `session.record && !isLimitExceeded()`, and `isLimitExceeded()` is `session.eventCount >= 200`. With `telemetries: ["errors","performance","http"]` at `sessionSampleRate: 1`, HTTP and performance events alone can exhaust that inside one 30-minute session — after which **every** custom event is dropped silently (`sessionLimitExceeded++`, nothing logged). This lands hardest on exactly the signals [TI-67] just enabled, because faults tend to happen *after* someone has been working a while, and it is the same self-concealing shape TI-67 existed to fix. **Fix:** set `sessionEventLimit` explicitly in the snippet (0 = unlimited), and confirm by reading an event back late in a session rather than by reading the config.
 
-**Fix:** extract `AppendWithRetryAsync(streamId, rebuild, handle, ct)` (or an equivalent seam) and route all three handlers through it, so a new handler gets the retry by default. Keep `NoteCommandHandler`'s extra concerns (existence check, ownership check, no-op short-circuit) as callbacks rather than folding them into the shared helper.
+---
 
-**Deploy-time delta:** none — pure refactor of existing handler code.
-**Raised in:** Hawk review of PR #446 (50-B), 2026-08-10.
+## TI-79. A wait loop that scans process cmdlines can never exit
+
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: **An agent waiting for a build or a test run to finish can hang forever without saying so, and stops answering anyone trying to reach it** — 🟡 **Partly done / mitigated** — PR [#479](https://github.com/simonkirkham/ai-note-taker/pull/479), open. CI now refuses this shape in any committed script; the ad-hoc case it actually happened in is covered by a written rule, not a check, and cannot be. Detail in [TI-79](#ti-79-a-wait-loop-that-scans-process-cmdlines-can-never-exit) below.
+
+**What it costs:** the session goes quiet mid-task and stays quiet. Nobody is told it is stuck, it never reaches another tool round, and **queued messages cannot reach it** — so a peer or the human asking "are you alive?" gets nothing back. Recovery is killing the wrapper pid by hand. Adjacent to [TI-70]: both are guards over code `pr.yml` cannot see.
+
+**The tell, before any of the mechanism.** A process-list match whose **`etime` is 0-2 seconds**, when the job should have been running for minutes, is your own command — not the job. Check the age before believing the match: `ps -eo pid,etimes,args | grep -F '<fragment>' | grep -vF 'grep -F'`. This is the most useful line here because it fires on the evidence in front of you rather than needing a rule remembered in advance. Related trap: **`ps -eo … -p <pid>` does not filter to that pid** — `-e` selects everything and overrides `-p`, so the output looks pid-scoped and is not.
+
+**Mechanism.** A wait built on scanning process command lines for a literal — `pgrep -f "<pattern>"`, or any `ps` / `/proc/*/cmdline` equivalent — **self-matches**. This harness runs each Bash tool call as `/bin/bash -c … && eval '<the entire command text>'`, so the wrapper's own cmdline contains whatever pattern was typed, and the scan always finds itself.
+
+| Probe | Result on a completely idle box |
+| --- | --- |
+| `pgrep -fc 'qqq-isolated-nonsense-qqq'` | **1** |
+| The same literal, confined to a script run as a bare path | 0 |
+
+So `until ! pgrep -f "bin/eslint"; do sleep 15; done` never exits, whatever eslint does.
+
+**Reported from 2026-08-11** — recalled from the report of the session it happened to, and a second one a day later; not measured here. A reviewer agent wrote exactly that loop, the lint step finished, and the loop would have spun indefinitely. The self-matching itself *is* measured here, and is what the probe table above and the fixtures assert.
+
+**The one-shot form fails differently and worse.** It returns a plausible phantom — "the job is running" — when nothing is. The tell is an `etime` of 0-2 seconds against a job that should have been alive for minutes.
+
+**`pgrep -f` is legitimate inside a committed script run as a bare path**, because no wrapper then carries the pattern. It is the *invocation* that is broken, not pgrep — see the same analysis under [TI-73](technical-improvements-archive.md#ti-73-the-pre-commit-gate-is-unbounded-across-sessions), which needs a working process/load probe and is where this was first characterised. **Any check must therefore not reject hook-internal use.**
+
+**It is not a `pgrep` problem, and banning `pgrep -f` would not have held.** Any scan over `ps` output or `/proc/*/cmdline` self-matches on any literal typed in the same tool call. Confirmed by a session walking into it **while checking for it**: a loop written specifically to avoid `pgrep -f` — `for p in $(pgrep -P <session>); do … case "$c" in *"while true"*460*461*)` — reported two matches, the real watcher plus the wrapper running the `case` statement, because the pattern literals sat in its own cmdline.
+
+**The count cannot be corrected, so never wait on one.** The inflation is not a constant — it is one match per concurrent agent wrapper carrying the literal (a real count of 31 seen as 34 on a three-session box — reported by that session, not measured here). "Subtract one" is wrong and gets more wrong the busier the machine is. Never trust a count, only a pid. The `[b]racket` trick narrows the artefact — the wrapper that *typed* the pattern stops matching — but a **peer session's** wrapper that typed the plain word still does, so it is not a basis for a wait either. And the two forms **cannot be A/B tested on one command line**: both literals then sit in the wrapper's cmdline and both match.
+
+**Fix, as shipped** (PR [#479](https://github.com/simonkirkham/ai-note-taker/pull/479))**:** `scripts/check-cmdline-waits.sh`, run by `.github/workflows/docs-check.yml` on the same terms as `check-doc-ids.sh` and `lint-workflows.sh`. It refuses the **shape** — a loop that waits (the scan is in its exit condition, or it scans and sleeps) and whose exit turns on a cmdline scan by any means — not the tool. A one-shot scan, a name-only `pgrep`, a pid-scoped `ps -p`, and a `for` loop over one snapshot of results all stay green, so hook-internal and bare-path use is untouched. A deliberate exception takes `# cmdline-wait-ok: <reason>`; the reason is required. `scripts/test-check-cmdline-waits.sh` holds 32 fixtures — 19 that must go red, 13 that must stay green — plus a repo-wide scan, and runs in the same job as the injected-defect check made permanent. The trigger is `**/*.sh`, not the two new files, or a bad loop added to any other script would be ungated. The pre-commit hook was removed on 2026-08-11, so CI is the only place this can live.
+
+**What it cannot cover, stated rather than implied.** The ad-hoc case: an agent typing the loop straight into a Bash call. No committed-file check reaches that, and **that is exactly where this happened, both times**. A guard over committed scripts is worth having, but the durable fix for the ad-hoc case is the written rule in [docs/learnings/waiting-without-scanning-process-cmdlines.md](learnings/waiting-without-scanning-process-cmdlines.md) — wait on a pid (`wait <pid>`, `tail --pid=<pid> -f /dev/null`), on an exit status, on a sha changing, or poll a sentinel with `until grep -q SENTINEL <file>; do sleep 20; done`. Two traps in the substitutes themselves: `timeout N tail -f FILE | grep -m1 SENTINEL` does **not** return when the file stops growing (`tail -f` only learns its reader is gone on its next write, and a finished job writes nothing more); and a sentinel poll **outlives its own condition** — an agent slept out three full 570-second rounds on a deploy that had already finished (reported by that session, not measured here), and from outside a late wait is indistinguishable from a stuck one.
+
+**Review round 1 (PR #479, CHANGES REQUESTED) — the guard did not catch the thing it exists to catch.** The reviewer wrote seven genuine dangerous loops and **all seven passed**. Three causes, all now fixture-pinned:
+
+| Miss | Cause | Closed by |
+| --- | --- | --- |
+| `ps aux`, `ps ax`, `ps aux \| grep -c` | The `aux`/`ax` alternative sat behind a `[[:space:]]+` that had already consumed the only separating space, so it needed a *second* one — `ps  aux` matched, `ps aux` did not. The branch was advertised in a comment, reviewed, and **never once executed** | Split into its own branch; `red-ps-aux.sh`, `red-ps-ax.sh`, `red-ps-aux-count.sh` |
+| `pgrep -c -f X`, `pgrep -u "$USER" -f X` | `-f` was only detected as the **first** option. The first case is the existing `red-count.sh` with one space added | `-f` matched in any option position; `red-pgrep-f-not-first.sh`, `red-pgrep-f-after-arg.sh` |
+| A scan in a `for`-header inside a waiting loop | The for branch attributed the scan to nothing, when a waiting loop was already open around it | Mark already-open enclosing loops only; `red-for-header.sh` |
+| A `cmdline-wait-ok:` named in prose deep inside a loop body | The exemption was bounded downward (exact at 3 lines) but **unbounded upward** | Bounded in both directions; `red-marker-inside-loop.sh` plus `ok-marker-just-inside.sh` to pin the other side |
+
+**A fifth defect surfaced only by running it.** Bracing the two new branches exposed a dangling `else`: unbraced, `for (…) if (…) …` followed by `else` binds that `else` to the **inner** `if`, so awk silently swallowed the body-scan branch and every scan inside a loop body went undetected — while the file still parsed and `bash -n` stayed clean. Caught because the seven loops were re-run against the *existing* fixtures rather than on their own; six went red and one stayed green, and that one green was the tell.
+
+**Evidence for the round:** all seven loops verbatim, green before and red after, under gawk 5.2.1 **and** a mawk 1.3.4 shim (`ubuntu-latest` resolves `awk` to mawk); the eight new fixtures seen **red against the pre-fix checker** and green after, with the 19 pre-existing cases unmoved in both directions; and a positive control on the default `git ls-files` path — a `ps aux` loop appended to a tracked script named the file and line, and the revert returned `OK`.
+
+**Round 2 closed three more, two of them false positives.** The pattern worth keeping: a guard that refuses legitimate work is not a lesser bug than one that misses the defect, because the response to it is to switch the guard off.
+
+| Missed / wrongly refused | Cause | Fix, and the fixture that pins it |
+| --- | --- | --- |
+| An exempted **inner** loop reddened the loop around it, naming the very line the author had exempted | The upward exemption bound stopped the marker covering the outer loop, but `close_loop` still exported the inner scan outward | An exempted loop no longer exports its scan; `ok-marker-nested.sh` and its `while` variant |
+| `ps -aux`, `ps -ax` | Branch (b) needed the `aux`/`ax` word to follow whitespace and the hyphen blocked it; branch (a) needs an `e` or capital `A`, which neither form has | `-?` before the word; `red-ps-hyphen-aux.sh`, `red-ps-hyphen-ax.sh` — one per spelling, so neither regresses alone |
+| `pgrep node-fetch` — a **name-only** `pgrep`, which the header explicitly promises stays green | The option scan ran into the argument, so any process name carrying a hyphen-then-`f` read as an option bearing `-f` | The option must start at whitespace, which a name cannot; `ok-pgrep-hyphenated-name.sh` |
+
+The first was a regression introduced by the round-1 fix — green before it, red after — which is why the seven loops are re-run against the *existing* fixtures every round rather than on their own.
+
+**The `else`/`}` invariant is now stated where an editor will look.** Every `else` in the awk program must be immediately preceded by `}`; an unbraced body re-binds the `else` to the inner `if` and awk swallows the next branch whole, with a clean parse and a clean `bash -n`. It was a site-local comment and is now in `EDITING THIS FILE` beside the apostrophe trap.
+
+**A resurrected row the repo's own id check could not see.** Rebasing onto `main` let the `merge=union` driver restore the `TI-83` row that `main` had just archived — no conflict, no markers. `scripts/check-doc-ids.sh` returned `doc ids OK` throughout, because its live-vs-archive check matches `## TI-N` **headings** and a resurrected table row has no heading ([TI-92] covers that gap). Only a set comparison against the **merge base** caught it, which is the check to run — `git diff $(git merge-base origin/main HEAD) HEAD -- <file>` must show only lines you deleted yourself.
+
+**Also from that round:** `.githooks/**` was dropped from the trigger (0 files on `main` since 2026-08-11 — dead config, and the script's own `git ls-files -- '.githooks/*'` already covers reinstatement), and the five `scripts/*.sh` entries listed by name were replaced by `**/*.sh`, a net deletion — all five are inside the glob.
+
+### OPEN CONTROL — the wildcard trigger has not been watched matching on a pull request
+
+**If `**/*.sh` under-matches, the repo's own guards stop being checked and nothing reports it.** The five entries it replaced were `check-doc-ids.sh`, `lint-workflows.sh`, `merge-gate.sh`, `deploy-status.sh` and `test-merge-gate.sh` — so the failure mode is the guards' own guard quietly switching off. A filter that stops matching produces no run, no error and no annotation, which is the same self-concealing shape as [TI-69].
+
+Evidence, separated by strength rather than merged into one claim:
+
+| Claim | Strength |
+| --- | --- |
+| The `pull_request` trigger fires at all | **Observed** repeatedly, incl. PR #477 and #478 |
+| `**/*.sh` in a `paths:` list matches a nested `scripts/*.sh` | **Observed** on GitHub's own matcher — throwaway branch `proof/ti79-sh-glob`, two temporary workflows each with a single-entry `paths:` list; a push changing only `scripts/sessions.sh` ran the `**/*.sh` one (run `31685559621`, `total_count=1` by full sha) and never ran the `**/*.no-such-extension-xyz` control |
+| `**/*.md` matches a nested path in a `paths-ignore` list | **Observed** in real history — `39e19fb5` changed only `desktop/MANUAL-VERIFICATION.md`, which matches only `**/*.md` in `deploy.yml`, and no Deploy run exists; `fb286458` is the positive control |
+| The same holds on the **`pull_request`** trigger specifically | **INFERRED, not observed.** `paths` and `paths-ignore` share one matching implementation across triggers, so the transfer is sound — but it is an inference |
+
+**Why the last one could not be closed before merging.** A `pull_request` filter is evaluated against the **whole PR diff**, and PR #479 also changes `docs/technical-improvements.md` and `.github/workflows/**` — both matching other entries — so any control run inside #479 is vacuous: its outcome is fixed regardless of the glob. A push to `main` is equally vacuous, since the `push:` trigger has had no `paths:` key since #477.
+
+**The control to run, once, after this merges.** Open a PR whose entire diff is a one-line comment change to `scripts/sessions.sh` or `scripts/next-doc-id.sh` — verified mechanically against the post-change list: every `.sh` file in the repo is matched by `**/*.sh` and by **no other entry**.
+
+- **Pass:** `gh pr checks <n>` lists `doc-ids` and `workflows`.
+- **Fail:** an empty check list. That is the coverage regression, and the fix is to restore the five enumerated entries alongside the glob.
+
+**Tooling trap that makes "nothing ran" unfalsifiable:** a short sha silently returns zero rows on **both** routes — `gh run list --commit <short>` gave 0 and `gh api …/actions/runs?head_sha=<short>` gave `total_count=0` on a commit that has exactly one run, while the full 40-character sha gave 1 on both. Always pass `$(git rev-parse <ref>)`.
+
+**Related:** [docs/learnings/waiting-without-scanning-process-cmdlines.md](learnings/waiting-without-scanning-process-cmdlines.md) is the written rule. [docs/learnings/a-mechanism-nobody-has-watched-work-is-not-working.md](learnings/a-mechanism-nobody-has-watched-work-is-not-working.md) carries this as instance 2 and its live recurrence.
+
+---
+
+## TI-82. The documented merge step deletes neither branch
+
+**What it costs:** the remote carries **247** `slice/`+`proof/` branches (measured 2026-08-11, after three were removed). Every `git fetch`, every branch autocomplete, every "is this still in flight?" question is paid against that list, and a genuinely-live branch is indistinguishable from 240 dead ones. `scripts/next-doc-id.sh` scans 305 remote refs to answer one question.
+
+**Why it went unnoticed for so long: the doc said the failure was harmless.** `CLAUDE.md` → `## Workflow` step 11 stated that `gh pr merge --squash --delete-branch` deletes the *remote* branch and only its *local* cleanup fails (`'main' is already used by worktree`) — "this is harmless". It is not. When the local step errors, `gh` aborts the whole cleanup and **the remote branch survives silently**. Nobody checked, because the doc had already answered the question.
+
+**The measurement (coordinator, 2026-08-11, five merges):**
+
+| Branch | Remote after merge |
+| --- | --- |
+| `slice/ti-67-rum-custom-events` | still on remote |
+| `slice/ti-65-gated-read-stale` | still on remote |
+| `slice/ti-77-merge-gate-unknown` | still on remote |
+| `slice/ti-70-actionlint` | gone — deleted by hand |
+| `slice/ti-61-routing-flake` | gone — deleted by hand |
+
+Three of five survived, and the two that did not are exactly the two deleted explicitly. **Done 2026-08-11:** `CLAUDE.md` steps 11 and 13 corrected (both deletes are now explicit, and step 11 no longer calls the failure harmless), and the three branches above deleted after confirming each was safe.
+
+**Confirming a squash-merged branch is safe to delete — `git branch -r --merged` is the wrong test.** A squash merge never makes the branch tip an ancestor of `main`, so `--merged` lists none of these and `--is-ancestor` returns NO for all three; read naively that says "unmerged, do not delete". Two checks settle it instead:
+
+1. `gh pr list --state all --head <branch>` → the PR is `MERGED` and names its squash commit; `git merge-base --is-ancestor <squash-sha> origin/main` confirms that commit is on `main`.
+2. For the files the branch actually touched — `git diff --name-only $(git merge-base origin/main <tip>) <tip>` — check none still differs: `git diff --name-only origin/main <tip> -- <those files>`. A residual here is not automatically unmerged work; on both branches that showed one, the file had been changed by a *later* commit on `main` (#470, #464), which `git log <squash-sha>..origin/main -- <file>` shows in one line.
+
+**Remaining work:** the other 247 are historical and were deliberately not swept. A sweep needs the two checks above run per branch — worth scripting (`scripts/prune-merged-branches.sh`, dry-run by default) rather than doing by hand, since the naive `--merged` filter is wrong for every squash-merged branch in the list and would report almost all 247 as unmerged.
+
+**Raised in:** [TI-80] session, 2026-08-11, from the coordinator's measurement.
 **Depends on:** —
 
 ---
 
+## TI-85. The check that proves our read-your-writes probe still works can be fooled by a read the previous page started, so it could one day pass while proving nothing
+
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: **The check that proves our read-your-writes probe still works can be fooled by a read the previous page started, so it could one day pass while proving nothing** — 🔲 **Open** — raised 2026-08-12 (Hawk, PR #473 / [BUG-79], classified should-fix; not blocking, and the reviewer said so). `AppPage.ObserveActionsReadTokenAsync` clears the probe **before** reloading, so its sampling window includes any read the outgoing page starts between the route being installed and the reload. In the ungated arm such a read still carries the token, which would report the control as gated and fail the check for a reason unrelated to what it tests. **Why it is a should-fix and not a must-fix:** the ungated path has never once reported a token across ~25 recorded runs (batches of 6/10, 5/10 and 10/10); every observed failure was the *gated* arm losing its seed, which is fixed. So this is a latent hole, not an active one. **Fix:** take a sequence-number boundary just before the reload and ignore anything recorded below it. The same change closes the sibling race on the ungated arm's `ryw.*` delete, which is a live-page write with the same exposure — do that deletion in an init script too, added first so the gated arm's later seed still wins. **Why it matters beyond this one test:** it is the same class as the bug the probe was built for — a measurement that looks like a property of the system turning out to be a property of when it was taken.
+
+---
+
+## TI-87. A dropped connection while installing dependencies paints a red X on a pull request that did nothing wrong
+
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: **A dropped connection while installing dependencies paints a red X on a pull request that did nothing wrong** — 🔲 **Open** — raised 2026-08-13 (hit by [CHANGE-41], PR #475, run [31677449442](https://github.com/simonkirkham/ai-note-taker/actions/runs/31677449442)). The `desktop` job's `npm --prefix desktop ci` runs Electron's `postinstall`, which downloads the ~100 MB Electron binary from GitHub releases. One `RequestError: socket hang up` failed the job in 17 s; a plain re-run passed with nothing changed. **Same class as [TI-84]** — an unretried, uncached network fetch turning a transient blip into a red check — and the same two fixes apply: retries (`npm config set fetch-retries` does **not** cover Electron's own download; it reads `ELECTRON_GET_...` / needs a retry wrapper) and an `actions/cache` on the Electron download cache keyed by version, which also removes a ~60 s download from every run. **Worth fixing together with [TI-84]**, since one cache-and-retry pass covers both. **Bound the retry, don't just add one** — [TI-84]'s review found that a naive retry delay is a lower bound, not an upper one: a rate-limited response carrying `Retry-After: 120` makes the client wait the longer of the two and blow the job's timeout, converting a 6-second red X that *names the failed download* into a timeout that names nothing. Whatever retry this uses needs an explicit total-time cap.
+
+---
+
+## TI-88. A gate verdict has an expiry, and the window between reading it and acting on it is where it fails
+
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: **A merge can be waved through as safe and then refused seconds later, and the cleanup that follows can close the pull request** — 🔲 **Open** — raised 2026-08-13, hit live on PR [#469](https://github.com/simonkirkham/ai-note-taker/pull/469): the gate printed `GREEN — safe to merge`, the merge was refused ~3 s later on conflicts, and the branch cleanup that assumed it had landed auto-closed the PR. Detail in [TI-88](#ti-88-a-gate-verdict-has-an-expiry-and-the-window-between-reading-it-and-acting-on-it-is-where-it-fails) below.
+
+**What it costs:** a merge is declared safe, refused seconds later, and the branch cleanup that normally follows a successful merge then deletes the remote branch — which **auto-closes the pull request**. Fully recoverable (re-push the sha, `gh pr reopen`), but it is a live path from one stale field to a closed PR, and the person hitting it has just been told the opposite by the gate.
+
+**Observed live, 2026-08-13.** `scripts/merge-gate.sh 469` printed `MERGE GATE: GREEN — safe to merge PR #469`, with `MERGEABLE: ok (CLEAN)`. Roughly **three seconds later** `gh pr merge 469 --squash` was refused: `GraphQL: Pull Request has merge conflicts (mergePullRequest)`. Two commits (`504990a2`, `95ecf1ee`) had just been pushed directly to `main` in between. First-hand reading, both halves watched.
+
+**Why:** GitHub computes a PR's mergeability **asynchronously**. Until it recomputes against the new `main`, the API keeps serving the previously-computed `MERGEABLE`/`CLEAN`. The gate therefore reads a value that is already stale — and, the part that matters, it **cannot distinguish "verified clean against current `main`" from "not yet rechecked"**. Both arrive as `MERGEABLE`/`CLEAN`.
+
+**Distinct from its two neighbours — do not fold them together.** [TI-81] (archived) was a stale *run* record on the deploy gate. [TI-87] is a network blip on a dependency download. This is a stale *mergeability* flag on the PR gate, in a different script, with a different failure path.
+
+**Same shape as [TI-81], and the shape is the reusable part:** a gate reporting a state that was true a moment ago and is not true now — a stale run record there, a stale mergeability flag here. See [TI-81 in the archive](technical-improvements-archive.md#ti-81-an-orphaned-run-record-blocks-the-merge-gate-for-tens-of-minutes). It is the same family as [TI-77] (`UNKNOWN` mergeability read as a conflict) and as the standing guardrail in `CLAUDE.md` about a mechanism nobody has watched work: a check that agrees with reality without being able to see it. TI-77 fixed *not yet computed*; this is *computed, then invalidated*.
+
+**Two candidate fixes, neither picked:**
+
+| # | Fix | What it buys |
+| --- | --- | --- |
+| a | Record `origin/main`'s sha at the moment the gate reads `MERGEABLE`, and re-check immediately before merging that the sha has not moved — fail **closed** if it has | The verdict can name what it was computed against, so a later step can tell it is void |
+| b | Treat the verdict as having an expiry and re-run the gate **inside** the merge step, rather than as a separate earlier call | Closes the window rather than detecting movement inside it |
+
+(b) removes the window; (a) keeps the two calls but makes the second able to see the first is void. Either way the gate must be able to say **which `main` it checked** — a verdict that cannot name its input cannot be re-validated.
+
+**A second, operational rule this incident produced, independent of whichever fix is taken:** never run cleanup on the assumption an action succeeded. Verify the action landed, *then* clean up. Here the cleanup ran on the assumption the merge had happened, and turned a failed merge into a closed PR — the cleanup did more damage than the bug.
+
+**Learnings:** [merge-gate-verdicts-expire.md](learnings/merge-gate-verdicts-expire.md).
+
+**Raised in:** 2026-08-13, measured during [TI-81]'s own merge.
+
+---
+
+## TI-89. The merge gate's self-test blames the merge gate when the machine's `date` command is the problem
+
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: **On a Mac, the self-test that guards the merge gate reports nine failures accusing the merge-gate logic, when the only thing wrong is the machine's `date` command** — 🔲 **Open** — raised 2026-08-13 (Hawk, PR [#469](https://github.com/simonkirkham/ai-note-taker/pull/469) / [TI-81], should-fix). Measured, not argued: `scripts/test-merge-gate.sh:84-85` builds its clock fixtures with `date -u -d '-45 minutes'`, which only GNU coreutils supports. Run against a `date` without `-d`, the suite prints **`MERGE-GATE SELF-TEST: FAILED`, 45 PASS / 9 FAIL**, and every failure message names orphaned run records rather than the clock. Fix: one guard that exits loudly if `date -u -d` is unsupported. CI is `ubuntu-latest`, so it costs nobody today. Detail in [TI-89](#ti-89-the-merge-gates-self-test-blames-the-merge-gate-when-the-machines-date-command-is-the-problem) below.
+
+**What it costs:** someone on a Mac runs the self-test that guards every merge, sees it red, and is pointed at the orphaned-run-record logic — which is fine. The real cause is two `date: illegal option -- d` lines printed far above the failures, with nothing connecting them. Time spent chasing a phantom bug in the one script every session has to pass. Costs nobody today: CI is `ubuntu-latest`.
+
+**Why:** `scripts/test-merge-gate.sh:84-85` builds `STALE` and `FRESH` with `date -u -d '-45 minutes'`, a GNU coreutils extension. BSD `date` (macOS) rejects `-d`, both assignments capture the empty string, and every fixture's `updatedAt` becomes `""`. The gate then blocks on "the run record carried no readable updatedAt" — a correct refusal, reached by a path unrelated to what the case tests.
+
+**Measured 2026-08-13, with `date` shadowed by a stub that rejects `-d`:**
+
+| Run | Result |
+| --- | --- |
+| GNU `date` | `MERGE-GATE SELF-TEST: GREEN` — 54 PASS, 0 FAIL |
+| `date` without `-d` | `MERGE-GATE SELF-TEST: FAILED` — 45 PASS, 9 FAIL, exit 1 |
+
+The nine read like the gate is broken: `an orphaned record is discounted, and said so — exit 1, wanted 0; missing 'orphaned'`, `a job with no completed_at cannot establish that the run finished — missing 'no readable completed_at'`, `the caller inherits the discount, on one line — the discount did not survive the relay onto the MAIN DEPLOY line`. None mentions a clock.
+
+**The review that raised this predicted the opposite outcome — that the suite would degrade into passing while asserting nothing.** It does not; it fails loudly, at the suite level, on nine cases. That is a better failure than the one predicted, and it is why this is a should-fix and not urgent. What survives the correction is the **accusation**: a broken check that names the wrong culprit is still a broken check, and the 45 cases that still say PASS include ones whose clock fixtures are now empty and are passing on an unrelated arm. Same family as the standing `CLAUDE.md` rule that a mechanism nobody has watched work is not working — here the instrument was watched, and the prediction about it was wrong.
+
+**Fix:** one guard beside the assignments — compute `STALE`, and if it is empty, print `this suite needs GNU date (coreutils); on macOS: brew install coreutils and put gnubin on PATH` and exit non-zero. Loud and named beats nine failures that name something else.
+
+**Verified NOT a gap — do not re-open it.** The same review also flagged that the `updated_at` staleness clock had no test pinning it, because on a re-run GitHub carries already-successful jobs into the new attempt with their **original** `completed_at`, leaving `updated_at` to decide alone (`deploy-status.sh:256-259` says exactly this in a comment). The fixture it asked for already exists: `test-merge-gate.sh:243-249`, "Clause 3's own red test — identical to #762 in every way except a fresh record", is stale jobs plus a fresh `updated_at`. Injecting the exact defect warned about — rewriting `if age < STALE_MINUTES or job_age < STALE_MINUTES` to drop the `age` term — reddened that case and failed the suite (53 PASS / 1 FAIL). The guard bites.
+
+**A known limit, recorded so nobody files it as a defect:** a `skipped` job blocks the discount, so an orphaned record on a run carrying one keeps the original bug. This is conscious and tested (`a conclusion outside the allow-list blocks rather than being guessed at`) — it is the allow-list failing **closed**, which is the property the whole fix exists to have. Measured **1 skipped job in 125, across 25 runs**, and in that one instance it accompanied a failure that blocks regardless.
+
+**Raised in:** 2026-08-13, Hawk's post-merge review of PR #469 ([TI-81, archived](technical-improvements-archive.md#ti-81-an-orphaned-run-record-blocks-the-merge-gate-for-tens-of-minutes)), two findings folded into one item.
+
+---
+
+## TI-90. A commit can reach main with no check-suite from any app, and the absence is why nobody noticed
+
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: **A change can land in the main codebase with nothing checked against it at all, and nothing anywhere reports it** — 🟡 **In Progress** — raised 2026-08-13. Measured: commit `4727672f` carries **zero** check-suites from **any** app, while `14a4a48f`, `fb286458` and `c12fa2c9` around it each carry two. A daily backstop now reconciles `main` against its check-suites and names any such commit; the cause of the undelivered push event is still unknown. **The backstop is live, and its FIRST live run found a second instance** (PR #478, merged 87610e0f; run 34328044188, 2026-09-09). Over the last 50 commits on `main` it named two that nothing ever ran against: `4727672f` (the original evidence) and `95ff86cc`, which landed **2026-09-08** — so this is still happening, not a one-off from August. The registration check in the detail table was wrong as first written and is corrected there. Detail in [TI-90](#ti-90-a-commit-can-reach-main-with-no-check-suite-from-any-app-and-the-absence-is-why-nobody-noticed) below.
+
+**Symptom.** A change lands in the main codebase and nothing is checked against it — no failure, no red X, no trace anywhere. `main` then looks checked when it was never looked at, and the next person builds on top of it believing the opposite.
+
+**Measured 2026-08-13**, on `repos/simonkirkham/ai-note-taker/commits/<sha>/check-suites`:
+
+| Commit | `total_count` | Apps |
+| --- | --- | --- |
+| `4727672f` (TI-81 squash merge) | **0** | none |
+| `14a4a48f` | 2 | `coderabbitai`, `github-actions` |
+| `fb286458` | 2 | `coderabbitai`, `github-actions` |
+| `c12fa2c9` | 2 | `coderabbitai`, `github-actions` |
+| `93cc8cad` | 3 | `coderabbitai`, `github-actions` ×2 |
+
+**This is not a workflow-config defect, and looking for one is the wrong search.** `docs-check.yml` is byte-identical between `14a4a48f` and `4727672f`; all three files `4727672f` changed are in its push `paths:` list; and its `concurrency.group` is keyed by `github.sha` on a push, so no push can cancel another. Decisively: **CodeRabbit is absent too**, and a `paths:` filter cannot suppress an unrelated app's check-suite. Zero suites across *every* app means no check machinery was triggered at all — most parsimoniously, no push event was delivered GitHub-side.
+
+**Retracted diagnosis, kept on purpose.** An earlier version of this blamed the `paths:` filter. It was wrong because `actions/runs` — which lists *workflow runs only* — was used to answer a question about *all checks*. "The guard did not fire" and "nothing fired" are different claims needing different queries; `check-suites` answers the second, and only the second.
+
+**[TI-83] does not close this.** Dropping a `paths:` list changes what happens when a push event *arrives*. It does nothing at all when no push event arrives.
+
+**Same family as [TI-88] and the archived [TI-81]:** a gate reporting a state that is not the state now. TI-81 was a stale run record read as live, TI-88 a verdict that expired between being read and being acted on, and this one a check that was never asked. In all three the artefact on screen is confidently wrong rather than absent, which is why none of them surfaces as a complaint.
+
+**What shipped: a backstop, not a fix.** The cause of the undelivered push event is still unknown and is not within reach from this side of the API. What is within reach is noticing — so `scripts/check-main-checked.sh` walks the last N commits on `main`, asks the check-suites API about each, and fails if any commit has none. `.github/workflows/main-checked.yml` runs it daily.
+
+- **Why a schedule, not a push trigger.** The failure is "a trigger did not fire", so a guard triggered by that same push event is structurally incapable of catching it — the commit that lost its push event would have lost this run too. A `schedule:` is delivered by GitHub timers, independent of this repo's push deliveries, and it looks *backwards* over a window rather than at one commit. The cost is latency: a hole is found within a day rather than within a minute, against a current detection latency of never.
+- **How wide the window really is — measured, because the first estimate was wrong.** An earlier revision said "roughly 15-20 commits a day, so a commit stays in scope for two to three runs". **Measured 2026-08-13** from the committer dates of the last 100 commits on `main`: **45 on 08-10, 36 on 08-11, 5 on 08-12, 14 on 08-13** (partial day). So on a busy day the 50-commit window covers barely **27 hours — one scheduled run, not two or three**, and a hole landing at the start of a 45-commit day can roll out of the window before a second run sees it. On a quiet day it covers over a week. Raise the `count` input if a busier cadence becomes normal; the API pages at 100.
+- **Three outcomes, not two.** `0` all checked · `1` an unchecked commit · `2` could not determine. The third is the one that matters: a 401, a rate limit, a proxy error page, and a body missing `total_count` all look like a genuine zero to the obvious implementation, and a backstop that reports all-clear because it could not reach the API manufactures exactly the false confidence it exists to remove. Exit 1 and exit 2 are opposite instructions — fix `main`, or ask again — and never share a code or a word.
+- **Grace window, 10 minutes.** A commit pushed seconds ago has no suite yet. Measured against the committer date, which in this repo is within a minute of the push time (squash merges stamp it at the merge instant; direct doc pushes commit and push within seconds).
+- **Why "no `github-actions` suite" is *not* the failure condition.** **Measured 2026-08-13 08:19 UTC**, pinned to the tip `10957a81` so it reproduces (the window slides as `main` advances, which is why an earlier "20 of the last 40 / 50%" reading did not): `gh api "repos/{owner}/{repo}/commits?sha=10957a81&per_page=50" --jq '.[].sha'`, then one `check-suites` call per sha → **1 UNCHECKED, 22 with suites but none from `github-actions`, 27 fully checked**. Those 22 are benign — `deploy.yml` paths-ignores `docs/**` and `docs-check.yml` only gained its push trigger at [TI-80] — and another app answering *proves the push event was delivered*, which is the thing being reconciled. Failing on them would be a **44%** false-alarm rate that buries the one real hole. They are reported and do not fail.
+- **The residual hole in that choice, written down rather than left to be discovered.** Accepting **any** app's suite proves an event reached **an** app. It does **not** prove the `github-actions` pipeline was triggered. A commit could carry a CodeRabbit suite while Actions was never invoked, and this script calls that `ok`. Narrow — but it is the same shape of thing this exists to catch, one level in. `CHECK_MAIN_REQUIRE_ACTIONS=1` closes it, at the cost of the false-alarm rate above; **[TI-93]** holds that flip and its checkable condition, so it is a scheduled follow-up rather than an env var waiting for somebody to remember.
+
+**NOTHING WATCHES THIS WORKFLOW — and its silence is indistinguishable from a clean `main`.** This is the sharpest limit, not a footnote. If GitHub stops delivering the schedule, this file goes quiet in exactly the way the thing it monitors did: no failure, no red X, no trace. (GitHub also disables scheduled workflows in repositories with 60 days of no activity; this repo is nowhere near that, but the rule exists.) So the silence has to be actively disproven, by these three commands — **the first two run immediately on merge**, because they take seconds and "we'll see it tomorrow" is how [TI-69] shipped a workflow that never parsed, painted **162 push red X's over three days**, and was noticed by nobody:
+
+| # | Command | Fails if | When |
+| --- | --- | --- | --- |
+| 1 | `gh workflow list --json name,path --jq '.[] \| select(.path \| test("main-checked"))'` | **nothing prints.** A file that does not parse is simply *absent* from the list — absence, not an error message, is the whole failure mode. This is the positive control: the one of the three that can express a no about registration. **Corrected 2026-09-09:** this read `gh workflow list \| grep -i main-checked`, which greps the *display* name column. The workflow is called `Main Checked`, so the hyphenated filename never matched and the command reported "did not parse" about a workflow that was registered, active, and dispatchable — the check itself was the confidently-wrong artefact this row is about. Match on `.path` instead. | immediately on merge |
+| 2 | `gh workflow run main-checked.yml -f count=50` | **HTTP 422.** Exactly the check TI-69 failed. Then read it: `gh run list --workflow main-checked.yml --limit 1` | immediately on merge |
+| 3 | `gh run list --workflow main-checked.yml --event schedule --limit 1` | **the list is empty** — the timer never fired, and every quiet day since has been meaningless | after the first 07:17 UTC window, and again whenever it has been silent longer than feels right |
+
+**Verified, not asserted** — three arms, because a detector that reddens on everything only proves it noticed something. All three re-run 2026-08-13 after the review fixes:
+
+1. **Red on the real case.** `bash scripts/check-main-checked.sh 6 b59e991c` → `MAIN-CHECKED: FAILED — 1 of 6 commits reached b59e991c with NO check-suite from any app: 4727672f`, exit 1, with the other five reported `ok`.
+2. **Green on the neighbours.** `14a4a48f`, `fb286458`, `c12fa2c9` each → `MAIN-CHECKED: GREEN`, exit 0.
+3. **Loud, not green, on every error path** — forced against the real API, not a stub: an invalid token (real HTTP 401), an unreachable host, a non-existent ref (real HTTP 404), a real 401 on the per-commit call with the commit list succeeding, and a real HTTP 200 whose valid JSON simply has no `total_count`. All five printed `COULD NOT DETERMINE` and exited 2; none printed `GREEN`, none printed `UNCHECKED`. The first three were **independently reproduced by a second session**; the last two remain this session's measurement only.
+
+**A clock that disagrees now fails loud, not quiet** (Hawk, PR #478, blocking). The grace window is `now − committer date`, and any **negative** age satisfied `age < GRACE` — so a commit stamped in the future was excused as *too recent* and the run exited **0 with a genuine zero-suite commit in the window**, which is the one defect class this exists to remove. Not hypothetical: the stamp read is the *committer* date, and for a direct doc push to `main` — the route `CLAUDE.md` prescribes — that is the committing machine's clock, on WSL, across sleep/resume. It also self-heals only once wall-clock time overtakes the stamp, by which point the window has rolled past the commit. A future-dated commit is now `unverifiable` → exit 2. Proven both ways: reverting the arm reddens exactly the 3 new cases and leaves 34 green.
+
+**Cost.** One API call per commit plus one for the list — 51 calls for the default 50-commit window, measured at 36s wall clock. No build, no test, no deploy; nothing on the deploy path.
+
+**Tests.** `scripts/test-check-main-checked.sh`, **37** stub-driven cases, no network, ~2s, wired into `docs-check.yml` (`pr.yml` paths-ignores `scripts/**`, and this script prints GREEN forever in normal operation, so nothing about day-to-day use would ever reveal a broken failure arm). Every classification is asserted both ways — one fixture that must be reported and one that must not, differing only in the clause under test. Presence is not enough, so each guard is pinned by injecting its defect and checking that the **right** cases redden: reverting the future-date arm → exactly 3 red / 34 green; the classic `total_count or 0` → exactly 2 red / 35 green (it reddened **0** before this review, because the fixture naming it was caught one line later by the `check_suites`-is-a-list guard); a bare sibling-script invocation → exactly 1 red / 36 green.
+
+---
+
 ## TI-91. A fast clock turns the merge gate's stale-run discount into a fail-open
+
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: **The merge gate can say it is safe to merge while a deploy is genuinely running, if the clock on the machine reading it is more than ten minutes fast** — 🔲 **Open** — raised 2026-08-13. **Derived from reading `scripts/deploy-status.sh`, not from an observed miss** — and no reading taken afterwards could establish whether one has already happened. Detail in [TI-91](#ti-91-a-fast-clock-turns-the-merge-gates-stale-run-discount-into-a-fail-open) below.
 
 **What it costs:** the gate prints `GREEN — safe to merge` while a deploy is still running, the merge lands on top of it, and the in-flight deploy is disrupted. **Derived from reading the script, not observed here.** No instance has been seen on this box, and — see below — none could be found afterwards even if it had happened.
 
@@ -493,6 +917,10 @@ The tier that catches what [TI-59] cannot: latency and the whole capture→engin
 
 ## TI-92. Half-archived TI items are invisible because the live-vs-archive check covers bugs only
 
+**2026-09-16:** the doc tidy archived every finished item, so no TI id is in both files today. The check that would stop it recurring is still missing.
+
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: **A tracking item can be half-archived — copied into the archive but never deleted from the live list — and nothing notices, because the check that catches exactly this looks only at bugs** — 🔲 **Open** — raised 2026-08-13. **34 TI ids sit in both files today**, all pre-existing, so finished work reads as outstanding on the one column the human scans. Detail in [TI-92](#ti-92-half-archived-ti-items-are-invisible-because-the-live-vs-archive-check-covers-bugs-only) below.
+
 **What it costs:** an item written into the archive but never deleted from the live table stays on the outstanding list forever, so anyone scanning the `Status` column to decide what is left reads finished work as open. CI fails the build for exactly this state on a bug and permits it silently on a technical improvement.
 
 **Why.** `scripts/check-doc-ids.sh` lines 45–55 `comm -12` the ids in `docs/phases/phase-bugs.md` against the `## BUG-N` headings in `docs/phases/phase-bugs-archive.md` and fail when an id appears in both. There is **no equivalent for TI** (`technical-improvements.md` vs `technical-improvements-archive.md`) and none for CHANGE. The *duplicate*-id check higher up does cover all three prefixes; it is only the live-vs-archive half that is BUG-only.
@@ -524,7 +952,29 @@ TI-1, 2, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 19, 21, 22, 26, 27, 28, 
 
 ---
 
+## TI-93. The backstop accepts any app's check-suite, so a commit the build pipeline never saw still reads as checked
+
+**Symptom.** A change lands in the main codebase, the build and test pipeline never runs against it, and the daily backstop still reports it as checked — because some other robot (the code-review bot) answered instead. Narrower than [TI-90], and the same shape one level in: an artefact that is confidently wrong rather than absent.
+
+**Why it was built this way, and why that is now expiring.** `scripts/check-main-checked.sh` trips on `total_count == 0` across *all* apps, not on the absence of a `github-actions` suite. That was the right call at the time: another app answering *proves the push event was delivered*, which is the thing being reconciled, and **measured 2026-08-13 08:19 UTC** over the 50 commits ending at `10957a81`, the stricter bar would have fired on **22 of 50 (44%)** — an alarm that cries wolf on nearly every other commit is one nobody reads. What it does **not** prove is that the Actions pipeline was invoked at all.
+
+**The reason it can now be closed.** Those 22 exist because `deploy.yml` paths-ignores `docs/**` and `docs-check.yml` carried a `paths:` list on its push trigger. **Measured, same run:** every one of the 22 predates [TI-80] (`14c6c034`); of the **16** commits at or newer than it, **15 are `ok` and 1 is the real `UNCHECKED` hole — zero are `no-actions`**. Once [TI-83] (PR #477) removes the remaining `paths:` from the push trigger, every push to `main` produces a `Repo Checks` run and therefore a `github-actions` suite, so the benign class stops existing **by construction** rather than by judgement.
+
+**The flip, with its checkable condition** — this is a scheduled change of default, not an env var waiting for somebody to remember it:
+
+1. **Wait for** [TI-83] (PR #477) to merge, so no push to `main` can match zero workflows.
+2. **Check it, do not assume it:** `CHECK_MAIN_REQUIRE_ACTIONS=1 bash scripts/check-main-checked.sh 50 main`. The condition is **exit 0 with zero `no-actions` lines** — a strict-mode false-alarm count of 0 over the full 50-commit window. Anything else means the class has not closed and the flip waits.
+3. **Then switch the default** in `scripts/check-main-checked.sh` (`REQUIRE_ACTIONS="${CHECK_MAIN_REQUIRE_ACTIONS:-1}"`), invert the existing `...unless the stricter bar is asked for` case in `scripts/test-check-main-checked.sh` so the *lenient* bar becomes the opt-out, and re-run the suite.
+
+**Cost.** Minutes. One default flipped, one test case inverted, one measurement re-run. Reversible by the same env var in the other direction.
+
+**Raised in:** 2026-08-13, Hawk's review of PR #478 ([TI-90]), finding folded out of that row so the flip has an owner and a condition rather than a comment.
+
+---
+
 ## TI-94. A merge silently restores a deleted section, and nothing detects it
+
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: **A merge can quietly put back work someone deliberately deleted — no conflict, no marker, every check green — so a closed item reappears as open work and another session's finished change is undone** — 🔲 **Open** — raised 2026-08-13. **Three confirmed instances in one day; only one was visible to any existing check, and one sat on `main` for 10 straight commits.** Archiving is exactly the delete-versus-surrounding-context operation the `merge=union` driver resolves wrongly, so it will recur. Interim gate, usable today: zero deleted lines in the diff against the **merge base** on an append-only file — diffing against `origin/main` instead reads every line `main` gained since your branch point as your deletion (**86** falsely accused vs **0** real, same branch, measured). Detail in [TI-94](#ti-94-a-merge-silently-restores-a-deleted-section-and-nothing-detects-it) below.
 
 **What it costs:** a merge can undo a deletion someone made on purpose. The content comes back, git reports no conflict, no marker is written, and every check passes — so a finished item reappears on the outstanding list carrying advice that no longer applies, and the session that deleted it is never told. One instance below reached `main` and stayed live for hours before a human spotted it by eye.
 
@@ -642,184 +1092,9 @@ Three ids have a `## TI-` section in **both** the live doc and the archive: **TI
 
 ---
 
-## TI-89. The merge gate's self-test blames the merge gate when the machine's `date` command is the problem
-
-**What it costs:** someone on a Mac runs the self-test that guards every merge, sees it red, and is pointed at the orphaned-run-record logic — which is fine. The real cause is two `date: illegal option -- d` lines printed far above the failures, with nothing connecting them. Time spent chasing a phantom bug in the one script every session has to pass. Costs nobody today: CI is `ubuntu-latest`.
-
-**Why:** `scripts/test-merge-gate.sh:84-85` builds `STALE` and `FRESH` with `date -u -d '-45 minutes'`, a GNU coreutils extension. BSD `date` (macOS) rejects `-d`, both assignments capture the empty string, and every fixture's `updatedAt` becomes `""`. The gate then blocks on "the run record carried no readable updatedAt" — a correct refusal, reached by a path unrelated to what the case tests.
-
-**Measured 2026-08-13, with `date` shadowed by a stub that rejects `-d`:**
-
-| Run | Result |
-| --- | --- |
-| GNU `date` | `MERGE-GATE SELF-TEST: GREEN` — 54 PASS, 0 FAIL |
-| `date` without `-d` | `MERGE-GATE SELF-TEST: FAILED` — 45 PASS, 9 FAIL, exit 1 |
-
-The nine read like the gate is broken: `an orphaned record is discounted, and said so — exit 1, wanted 0; missing 'orphaned'`, `a job with no completed_at cannot establish that the run finished — missing 'no readable completed_at'`, `the caller inherits the discount, on one line — the discount did not survive the relay onto the MAIN DEPLOY line`. None mentions a clock.
-
-**The review that raised this predicted the opposite outcome — that the suite would degrade into passing while asserting nothing.** It does not; it fails loudly, at the suite level, on nine cases. That is a better failure than the one predicted, and it is why this is a should-fix and not urgent. What survives the correction is the **accusation**: a broken check that names the wrong culprit is still a broken check, and the 45 cases that still say PASS include ones whose clock fixtures are now empty and are passing on an unrelated arm. Same family as the standing `CLAUDE.md` rule that a mechanism nobody has watched work is not working — here the instrument was watched, and the prediction about it was wrong.
-
-**Fix:** one guard beside the assignments — compute `STALE`, and if it is empty, print `this suite needs GNU date (coreutils); on macOS: brew install coreutils and put gnubin on PATH` and exit non-zero. Loud and named beats nine failures that name something else.
-
-**Verified NOT a gap — do not re-open it.** The same review also flagged that the `updated_at` staleness clock had no test pinning it, because on a re-run GitHub carries already-successful jobs into the new attempt with their **original** `completed_at`, leaving `updated_at` to decide alone (`deploy-status.sh:256-259` says exactly this in a comment). The fixture it asked for already exists: `test-merge-gate.sh:243-249`, "Clause 3's own red test — identical to #762 in every way except a fresh record", is stale jobs plus a fresh `updated_at`. Injecting the exact defect warned about — rewriting `if age < STALE_MINUTES or job_age < STALE_MINUTES` to drop the `age` term — reddened that case and failed the suite (53 PASS / 1 FAIL). The guard bites.
-
-**A known limit, recorded so nobody files it as a defect:** a `skipped` job blocks the discount, so an orphaned record on a run carrying one keeps the original bug. This is conscious and tested (`a conclusion outside the allow-list blocks rather than being guessed at`) — it is the allow-list failing **closed**, which is the property the whole fix exists to have. Measured **1 skipped job in 125, across 25 runs**, and in that one instance it accompanied a failure that blocks regardless.
-
-**Raised in:** 2026-08-13, Hawk's post-merge review of PR #469 ([TI-81, archived](technical-improvements-archive.md#ti-81-an-orphaned-run-record-blocks-the-merge-gate-for-tens-of-minutes)), two findings folded into one item.
-
-## TI-90. A commit can reach main with no check-suite from any app, and the absence is why nobody noticed
-
-**Symptom.** A change lands in the main codebase and nothing is checked against it — no failure, no red X, no trace anywhere. `main` then looks checked when it was never looked at, and the next person builds on top of it believing the opposite.
-
-**Measured 2026-08-13**, on `repos/simonkirkham/ai-note-taker/commits/<sha>/check-suites`:
-
-| Commit | `total_count` | Apps |
-| --- | --- | --- |
-| `4727672f` (TI-81 squash merge) | **0** | none |
-| `14a4a48f` | 2 | `coderabbitai`, `github-actions` |
-| `fb286458` | 2 | `coderabbitai`, `github-actions` |
-| `c12fa2c9` | 2 | `coderabbitai`, `github-actions` |
-| `93cc8cad` | 3 | `coderabbitai`, `github-actions` ×2 |
-
-**This is not a workflow-config defect, and looking for one is the wrong search.** `docs-check.yml` is byte-identical between `14a4a48f` and `4727672f`; all three files `4727672f` changed are in its push `paths:` list; and its `concurrency.group` is keyed by `github.sha` on a push, so no push can cancel another. Decisively: **CodeRabbit is absent too**, and a `paths:` filter cannot suppress an unrelated app's check-suite. Zero suites across *every* app means no check machinery was triggered at all — most parsimoniously, no push event was delivered GitHub-side.
-
-**Retracted diagnosis, kept on purpose.** An earlier version of this blamed the `paths:` filter. It was wrong because `actions/runs` — which lists *workflow runs only* — was used to answer a question about *all checks*. "The guard did not fire" and "nothing fired" are different claims needing different queries; `check-suites` answers the second, and only the second.
-
-**[TI-83] does not close this.** Dropping a `paths:` list changes what happens when a push event *arrives*. It does nothing at all when no push event arrives.
-
-**Same family as [TI-88] and the archived [TI-81]:** a gate reporting a state that is not the state now. TI-81 was a stale run record read as live, TI-88 a verdict that expired between being read and being acted on, and this one a check that was never asked. In all three the artefact on screen is confidently wrong rather than absent, which is why none of them surfaces as a complaint.
-
-**What shipped: a backstop, not a fix.** The cause of the undelivered push event is still unknown and is not within reach from this side of the API. What is within reach is noticing — so `scripts/check-main-checked.sh` walks the last N commits on `main`, asks the check-suites API about each, and fails if any commit has none. `.github/workflows/main-checked.yml` runs it daily.
-
-- **Why a schedule, not a push trigger.** The failure is "a trigger did not fire", so a guard triggered by that same push event is structurally incapable of catching it — the commit that lost its push event would have lost this run too. A `schedule:` is delivered by GitHub timers, independent of this repo's push deliveries, and it looks *backwards* over a window rather than at one commit. The cost is latency: a hole is found within a day rather than within a minute, against a current detection latency of never.
-- **How wide the window really is — measured, because the first estimate was wrong.** An earlier revision said "roughly 15-20 commits a day, so a commit stays in scope for two to three runs". **Measured 2026-08-13** from the committer dates of the last 100 commits on `main`: **45 on 08-10, 36 on 08-11, 5 on 08-12, 14 on 08-13** (partial day). So on a busy day the 50-commit window covers barely **27 hours — one scheduled run, not two or three**, and a hole landing at the start of a 45-commit day can roll out of the window before a second run sees it. On a quiet day it covers over a week. Raise the `count` input if a busier cadence becomes normal; the API pages at 100.
-- **Three outcomes, not two.** `0` all checked · `1` an unchecked commit · `2` could not determine. The third is the one that matters: a 401, a rate limit, a proxy error page, and a body missing `total_count` all look like a genuine zero to the obvious implementation, and a backstop that reports all-clear because it could not reach the API manufactures exactly the false confidence it exists to remove. Exit 1 and exit 2 are opposite instructions — fix `main`, or ask again — and never share a code or a word.
-- **Grace window, 10 minutes.** A commit pushed seconds ago has no suite yet. Measured against the committer date, which in this repo is within a minute of the push time (squash merges stamp it at the merge instant; direct doc pushes commit and push within seconds).
-- **Why "no `github-actions` suite" is *not* the failure condition.** **Measured 2026-08-13 08:19 UTC**, pinned to the tip `10957a81` so it reproduces (the window slides as `main` advances, which is why an earlier "20 of the last 40 / 50%" reading did not): `gh api "repos/{owner}/{repo}/commits?sha=10957a81&per_page=50" --jq '.[].sha'`, then one `check-suites` call per sha → **1 UNCHECKED, 22 with suites but none from `github-actions`, 27 fully checked**. Those 22 are benign — `deploy.yml` paths-ignores `docs/**` and `docs-check.yml` only gained its push trigger at [TI-80] — and another app answering *proves the push event was delivered*, which is the thing being reconciled. Failing on them would be a **44%** false-alarm rate that buries the one real hole. They are reported and do not fail.
-- **The residual hole in that choice, written down rather than left to be discovered.** Accepting **any** app's suite proves an event reached **an** app. It does **not** prove the `github-actions` pipeline was triggered. A commit could carry a CodeRabbit suite while Actions was never invoked, and this script calls that `ok`. Narrow — but it is the same shape of thing this exists to catch, one level in. `CHECK_MAIN_REQUIRE_ACTIONS=1` closes it, at the cost of the false-alarm rate above; **[TI-93]** holds that flip and its checkable condition, so it is a scheduled follow-up rather than an env var waiting for somebody to remember.
-
-**NOTHING WATCHES THIS WORKFLOW — and its silence is indistinguishable from a clean `main`.** This is the sharpest limit, not a footnote. If GitHub stops delivering the schedule, this file goes quiet in exactly the way the thing it monitors did: no failure, no red X, no trace. (GitHub also disables scheduled workflows in repositories with 60 days of no activity; this repo is nowhere near that, but the rule exists.) So the silence has to be actively disproven, by these three commands — **the first two run immediately on merge**, because they take seconds and "we'll see it tomorrow" is how [TI-69] shipped a workflow that never parsed, painted **162 push red X's over three days**, and was noticed by nobody:
-
-| # | Command | Fails if | When |
-| --- | --- | --- | --- |
-| 1 | `gh workflow list --json name,path --jq '.[] \| select(.path \| test("main-checked"))'` | **nothing prints.** A file that does not parse is simply *absent* from the list — absence, not an error message, is the whole failure mode. This is the positive control: the one of the three that can express a no about registration. **Corrected 2026-09-09:** this read `gh workflow list \| grep -i main-checked`, which greps the *display* name column. The workflow is called `Main Checked`, so the hyphenated filename never matched and the command reported "did not parse" about a workflow that was registered, active, and dispatchable — the check itself was the confidently-wrong artefact this row is about. Match on `.path` instead. | immediately on merge |
-| 2 | `gh workflow run main-checked.yml -f count=50` | **HTTP 422.** Exactly the check TI-69 failed. Then read it: `gh run list --workflow main-checked.yml --limit 1` | immediately on merge |
-| 3 | `gh run list --workflow main-checked.yml --event schedule --limit 1` | **the list is empty** — the timer never fired, and every quiet day since has been meaningless | after the first 07:17 UTC window, and again whenever it has been silent longer than feels right |
-
-**Verified, not asserted** — three arms, because a detector that reddens on everything only proves it noticed something. All three re-run 2026-08-13 after the review fixes:
-
-1. **Red on the real case.** `bash scripts/check-main-checked.sh 6 b59e991c` → `MAIN-CHECKED: FAILED — 1 of 6 commits reached b59e991c with NO check-suite from any app: 4727672f`, exit 1, with the other five reported `ok`.
-2. **Green on the neighbours.** `14a4a48f`, `fb286458`, `c12fa2c9` each → `MAIN-CHECKED: GREEN`, exit 0.
-3. **Loud, not green, on every error path** — forced against the real API, not a stub: an invalid token (real HTTP 401), an unreachable host, a non-existent ref (real HTTP 404), a real 401 on the per-commit call with the commit list succeeding, and a real HTTP 200 whose valid JSON simply has no `total_count`. All five printed `COULD NOT DETERMINE` and exited 2; none printed `GREEN`, none printed `UNCHECKED`. The first three were **independently reproduced by a second session**; the last two remain this session's measurement only.
-
-**A clock that disagrees now fails loud, not quiet** (Hawk, PR #478, blocking). The grace window is `now − committer date`, and any **negative** age satisfied `age < GRACE` — so a commit stamped in the future was excused as *too recent* and the run exited **0 with a genuine zero-suite commit in the window**, which is the one defect class this exists to remove. Not hypothetical: the stamp read is the *committer* date, and for a direct doc push to `main` — the route `CLAUDE.md` prescribes — that is the committing machine's clock, on WSL, across sleep/resume. It also self-heals only once wall-clock time overtakes the stamp, by which point the window has rolled past the commit. A future-dated commit is now `unverifiable` → exit 2. Proven both ways: reverting the arm reddens exactly the 3 new cases and leaves 34 green.
-
-**Cost.** One API call per commit plus one for the list — 51 calls for the default 50-commit window, measured at 36s wall clock. No build, no test, no deploy; nothing on the deploy path.
-
-**Tests.** `scripts/test-check-main-checked.sh`, **37** stub-driven cases, no network, ~2s, wired into `docs-check.yml` (`pr.yml` paths-ignores `scripts/**`, and this script prints GREEN forever in normal operation, so nothing about day-to-day use would ever reveal a broken failure arm). Every classification is asserted both ways — one fixture that must be reported and one that must not, differing only in the clause under test. Presence is not enough, so each guard is pinned by injecting its defect and checking that the **right** cases redden: reverting the future-date arm → exactly 3 red / 34 green; the classic `total_count or 0` → exactly 2 red / 35 green (it reddened **0** before this review, because the fixture naming it was caught one line later by the `check_suites`-is-a-list guard); a bare sibling-script invocation → exactly 1 red / 36 green.
-
-## TI-93. The backstop accepts any app's check-suite, so a commit the build pipeline never saw still reads as checked
-
-**Symptom.** A change lands in the main codebase, the build and test pipeline never runs against it, and the daily backstop still reports it as checked — because some other robot (the code-review bot) answered instead. Narrower than [TI-90], and the same shape one level in: an artefact that is confidently wrong rather than absent.
-
-**Why it was built this way, and why that is now expiring.** `scripts/check-main-checked.sh` trips on `total_count == 0` across *all* apps, not on the absence of a `github-actions` suite. That was the right call at the time: another app answering *proves the push event was delivered*, which is the thing being reconciled, and **measured 2026-08-13 08:19 UTC** over the 50 commits ending at `10957a81`, the stricter bar would have fired on **22 of 50 (44%)** — an alarm that cries wolf on nearly every other commit is one nobody reads. What it does **not** prove is that the Actions pipeline was invoked at all.
-
-**The reason it can now be closed.** Those 22 exist because `deploy.yml` paths-ignores `docs/**` and `docs-check.yml` carried a `paths:` list on its push trigger. **Measured, same run:** every one of the 22 predates [TI-80] (`14c6c034`); of the **16** commits at or newer than it, **15 are `ok` and 1 is the real `UNCHECKED` hole — zero are `no-actions`**. Once [TI-83] (PR #477) removes the remaining `paths:` from the push trigger, every push to `main` produces a `Repo Checks` run and therefore a `github-actions` suite, so the benign class stops existing **by construction** rather than by judgement.
-
-**The flip, with its checkable condition** — this is a scheduled change of default, not an env var waiting for somebody to remember it:
-
-1. **Wait for** [TI-83] (PR #477) to merge, so no push to `main` can match zero workflows.
-2. **Check it, do not assume it:** `CHECK_MAIN_REQUIRE_ACTIONS=1 bash scripts/check-main-checked.sh 50 main`. The condition is **exit 0 with zero `no-actions` lines** — a strict-mode false-alarm count of 0 over the full 50-commit window. Anything else means the class has not closed and the flip waits.
-3. **Then switch the default** in `scripts/check-main-checked.sh` (`REQUIRE_ACTIONS="${CHECK_MAIN_REQUIRE_ACTIONS:-1}"`), invert the existing `...unless the stricter bar is asked for` case in `scripts/test-check-main-checked.sh` so the *lenient* bar becomes the opt-out, and re-run the suite.
-
-**Cost.** Minutes. One default flipped, one test case inverted, one measurement re-run. Reversible by the same env var in the other direction.
-
-**Raised in:** 2026-08-13, Hawk's review of PR #478 ([TI-90]), finding folded out of that row so the flip has an owner and a condition rather than a comment.
-
----
-
-## TI-88. A gate verdict has an expiry, and the window between reading it and acting on it is where it fails
-
-**What it costs:** a merge is declared safe, refused seconds later, and the branch cleanup that normally follows a successful merge then deletes the remote branch — which **auto-closes the pull request**. Fully recoverable (re-push the sha, `gh pr reopen`), but it is a live path from one stale field to a closed PR, and the person hitting it has just been told the opposite by the gate.
-
-**Observed live, 2026-08-13.** `scripts/merge-gate.sh 469` printed `MERGE GATE: GREEN — safe to merge PR #469`, with `MERGEABLE: ok (CLEAN)`. Roughly **three seconds later** `gh pr merge 469 --squash` was refused: `GraphQL: Pull Request has merge conflicts (mergePullRequest)`. Two commits (`504990a2`, `95ecf1ee`) had just been pushed directly to `main` in between. First-hand reading, both halves watched.
-
-**Why:** GitHub computes a PR's mergeability **asynchronously**. Until it recomputes against the new `main`, the API keeps serving the previously-computed `MERGEABLE`/`CLEAN`. The gate therefore reads a value that is already stale — and, the part that matters, it **cannot distinguish "verified clean against current `main`" from "not yet rechecked"**. Both arrive as `MERGEABLE`/`CLEAN`.
-
-**Distinct from its two neighbours — do not fold them together.** [TI-81] (archived) was a stale *run* record on the deploy gate. [TI-87] is a network blip on a dependency download. This is a stale *mergeability* flag on the PR gate, in a different script, with a different failure path.
-
-**Same shape as [TI-81], and the shape is the reusable part:** a gate reporting a state that was true a moment ago and is not true now — a stale run record there, a stale mergeability flag here. See [TI-81 in the archive](technical-improvements-archive.md#ti-81-an-orphaned-run-record-blocks-the-merge-gate-for-tens-of-minutes). It is the same family as [TI-77] (`UNKNOWN` mergeability read as a conflict) and as the standing guardrail in `CLAUDE.md` about a mechanism nobody has watched work: a check that agrees with reality without being able to see it. TI-77 fixed *not yet computed*; this is *computed, then invalidated*.
-
-**Two candidate fixes, neither picked:**
-
-| # | Fix | What it buys |
-| --- | --- | --- |
-| a | Record `origin/main`'s sha at the moment the gate reads `MERGEABLE`, and re-check immediately before merging that the sha has not moved — fail **closed** if it has | The verdict can name what it was computed against, so a later step can tell it is void |
-| b | Treat the verdict as having an expiry and re-run the gate **inside** the merge step, rather than as a separate earlier call | Closes the window rather than detecting movement inside it |
-
-(b) removes the window; (a) keeps the two calls but makes the second able to see the first is void. Either way the gate must be able to say **which `main` it checked** — a verdict that cannot name its input cannot be re-validated.
-
-**A second, operational rule this incident produced, independent of whichever fix is taken:** never run cleanup on the assumption an action succeeded. Verify the action landed, *then* clean up. Here the cleanup ran on the assumption the merge had happened, and turned a failed merge into a closed PR — the cleanup did more damage than the bug.
-
-**Learnings:** [merge-gate-verdicts-expire.md](learnings/merge-gate-verdicts-expire.md).
-
-**Raised in:** 2026-08-13, measured during [TI-81]'s own merge.
-
----
-
-## TI-82. The documented merge step deletes neither branch
-
-**What it costs:** the remote carries **247** `slice/`+`proof/` branches (measured 2026-08-11, after three were removed). Every `git fetch`, every branch autocomplete, every "is this still in flight?" question is paid against that list, and a genuinely-live branch is indistinguishable from 240 dead ones. `scripts/next-doc-id.sh` scans 305 remote refs to answer one question.
-
-**Why it went unnoticed for so long: the doc said the failure was harmless.** `CLAUDE.md` → `## Workflow` step 11 stated that `gh pr merge --squash --delete-branch` deletes the *remote* branch and only its *local* cleanup fails (`'main' is already used by worktree`) — "this is harmless". It is not. When the local step errors, `gh` aborts the whole cleanup and **the remote branch survives silently**. Nobody checked, because the doc had already answered the question.
-
-**The measurement (coordinator, 2026-08-11, five merges):**
-
-| Branch | Remote after merge |
-| --- | --- |
-| `slice/ti-67-rum-custom-events` | still on remote |
-| `slice/ti-65-gated-read-stale` | still on remote |
-| `slice/ti-77-merge-gate-unknown` | still on remote |
-| `slice/ti-70-actionlint` | gone — deleted by hand |
-| `slice/ti-61-routing-flake` | gone — deleted by hand |
-
-Three of five survived, and the two that did not are exactly the two deleted explicitly. **Done 2026-08-11:** `CLAUDE.md` steps 11 and 13 corrected (both deletes are now explicit, and step 11 no longer calls the failure harmless), and the three branches above deleted after confirming each was safe.
-
-**Confirming a squash-merged branch is safe to delete — `git branch -r --merged` is the wrong test.** A squash merge never makes the branch tip an ancestor of `main`, so `--merged` lists none of these and `--is-ancestor` returns NO for all three; read naively that says "unmerged, do not delete". Two checks settle it instead:
-
-1. `gh pr list --state all --head <branch>` → the PR is `MERGED` and names its squash commit; `git merge-base --is-ancestor <squash-sha> origin/main` confirms that commit is on `main`.
-2. For the files the branch actually touched — `git diff --name-only $(git merge-base origin/main <tip>) <tip>` — check none still differs: `git diff --name-only origin/main <tip> -- <those files>`. A residual here is not automatically unmerged work; on both branches that showed one, the file had been changed by a *later* commit on `main` (#470, #464), which `git log <squash-sha>..origin/main -- <file>` shows in one line.
-
-**Remaining work:** the other 247 are historical and were deliberately not swept. A sweep needs the two checks above run per branch — worth scripting (`scripts/prune-merged-branches.sh`, dry-run by default) rather than doing by hand, since the naive `--merged` filter is wrong for every squash-merged branch in the list and would report almost all 247 as unmerged.
-
-**Raised in:** [TI-80] session, 2026-08-11, from the coordinator's measurement.
-**Depends on:** —
-
----
-
-## TI-80. The push trigger needed a concurrency change the row did not predict
-
-**What it would have cost:** a broken workflow file reaching `main` unlinted **anyway**, with a run list that looks fine. The row's prescribed fix — `push: branches: [ main ]` with the same `paths:` list — is correct and is what shipped. But `docs-check.yml` keys its concurrency group `docs-check-${{ github.head_ref || github.ref }}` with `cancel-in-progress: true`. On a pull request `head_ref` is the branch, so runs are keyed per-PR. On a **push** `head_ref` is empty, so every push to `main` falls into **one** group — and the second merge landing a minute after the first **cancels the first's lint**. A cancelled run is not a failing run. Merges land minutes apart here routinely.
-
-**Fix:** `docs-check-${{ github.head_ref || github.sha }}`. Pull-request behaviour is byte-identical (`head_ref` is non-empty there, so that operand never changes); each pushed commit gets its own group, so no push can cancel another and every commit reaching `main` is linted exactly once.
-
-**Watched working, not argued.** Two commits pushed 5s apart on `proof/ti80-push`:
-
-```
-run 31542444491 failure created=22:26:50Z  workflows:failure 22:26:53->22:27:00
-run 31542450478 success created=22:26:55Z  workflows:success 22:26:58->22:27:07
-```
-
-They overlapped and **both completed**. Under the old key the first — the one carrying the red — would have been cancelled at 22:26:55.
-
-**The generalisable bit:** adding a trigger to an existing workflow inherits every workflow-level setting, and `concurrency` is the one that can silently convert a new red into no red at all. Check the concurrency key against the *new* event's contexts, not the old one's — `github.head_ref` is empty on a push, which turns a per-branch key into a global one without changing a character of it.
-
-**Raised in:** [TI-80] implementation, 2026-08-11. **Fix:** PR [#471](https://github.com/simonkirkham/ai-note-taker/pull/471).
-**Depends on:** —
-
----
-
 ## TI-95. A failed deploy can go unnoticed for weeks because nothing re-runs it
+
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: **Changes can sit undelivered for weeks while everything looks healthy — the last deployment failed, nothing since then triggered another, and nobody is told** — 🔲 **Open** — raised 2026-09-08. **Observed: main's last deploy failed 2026-08-14 and the next one ran 2026-09-08, a 25-day gap in which the app received nothing.** Every commit between touched only docs/scripts/`.claude`, which `deploy.yml` paths-ignores, so no run re-tested the red state and no signal existed to notice it. Detail in [TI-95](#ti-95-a-failed-deploy-can-go-unnoticed-for-weeks-because-nothing-re-runs-it) below.
 
 **What it costs:** work that merged successfully never reaches the app, and nothing says so. Every subsequent PR reports green, the roadmap says the slices are done, and the only symptom is the absence of the feature in production — which nobody looks for, because the merge appeared to succeed. When it is eventually noticed, the original failure's logs have expired, so the cause cannot be established.
 
@@ -840,220 +1115,9 @@ They overlapped and **both completed**. Under the old key the first — the one 
 
 ---
 
-## TI-79. A wait loop that scans process cmdlines can never exit
-
-**What it costs:** the session goes quiet mid-task and stays quiet. Nobody is told it is stuck, it never reaches another tool round, and **queued messages cannot reach it** — so a peer or the human asking "are you alive?" gets nothing back. Recovery is killing the wrapper pid by hand. Adjacent to [TI-70]: both are guards over code `pr.yml` cannot see.
-
-**The tell, before any of the mechanism.** A process-list match whose **`etime` is 0-2 seconds**, when the job should have been running for minutes, is your own command — not the job. Check the age before believing the match: `ps -eo pid,etimes,args | grep -F '<fragment>' | grep -vF 'grep -F'`. This is the most useful line here because it fires on the evidence in front of you rather than needing a rule remembered in advance. Related trap: **`ps -eo … -p <pid>` does not filter to that pid** — `-e` selects everything and overrides `-p`, so the output looks pid-scoped and is not.
-
-**Mechanism.** A wait built on scanning process command lines for a literal — `pgrep -f "<pattern>"`, or any `ps` / `/proc/*/cmdline` equivalent — **self-matches**. This harness runs each Bash tool call as `/bin/bash -c … && eval '<the entire command text>'`, so the wrapper's own cmdline contains whatever pattern was typed, and the scan always finds itself.
-
-| Probe | Result on a completely idle box |
-| --- | --- |
-| `pgrep -fc 'qqq-isolated-nonsense-qqq'` | **1** |
-| The same literal, confined to a script run as a bare path | 0 |
-
-So `until ! pgrep -f "bin/eslint"; do sleep 15; done` never exits, whatever eslint does.
-
-**Reported from 2026-08-11** — recalled from the report of the session it happened to, and a second one a day later; not measured here. A reviewer agent wrote exactly that loop, the lint step finished, and the loop would have spun indefinitely. The self-matching itself *is* measured here, and is what the probe table above and the fixtures assert.
-
-**The one-shot form fails differently and worse.** It returns a plausible phantom — "the job is running" — when nothing is. The tell is an `etime` of 0-2 seconds against a job that should have been alive for minutes.
-
-**`pgrep -f` is legitimate inside a committed script run as a bare path**, because no wrapper then carries the pattern. It is the *invocation* that is broken, not pgrep — see the same analysis under [TI-73](#ti-73-the-pre-commit-gate-is-unbounded-across-sessions), which needs a working process/load probe and is where this was first characterised. **Any check must therefore not reject hook-internal use.**
-
-**It is not a `pgrep` problem, and banning `pgrep -f` would not have held.** Any scan over `ps` output or `/proc/*/cmdline` self-matches on any literal typed in the same tool call. Confirmed by a session walking into it **while checking for it**: a loop written specifically to avoid `pgrep -f` — `for p in $(pgrep -P <session>); do … case "$c" in *"while true"*460*461*)` — reported two matches, the real watcher plus the wrapper running the `case` statement, because the pattern literals sat in its own cmdline.
-
-**The count cannot be corrected, so never wait on one.** The inflation is not a constant — it is one match per concurrent agent wrapper carrying the literal (a real count of 31 seen as 34 on a three-session box — reported by that session, not measured here). "Subtract one" is wrong and gets more wrong the busier the machine is. Never trust a count, only a pid. The `[b]racket` trick narrows the artefact — the wrapper that *typed* the pattern stops matching — but a **peer session's** wrapper that typed the plain word still does, so it is not a basis for a wait either. And the two forms **cannot be A/B tested on one command line**: both literals then sit in the wrapper's cmdline and both match.
-
-**Fix, as shipped** (PR [#479](https://github.com/simonkirkham/ai-note-taker/pull/479))**:** `scripts/check-cmdline-waits.sh`, run by `.github/workflows/docs-check.yml` on the same terms as `check-doc-ids.sh` and `lint-workflows.sh`. It refuses the **shape** — a loop that waits (the scan is in its exit condition, or it scans and sleeps) and whose exit turns on a cmdline scan by any means — not the tool. A one-shot scan, a name-only `pgrep`, a pid-scoped `ps -p`, and a `for` loop over one snapshot of results all stay green, so hook-internal and bare-path use is untouched. A deliberate exception takes `# cmdline-wait-ok: <reason>`; the reason is required. `scripts/test-check-cmdline-waits.sh` holds 32 fixtures — 19 that must go red, 13 that must stay green — plus a repo-wide scan, and runs in the same job as the injected-defect check made permanent. The trigger is `**/*.sh`, not the two new files, or a bad loop added to any other script would be ungated. The pre-commit hook was removed on 2026-08-11, so CI is the only place this can live.
-
-**What it cannot cover, stated rather than implied.** The ad-hoc case: an agent typing the loop straight into a Bash call. No committed-file check reaches that, and **that is exactly where this happened, both times**. A guard over committed scripts is worth having, but the durable fix for the ad-hoc case is the written rule in [docs/learnings/waiting-without-scanning-process-cmdlines.md](learnings/waiting-without-scanning-process-cmdlines.md) — wait on a pid (`wait <pid>`, `tail --pid=<pid> -f /dev/null`), on an exit status, on a sha changing, or poll a sentinel with `until grep -q SENTINEL <file>; do sleep 20; done`. Two traps in the substitutes themselves: `timeout N tail -f FILE | grep -m1 SENTINEL` does **not** return when the file stops growing (`tail -f` only learns its reader is gone on its next write, and a finished job writes nothing more); and a sentinel poll **outlives its own condition** — an agent slept out three full 570-second rounds on a deploy that had already finished (reported by that session, not measured here), and from outside a late wait is indistinguishable from a stuck one.
-
-**Review round 1 (PR #479, CHANGES REQUESTED) — the guard did not catch the thing it exists to catch.** The reviewer wrote seven genuine dangerous loops and **all seven passed**. Three causes, all now fixture-pinned:
-
-| Miss | Cause | Closed by |
-| --- | --- | --- |
-| `ps aux`, `ps ax`, `ps aux \| grep -c` | The `aux`/`ax` alternative sat behind a `[[:space:]]+` that had already consumed the only separating space, so it needed a *second* one — `ps  aux` matched, `ps aux` did not. The branch was advertised in a comment, reviewed, and **never once executed** | Split into its own branch; `red-ps-aux.sh`, `red-ps-ax.sh`, `red-ps-aux-count.sh` |
-| `pgrep -c -f X`, `pgrep -u "$USER" -f X` | `-f` was only detected as the **first** option. The first case is the existing `red-count.sh` with one space added | `-f` matched in any option position; `red-pgrep-f-not-first.sh`, `red-pgrep-f-after-arg.sh` |
-| A scan in a `for`-header inside a waiting loop | The for branch attributed the scan to nothing, when a waiting loop was already open around it | Mark already-open enclosing loops only; `red-for-header.sh` |
-| A `cmdline-wait-ok:` named in prose deep inside a loop body | The exemption was bounded downward (exact at 3 lines) but **unbounded upward** | Bounded in both directions; `red-marker-inside-loop.sh` plus `ok-marker-just-inside.sh` to pin the other side |
-
-**A fifth defect surfaced only by running it.** Bracing the two new branches exposed a dangling `else`: unbraced, `for (…) if (…) …` followed by `else` binds that `else` to the **inner** `if`, so awk silently swallowed the body-scan branch and every scan inside a loop body went undetected — while the file still parsed and `bash -n` stayed clean. Caught because the seven loops were re-run against the *existing* fixtures rather than on their own; six went red and one stayed green, and that one green was the tell.
-
-**Evidence for the round:** all seven loops verbatim, green before and red after, under gawk 5.2.1 **and** a mawk 1.3.4 shim (`ubuntu-latest` resolves `awk` to mawk); the eight new fixtures seen **red against the pre-fix checker** and green after, with the 19 pre-existing cases unmoved in both directions; and a positive control on the default `git ls-files` path — a `ps aux` loop appended to a tracked script named the file and line, and the revert returned `OK`.
-
-**Round 2 closed three more, two of them false positives.** The pattern worth keeping: a guard that refuses legitimate work is not a lesser bug than one that misses the defect, because the response to it is to switch the guard off.
-
-| Missed / wrongly refused | Cause | Fix, and the fixture that pins it |
-| --- | --- | --- |
-| An exempted **inner** loop reddened the loop around it, naming the very line the author had exempted | The upward exemption bound stopped the marker covering the outer loop, but `close_loop` still exported the inner scan outward | An exempted loop no longer exports its scan; `ok-marker-nested.sh` and its `while` variant |
-| `ps -aux`, `ps -ax` | Branch (b) needed the `aux`/`ax` word to follow whitespace and the hyphen blocked it; branch (a) needs an `e` or capital `A`, which neither form has | `-?` before the word; `red-ps-hyphen-aux.sh`, `red-ps-hyphen-ax.sh` — one per spelling, so neither regresses alone |
-| `pgrep node-fetch` — a **name-only** `pgrep`, which the header explicitly promises stays green | The option scan ran into the argument, so any process name carrying a hyphen-then-`f` read as an option bearing `-f` | The option must start at whitespace, which a name cannot; `ok-pgrep-hyphenated-name.sh` |
-
-The first was a regression introduced by the round-1 fix — green before it, red after — which is why the seven loops are re-run against the *existing* fixtures every round rather than on their own.
-
-**The `else`/`}` invariant is now stated where an editor will look.** Every `else` in the awk program must be immediately preceded by `}`; an unbraced body re-binds the `else` to the inner `if` and awk swallows the next branch whole, with a clean parse and a clean `bash -n`. It was a site-local comment and is now in `EDITING THIS FILE` beside the apostrophe trap.
-
-**A resurrected row the repo's own id check could not see.** Rebasing onto `main` let the `merge=union` driver restore the `TI-83` row that `main` had just archived — no conflict, no markers. `scripts/check-doc-ids.sh` returned `doc ids OK` throughout, because its live-vs-archive check matches `## TI-N` **headings** and a resurrected table row has no heading ([TI-92] covers that gap). Only a set comparison against the **merge base** caught it, which is the check to run — `git diff $(git merge-base origin/main HEAD) HEAD -- <file>` must show only lines you deleted yourself.
-
-**Also from that round:** `.githooks/**` was dropped from the trigger (0 files on `main` since 2026-08-11 — dead config, and the script's own `git ls-files -- '.githooks/*'` already covers reinstatement), and the five `scripts/*.sh` entries listed by name were replaced by `**/*.sh`, a net deletion — all five are inside the glob.
-
-### OPEN CONTROL — the wildcard trigger has not been watched matching on a pull request
-
-**If `**/*.sh` under-matches, the repo's own guards stop being checked and nothing reports it.** The five entries it replaced were `check-doc-ids.sh`, `lint-workflows.sh`, `merge-gate.sh`, `deploy-status.sh` and `test-merge-gate.sh` — so the failure mode is the guards' own guard quietly switching off. A filter that stops matching produces no run, no error and no annotation, which is the same self-concealing shape as [TI-69].
-
-Evidence, separated by strength rather than merged into one claim:
-
-| Claim | Strength |
-| --- | --- |
-| The `pull_request` trigger fires at all | **Observed** repeatedly, incl. PR #477 and #478 |
-| `**/*.sh` in a `paths:` list matches a nested `scripts/*.sh` | **Observed** on GitHub's own matcher — throwaway branch `proof/ti79-sh-glob`, two temporary workflows each with a single-entry `paths:` list; a push changing only `scripts/sessions.sh` ran the `**/*.sh` one (run `31685559621`, `total_count=1` by full sha) and never ran the `**/*.no-such-extension-xyz` control |
-| `**/*.md` matches a nested path in a `paths-ignore` list | **Observed** in real history — `39e19fb5` changed only `desktop/MANUAL-VERIFICATION.md`, which matches only `**/*.md` in `deploy.yml`, and no Deploy run exists; `fb286458` is the positive control |
-| The same holds on the **`pull_request`** trigger specifically | **INFERRED, not observed.** `paths` and `paths-ignore` share one matching implementation across triggers, so the transfer is sound — but it is an inference |
-
-**Why the last one could not be closed before merging.** A `pull_request` filter is evaluated against the **whole PR diff**, and PR #479 also changes `docs/technical-improvements.md` and `.github/workflows/**` — both matching other entries — so any control run inside #479 is vacuous: its outcome is fixed regardless of the glob. A push to `main` is equally vacuous, since the `push:` trigger has had no `paths:` key since #477.
-
-**The control to run, once, after this merges.** Open a PR whose entire diff is a one-line comment change to `scripts/sessions.sh` or `scripts/next-doc-id.sh` — verified mechanically against the post-change list: every `.sh` file in the repo is matched by `**/*.sh` and by **no other entry**.
-
-- **Pass:** `gh pr checks <n>` lists `doc-ids` and `workflows`.
-- **Fail:** an empty check list. That is the coverage regression, and the fix is to restore the five enumerated entries alongside the glob.
-
-**Tooling trap that makes "nothing ran" unfalsifiable:** a short sha silently returns zero rows on **both** routes — `gh run list --commit <short>` gave 0 and `gh api …/actions/runs?head_sha=<short>` gave `total_count=0` on a commit that has exactly one run, while the full 40-character sha gave 1 on both. Always pass `$(git rev-parse <ref>)`.
-
-**Related:** [docs/learnings/waiting-without-scanning-process-cmdlines.md](learnings/waiting-without-scanning-process-cmdlines.md) is the written rule. [docs/learnings/a-mechanism-nobody-has-watched-work-is-not-working.md](learnings/a-mechanism-nobody-has-watched-work-is-not-working.md) carries this as instance 2 and its live recurrence.
-
----
-
-## TI-70. What must be true before TI-70 is archived
-
-**Merged 2026-08-11** — PR [#464](https://github.com/simonkirkham/ai-note-taker/pull/464), squash `a43574e6`, deploy #763. **All seven rows ticked as of 2026-08-11**; row 7, the last and the only one testing the merged state, is recorded below. This section exists because the item's own subject is checks nobody watched run, so its own closing conditions must live somewhere durable rather than in a merged PR description nobody re-reads.
-
-**Row 7 was ticked on 2026-08-11 by [TI-80]'s PR [#471](https://github.com/simonkirkham/ai-note-taker/pull/471)**, which was the predicted candidate — its diff is `docs-check.yml` and nothing else. The check was read *by name* out of `gh pr checks 471`, not inferred from a green PR (`pr.yml` also runs on `.github/**`, so green proves nothing here).
-
-| # | Check | State |
-| --- | --- | --- |
-| 1 | The TI-69 line (`timeout-minutes: ${{ fromJSON(inputs.runs) * 4 + 15 }}`) fails the check **in CI** | ✅ PR #465, run 31475167456 — `parser did not reach end of input ...`, exit 1 |
-| 2 | The same line fails it **in the pre-commit hook** | ✅ commit refused, `HEAD` unchanged |
-| 3 | Green on the real tree, with shellcheck present (CI parity) | ✅ exit 0; re-run after the #463 merge resolution |
-| 4 | **Injected defect** — disable the failure path and confirm the red case passes | ✅ `"$bin" -color \|\| true` → exit 0 with the defect still present; reverted |
-| 5 | A PR whose diff is **only** `.github/workflows/**` gets a `workflows` run | ✅ PR #467 (base `proof/ti70-base`, head `proof/ti70-head`) — changed files = `[.github/workflows/e2e.yml]`, `workflows` pass. (The proof branch was cut before [TI-77] merged, so its `paths:` list is a **subset** of the shipped one — but it contains `.github/workflows/**`, the entry under test, and path filters are OR'd, so a superset cannot stop a glob matching.) |
-| 6 | A workflow-only PR got **no** `Docs Check` run before this change | ✅ PR #466 — `gh run list` returns only `PR Checks` |
-| 7 | **After merge:** the first real PR touching only `.github/workflows/**` shows a `Repo Checks / workflows` run | ✅ **2026-08-11, [TI-80]'s PR [#471](https://github.com/simonkirkham/ai-note-taker/pull/471)** — `gh pr view 471 --json files` = `[.github/workflows/docs-check.yml]`, one path, nothing else. `gh pr checks 471` lists the check **by name**: `workflows  pass  6s`, run [31541957717](https://github.com/simonkirkham/ai-note-taker/actions/runs/31541957717) (`event: pull_request`), alongside `doc-ids  pass  20s`. Not inferred from a green PR. Verified by the TI-80 session |
-
-**All seven rows are ticked and [TI-80] has merged, so TI-70 is ready to archive — that is the next action on it, and it was deliberately not done here.** Terms: condense to one entry in [technical-improvements-archive.md](technical-improvements-archive.md), keep the `## TI-70` heading so inbound anchors resolve, delete the row and this section. Two things the archive entry must carry rather than drop: known limit **3** below is **permanent** (see it for why), and known limit **4** is now **closed** by [TI-80] — the gate runs on a direct push to `main`, watched doing so at run [31572859601](https://github.com/simonkirkham/ai-note-taker/actions/runs/31572859601).
-
-Rows 1-6 were all demonstrated on a branch; row 7 was the only one that tested the merged `paths:` filter on `main`, which is the half TI-69 actually fell through.
-
-**Known limits, so nobody assumes coverage that is not there:**
-
-1. A TI-69-shaped defect **inside a composite action's `run:` block** is not caught. actionlint validates a local action's metadata (YAML parse, `runs.using`) via the workflow that `uses:` it, but never lints the shell inside it — measured, exit 0 on both an unused variable and an unquoted expansion.
-2. An action referenced by **no** workflow is never looked at.
-3. **`docs-check.yml` is the one workflow the gate cannot protect — and this is a permanent limit, not a to-do.** Broken, it does not load, so it cannot run the lint that would have caught it: the check is hosted by the file it would need to check, and no arrangement of triggers escapes that. True on both the pull-request and the push route, so [TI-80] does not change it. Nothing in the repo covers this file; the only defence is that a change to it is small, deliberate, and made by someone who has just read this line. Do not file it as work — carry it into the archive entry as a stated limit. Raised by Hawk on PR #471.
-4. ~~**The gate never runs on a push to `main`.**~~ **CLOSED 2026-08-12 by [TI-80]** (PR [#471](https://github.com/simonkirkham/ai-note-taker/pull/471), squash `14c6c034`). The limit was real: `docs-check.yml` was `pull_request`-only, so a workflow file changed by a **direct commit to `main`** — the route `CLAUDE.md` explicitly uses for doc edits — was linted by nothing anywhere, `.githooks/pre-commit` having been deleted on 2026-08-11. **Watched closing:** TI-80's own merge commit was itself the first push to `main` under the new trigger, and produced run [31572859601](https://github.com/simonkirkham/ai-note-taker/actions/runs/31572859601) — `event=push`, `branch=main`, `workflows: success` in 7s. That is the `main` case TI-80's PR had honestly recorded as unproven, closed by the merge rather than by argument.
-
----
-
-## TI-61. A routing test fails on a busy machine
-
-**What it costs.** A CI run or a deliberate local suite run is thrown away on a test nobody
-touched. The expensive part is not the run — it is that the next person has to re-derive from
-scratch that it is not a regression. That has now happened at least twice.
-
-**The measurement that settles it.** Under deliberate contention (32 CPU spinners, no other
-suites, `ratio1` 1.97 rising to 2.91):
-
-| Test | median | max | ceiling |
-| --- | --- | --- | --- |
-| `Back returns to the home screen` | 3966 ms | **5780 ms** | 5000 ms |
-| `opening a note pushes a /notes/:id URL` | 2334 ms | 3379 ms | 5000 ms |
-| `Forward reopens the note` | 1840 ms | 2949 ms | 5000 ms |
-
-The binding test exceeds the ceiling on its own, and sits at 79% of it even when it passes.
-Unloaded and alone it is 293 ms — the box's effective speed varies by 10-56x, and a fixed
-wall-clock deadline cannot tell "slow machine" from "hung test" across that range. A per-test
-timeout exists to catch hangs, not to assert machine speed.
-
-### Still open: two files are predicted to exceed the new budget
-
-This is why the row is 🟡 and not ✅. Ranking every test file by its slowest test (full suite,
-unloaded — relative durations rank the same without contention):
-
-| slowest test | file | |
-| --- | --- | --- |
-| 2455 ms | `staleDetailRefetch.test.tsx` | work-bound |
-| 2437 ms | `staleCardsRefetch.test.tsx` | work-bound |
-| 1125 ms | `Routing.test.tsx` | work-bound — the file that has actually been failing |
-| 1039 ms | `HomeSearch.test.tsx` | **discount** — 4 real `setTimeout` sleeps, which do not inflate under CPU starvation |
-
-`Routing` inflated 1125 -> 5780 ms (~5.1x) under deliberate contention. **The same multiple on
-2455 ms is ~12500 ms, which exceeds the 12000 ms budget PR #470 sets.** Both files are genuinely
-work-bound — no fake timers, no sleeps — so they should inflate the same way.
-
-**Remedy, when one of them fails — do this, not something else:**
-
-1. Reproduce it under deliberate contention and record the *measured* worst duration.
-2. Raise `LOCAL_TEST_TIMEOUT_MS` in `web/vite.config.ts` to **that file's worst x2**.
-3. **Do not raise it pre-emptively.** ~12500 ms is an extrapolation; neither file has been measured
-   under contention. Sizing a budget off an unmeasured multiple is the error this investigation
-   refused three times (a role-query theory that measured 15 ms, an underpowered 2/10-vs-0/10 A/B,
-   and a reviewer's suggested 25000 ms). A measured number is checkable six months later; a guess
-   is indistinguishable from a measurement, including in whether it was already too small.
-
-**Post-merge observation owed, and by whom.** Nothing about this fix is verifiable from a green
-deploy — the change only takes effect on a *locally contended* run, which CI never performs. The
-observation that would prove it is a local full-suite run under load that previously failed and now
-passes; that was taken before merge (control red at 5000 ms, candidate 0 failures / 60 under
-identical contention). **No further observation is owed, and no future session should record this
-as Done on the strength of a deploy** — the row closes only when the two files above have been
-measured, or when they have gone long enough without failing that the exposure is judged closed.
-
-**Fix.** `testTimeout` 12000 (= worst observed 5780 x2) and `asyncUtilTimeout` 4000
-(= longest succeeding wait 1735 x2), **local only**, mirroring the existing `LOCAL_MAX_THREADS`
-precedent. CI keeps 5000/1000 — it runs the frontend job alone on native Linux, so a genuine
-hang still fails there. `testBudgets.test.ts` asserts the split in both directions, so CI is its
-own positive control against the raised budget leaking into it.
-
-### Corrections to the original row — it was wrong on every specific
-
-The row as filed on 2026-08-06 said the failing assertion was `findByTestId('note-title-input')`
-after `window.history.forward()`, missing its 1000 ms budget because the *render* was slow.
-Measured, none of it holds:
-
-| The row said | Measured |
-| --- | --- |
-| `Forward reopens the note` | Every reproduction failed in **`Back returns to the home screen`** |
-| `findByTestId(...)`, 1000 ms budget | `Test timed out in 5000ms` — the **per-test** budget, a different ceiling |
-| the render misses the window | The render is fine. `<h1>{heading}</h1>` has no data gate; one pass of the role query costs **15 ms** under load |
-| "second observation of the same failure" (34-C) | **Unverified, and now withdrawn.** The cited `token-log.md` entry names no test at all — only "the one flake (Routing.test)". It was an inference presented as an observation |
-
-The row's own arithmetic was the tell: the steps *before* the failing assertion ran 2.65x their
-unloaded time while the assertion blew a >9x anomaly. A uniformly slower box cannot produce that.
-
-### Withdrawn: the poll-vs-mutation theory, and the 48-site claim built on it
-
-An intermediate diagnosis held that `waitFor` on a non-DOM value (`window.location.pathname`) is
-structurally worse under starvation, because RTL's MutationObserver cannot see a non-DOM value
-and only the 50 ms poll remains. **Measured head to head, it is backwards:** poll `backWait`
-165 ms against mutation `backWait` 199 ms. The 1735 ms figure that made the theory look
-overwhelming came from a run carrying three other sessions' suites; alone on the box the same
-step is 165 ms. It was contention, not the wake mechanism.
-
-Consequently **the count of 48 `waitFor(pathname)` sites across 9 files is a scope measurement,
-not 48 defects**, and `OpenNoteTabs.test.tsx` (23 of them) is *not* predicted to be the next
-casualty on that basis. If the mechanism is a fixed deadline against variable machine speed,
-exposure scales with **total test duration**, not with the number of pathname waits.
-
-### Read the load figures as period-specific
-
-Every figure here was gathered while the pre-commit hook still ran full suites on every commit
-across parallel sessions. That hook was removed the same night (`dba8fce8`), so ambient load on
-this box will be materially lower from now on. The numbers are real, but nobody should read
-`ratio1` 2.28 as this machine's resting state — which makes 12000 ms more conservative than it
-looks, and that is the right direction for a budget whose only job is to catch a genuine hang.
-
----
-
 ## TI-96. One unreadable reply from the marking model throws away the whole night's quality scores
+
+**Tracking note** _(moved out of the summary table, 2026-09-16)_: **The nightly check on how good the app's meeting summaries are stopped running, and the reason is that the model doing the marking replied with something the tool could not read.** One unreadable reply aborts the whole night's run, so no scores are produced at all. — 🔲 **Open** — raised 2026-09-09. First failure after at least four consecutive good nights. Detail in [TI-96](#ti-96-one-unreadable-reply-from-the-marking-model-throws-away-the-whole-nights-quality-scores) below.
 
 **Symptom.** The nightly job that measures how good the app's meeting summaries are produces nothing at all — no scores for any model, any prompt, any fixture. The cause is a single reply from the *marking* model that was not valid JSON. There is no per-item tolerance, so one bad reply anywhere in the matrix ends the run.
 
@@ -1097,8 +1161,10 @@ C:\Program Files\GitHub CLI\gh.EXE
 **Evidence, measured 2026-09-16.**
 - `desktop/scripts/build-web.mjs` copies `web/dist` as-is. The RUM loader is injected only by `.github/workflows/deploy.yml` ("Inject RUM snippet") into the S3 copy; in source `web/index.html` the `<script id="rum-snippet">` is deliberately empty. `publish-desktop.yml` has no equivalent step.
 - RUM over 14 days: 11 sessions, **all** on domain `note-taker-ai.com`; none from the desktop bundle origin `http://localhost:5180`.
-- Same window: 7 in-app analysis failures reached the server (2026-09-02 → 09-09), **zero** `analyseFailed` events in the RUM log group. PR #472 had been live since 2026-08-12, so the record should have existed for a browser-side caller.
+- Same window: 7 in-app analysis failures reached the server (2026-09-02 → 09-09), **zero** `analyseFailed` events in the RUM log group.
+- **Correction (2026-09-16):** the server logs do record the sending app (`user_agent`). All 7 failures came from desktop build `1.0.0-20260811.211`, which predates PR #472 and so contains no `analyseFailed` code at all. The record could not have existed for these 7 even with telemetry wired in.
+- The installed desktop app is still `20260811.211`; the latest release is `20260911.223`.
 
 **Fix direction.** Inject the same snippet in `publish-desktop.yml` (or in `build-web.mjs` from stack outputs). Check before shipping: the RUM monitor's allowed domain list and the Cognito guest role must accept `localhost:5180`, and the desktop's content-security and navigation rules must allow the loader host `client.rum.us-east-1.amazonaws.com` and `dataplane.rum.eu-west-2.amazonaws.com`. Close on a real desktop session appearing in the RUM log group, not on the build step existing.
 
-**Not yet established.** Whether the 7 failures above came from the desktop app or the website. The server logs carry no client origin, so this is the likeliest explanation for the missing records, not a proven one — [TI-78] (late-session event cap) is the other candidate.
+**Established.** The 7 failures above came from the desktop app (proven by `user_agent`, not inferred). Missing telemetry is a real gap, but for these 7 the older build is sufficient on its own to explain the absent records.

@@ -67,4 +67,4 @@ This is the standing failure in [a-mechanism-nobody-has-watched-work-is-not-work
 
 ---
 
-**See also:** [a-mechanism-nobody-has-watched-work-is-not-working.md](a-mechanism-nobody-has-watched-work-is-not-working.md) · [TI-83 archive entry](../technical-improvements-archive.md#ti-83-why-subtraction-beat-keeping-two-lists-in-step) · [TI-80](../technical-improvements.md#ti-80-the-push-trigger-needed-a-concurrency-change-the-row-did-not-predict) · [TI-84](../technical-improvements-archive.md#ti-84-a-momentary-github-outage-paints-a-red-x-on-a-main-commit-that-did-nothing-wrong)
+**See also:** [a-mechanism-nobody-has-watched-work-is-not-working.md](a-mechanism-nobody-has-watched-work-is-not-working.md) · [TI-83 archive entry](../technical-improvements-archive.md#ti-83-why-subtraction-beat-keeping-two-lists-in-step) · [TI-80](../technical-improvements-archive.md#ti-80-the-push-trigger-needed-a-concurrency-change-the-row-did-not-predict) · [TI-84](../technical-improvements-archive.md#ti-84-a-momentary-github-outage-paints-a-red-x-on-a-main-commit-that-did-nothing-wrong)
