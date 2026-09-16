@@ -40,8 +40,9 @@
       })();
     </script>
     <!-- CloudWatch RUM web client. Left empty in source so the AppMonitor ID is
-         never committed and so localhost / PR-preview builds load no RUM client.
-         deploy.yml populates this for the deployed build only. -->
+         never committed and so local dev / PR-preview builds load no RUM client.
+         deploy.yml populates this for the deployed build; the desktop build
+         (desktop/scripts/build-web.mjs) copies it from the live site. -->
     <script id="rum-snippet"></script>
   </head>
   <body>

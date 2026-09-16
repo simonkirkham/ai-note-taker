@@ -1275,7 +1275,9 @@ public sealed class NoteTakerStack : Stack
         var rumAppMonitor = new CfnAppMonitor(this, "RumAppMonitor", new CfnAppMonitorProps
         {
             Name = rumMonitorName,
-            Domain = rumDomain,
+            // TI-98: "localhost" admits the desktop app, which serves this frontend from
+            // http://localhost:5180. RUM refuses events from any page domain not listed.
+            DomainList = new[] { rumDomain, "localhost" },
             CwLogEnabled = true,
             // AWS defaults custom events to DISABLED, which makes every
             // cwr("recordEvent", …) call a silent no-op in the browser (TI-67).
