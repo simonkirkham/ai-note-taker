@@ -12,15 +12,35 @@ export function getTranscriptionCredentials(): Promise<TranscriptionCredentials>
   return request<TranscriptionCredentials>(`/transcription/credentials`);
 }
 
+// TI-99: how the live transcription was doing at the moment of a save. Observability only — the
+// server logs it and derives the coverage/stall metrics; it never reaches the saved transcript.
+export type TranscriptEngine = 'cloud' | 'local';
+
+export type TranscriptEndReason = 'stopped' | 'error' | 'streamEnded' | 'inProgress' | 'stalled';
+
+export interface TranscriptHealth {
+  engine: TranscriptEngine;
+  endReason: TranscriptEndReason;
+  errorName?: string;
+  errorMessage?: string;
+  // Seconds of audio the transcript covers, by the transcription service's own clock.
+  coveredSeconds: number | null;
+  secondsSinceLastText: number | null;
+  audioSecondsSent: number;
+  secondsSinceLastAudio: number | null;
+  streamCount: number;
+}
+
 export function completeTranscription(
   noteId: string,
   transcriptText: string,
-  durationSeconds: number
+  durationSeconds: number,
+  health?: TranscriptHealth,
 ): Promise<void> {
   return requestVoid(`/notes/${noteId}/transcription`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ transcriptText, durationSeconds }),
+    body: JSON.stringify({ transcriptText, durationSeconds, health }),
   });
 }
 
@@ -32,12 +52,12 @@ export function saveTranscriptionDraft(
   noteId: string,
   transcriptText: string,
   durationSeconds: number,
-  options?: { keepalive?: boolean }
+  options?: { keepalive?: boolean; health?: TranscriptHealth }
 ): Promise<void> {
   return requestVoid(`/notes/${noteId}/transcription/draft`, {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ transcriptText, durationSeconds }),
+    body: JSON.stringify({ transcriptText, durationSeconds, health: options?.health }),
     keepalive: options?.keepalive,
   });
 }

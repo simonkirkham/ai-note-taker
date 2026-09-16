@@ -1087,6 +1087,16 @@ public sealed class NoteTakerStack : Stack
                 Period = Duration.Minutes(5)
             });
 
+        Amazon.CDK.AWS.CloudWatch.Metric TranscriptCoverage(string statistic) =>
+            new Amazon.CDK.AWS.CloudWatch.Metric(new Amazon.CDK.AWS.CloudWatch.MetricProps
+            {
+                Namespace = "NoteTaker/Domain",
+                MetricName = "TranscriptCoverageRatio",
+                DimensionsMap = new Dictionary<string, string> { ["Service"] = "note-taker" },
+                Statistic = statistic,
+                Period = Duration.Minutes(5)
+            });
+
         dashboard.AddWidgets(
             new Amazon.CDK.AWS.CloudWatch.LogQueryWidget(new Amazon.CDK.AWS.CloudWatch.LogQueryWidgetProps
             {
@@ -1159,6 +1169,15 @@ public sealed class NoteTakerStack : Stack
                     AnalysisDuration("p99")
                 },
                 Right = new[] { DomainTotal("AnalysisFailed") },
+                Width = 12
+            }),
+            // TI-99: how much of each finished recording the live transcript covered, and stalls
+            // reported while recording. A dip below 0.8 is an incomplete transcript.
+            new Amazon.CDK.AWS.CloudWatch.GraphWidget(new Amazon.CDK.AWS.CloudWatch.GraphWidgetProps
+            {
+                Title = "Transcript coverage (min) vs stalls",
+                Left = new[] { TranscriptCoverage("Minimum") },
+                Right = new[] { DomainTotal("TranscriptStalled") },
                 Width = 12
             }),
             // Auth: is the user being forced to re-authenticate? SignInConsentIssued rising toward

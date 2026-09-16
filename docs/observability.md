@@ -16,7 +16,7 @@ Region is **eu-west-2**; everything below is in the account the stack is deploye
 | Why is it slow? | X-Ray service map & traces; Lambda p50/p99 widget | 12-C, 12-D |
 | Are commands failing / conflicting? | Domain metrics on the dashboard + saved query | 12-B, 12-D |
 | Did the browser crash? | CloudWatch RUM console (`notetaker-rum`) | 12-F |
-| Why is a transcript incomplete? | Command Lambda call cadence during the recording (below) | BUG-85 |
+| Why is a transcript incomplete? | `Transcript health` log lines on the Command Lambda (below); the dashboard coverage widget | TI-99 |
 | Why did a note's analysis fail? | RUM log group → the `analyseFailed` custom event | BUG-77 |
 | Did something breach a threshold? | SNS email (`notetaker-alarms`) | 12-E |
 
@@ -92,7 +92,52 @@ To trace a request:
 
 ## Why is a transcript incomplete?
 
-**The recording's draft autosave shows when the transcript stopped growing.** While recording, the app saves the transcript every 15 s, but only when new finalised text has arrived. A gap in those saves is a gap in the transcript. Until [TI-99] lands, this is the only server-side signal; the desktop app sends no browser telemetry ([TI-98]).
+**Every transcript save says how the live transcription was doing.** Builds with [TI-99] send a health record with each draft autosave and with the final save. The Command Lambda logs one line per save. Nothing emails: observability reviews pick these up.
+
+### The health line (TI-99 builds)
+
+```
+Transcript health {complete|draft} note <id>: end=<reason> covered=<s>s of <s>s ratio=<0-1> sinceLastText=<s>s audioSent=<s>s sinceLastAudio=<s>s streams=<n> engine=<cloud|local> error=<name>: <message>
+```
+
+Logs Insights, over the Command Lambda log group (`…CommandFunctionLogGroup…`):
+
+```
+fields @timestamp, level, message, user_agent
+| filter message like /^Transcript health/
+| filter level = "Warning"
+| sort @timestamp desc
+| limit 200
+```
+
+Drop the `level` filter and add `| filter message like /note <id>/` to see one recording's whole timeline.
+
+| `end=` | Means | Level |
+|---|---|---|
+| `inProgress` | A 15 s autosave while recording | Information |
+| `stalled` | No new text for 2 min while recording; repeats every 5 min while it lasts. Sent even when nothing was captured yet — that save carries no text and leaves the recoverable draft alone | Warning |
+| `error` | The live stream threw; `error=` names it. The text so far was saved as a recoverable draft. If nothing had been captured, the report carries no text (the stream died at the start) | Warning |
+| `streamEnded` | The live stream ended on its own, without Stop | Warning |
+| `stopped` | The user pressed Stop, or left the note | Warning only if a 5 min+ recording has `ratio` under 0.8 |
+| `unknown` | The client sent a value outside the list | as above |
+| `health: absent` | An older build, or a draft recovered from the banner. `user_agent` tells them apart | Information |
+| `malformed=<fields>` (suffix) | The client sent a field of the wrong type; that field is ignored and the save still succeeded | Warning |
+
+| Field | Reads |
+|---|---|
+| `covered` vs the duration | How much audio the transcription service turned into text, by its own clock |
+| `sinceLastText` vs `sinceLastAudio` | Large text gap with small audio gap = audio flowing, no results: a dead stream **or** a silent room. Both large = audio stopped arriving |
+| `streams` | Live streams opened during the recording. Always 1 today: nothing reopens a stream yet. Summed coverage is ready for when something does |
+| `engine=local` | On-device transcription; `covered` is `-` (not measured) |
+
+Metrics (`NoteTaker/Domain`, `Service=note-taker`), on the dashboard widget "Transcript coverage (min) vs stalls":
+
+- `TranscriptCoverageRatio`: covered ÷ duration, on the final save of a recording of 5 min or more. Below 0.8 means an incomplete transcript **or** a recording left running after the meeting ended — check whether the text ends mid-sentence.
+- `TranscriptStalled`: count of stall reports.
+
+### Fallback for builds without the health line
+
+**The recording's draft autosave shows when the transcript stopped growing.** Older builds save every 15 s, but only when new finalised text has arrived. A gap in those saves is a gap in the transcript.
 
 1. Find the note's events (`notetaker-events`, `PK = note#<id>`). `NoteLinkedToCalendarEvent`/`NoteCreated` gives the start; `TranscriptionCompleted` gives the save time and `DurationSeconds`.
 2. Read Command Lambda invocations per minute across that window:

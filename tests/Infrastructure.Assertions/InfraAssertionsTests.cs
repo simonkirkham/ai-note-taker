@@ -853,6 +853,26 @@ public class InfraAssertionsTests
     }
 
     [Fact]
+    public void OpsDashboard_IncludesTranscriptCoverageWidget()
+    {
+        // TI-99: an incomplete transcript shows as a coverage dip on the ops dashboard, next to the
+        // stalls reported while recording. No alarm by choice — observability reviews read it.
+        foreach (var fragment in new[] { ".*Transcript coverage.*", ".*TranscriptCoverageRatio.*", ".*TranscriptStalled.*" })
+        {
+            _template.HasResourceProperties("AWS::CloudWatch::Dashboard", Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["DashboardBody"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["Fn::Join"] = Match.ArrayWith(new object[]
+                    {
+                        Match.ArrayWith(new object[] { Match.StringLikeRegexp(fragment) })
+                    })
+                })
+            }));
+        }
+    }
+
+    [Fact]
     public void OpsDashboard_IncludesAuthSignInAndRefreshWidget()
     {
         // The auth observability widget graphs sign-in consent + session-refresh outcomes so

@@ -80,6 +80,14 @@ public sealed class PowertoolsDomainMetrics : IDomainMetrics
         Metrics.PushSingleMetric("RefreshTokenRevoked", 1, MetricUnit.Count,
             nameSpace: MetricNamespace, service: ServiceName);
 
+    public void TranscriptCoverage(double ratio) =>
+        Metrics.PushSingleMetric("TranscriptCoverageRatio", ratio, MetricUnit.None,
+            nameSpace: MetricNamespace, service: ServiceName);
+
+    public void TranscriptStalled() =>
+        Metrics.PushSingleMetric("TranscriptStalled", 1, MetricUnit.Count,
+            nameSpace: MetricNamespace, service: ServiceName);
+
     // PushSingleMetric emits a self-contained EMF blob with its own dimensions, so no
     // global namespace/flush setup (or the [Metrics] handler decorator) is needed —
     // which suits an ASP.NET-Core-on-Lambda host that has no Lambda handler method.

@@ -1,9 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { presignRecordingUpload, saveRecording } from '../api/recordings';
-import { completeTranscription, getTranscriptionCredentials, saveTranscriptionDraft, startDiarization } from '../api/transcription';
+import {
+  completeTranscription,
+  getTranscriptionCredentials,
+  saveTranscriptionDraft,
+  startDiarization,
+  type TranscriptEndReason,
+} from '../api/transcription';
 import { recordRumEvent } from '../rum';
 import { PcmChunker } from './pcm';
 import { SpeakerTranscript } from './speakerSegments';
+import { TranscriptHealthTracker } from './transcriptHealth';
 import { readStoredKeepAudioLocal } from './useKeepAudioLocal';
 import { readStoredMode } from './useTranscriptionMode';
 import { encodeWav } from './wav';
@@ -196,6 +203,11 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
   const meChunksRef = useRef<Uint8Array[]>([]);
   const themChunksRef = useRef<Uint8Array[]>([]);
   const diarizeActiveRef = useRef(false);
+  // TI-99: how the live transcription is doing, sent with every save so an incomplete transcript is
+  // diagnosable from the server alone. A mutable tracker in a ref — updating it never re-renders.
+  const healthRef = useRef<TranscriptHealthTracker | null>(null);
+  if (healthRef.current === null) healthRef.current = new TranscriptHealthTracker();
+  const health = healthRef.current;
 
   const cleanup = useCallback(() => {
     stoppedRef.current = true;
@@ -233,38 +245,72 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     displayStreamRef.current = null;
   }, []);
 
+  // PUT the finalised text so far to the DRAFT store (no event), with the stream's health at this
+  // moment. Returns the request so each caller decides what a failure means.
+  const sendDraft = useCallback(
+    (text: string, endReason: TranscriptEndReason, options?: { keepalive?: boolean }) => {
+      const now = Date.now();
+      const elapsed = Math.floor((now - startTimeRef.current) / 1000);
+      return saveTranscriptionDraft(noteId, text, elapsed, {
+        keepalive: options?.keepalive,
+        health: health.snapshot(endReason, now),
+      });
+    },
+    [noteId, health],
+  );
+
   // Autosave the finalised transcript so far to the DRAFT store (PUT, no event),
   // only when it changed since the last checkpoint. Loss-tolerant crash buffer
   // (ADR 0011); the committed transcript is produced by commitTranscript on a
   // clean exit. On failure the marker is cleared so the next checkpoint retries.
+  //
+  // TI-99: a recording that has produced no new text for STALL_AFTER_MS saves anyway, marked
+  // 'stalled' — the one save that bypasses the dedupe, because an unchanged transcript is exactly
+  // the symptom. Once per stall episode, then at most every STALL_REPEAT_MS.
   const saveCheckpoint = useCallback(() => {
     const text = finalizedRef.current;
-    // Skip the seed-only state (a resume with no new turns yet) and unchanged text.
-    if (!text || text === lastDraftRef.current || text === resumePrefixRef.current) return;
+    // The seed-only state (a resume with no new turns yet) counts as no text.
+    const hasText = !!text && text !== resumePrefixRef.current;
+    const now = Date.now();
+    if (!stoppedRef.current && health.stallDue(now)) {
+      health.stallReported(now);
+      if (!hasText) {
+        // Nothing captured to save: send the health alone. The server records it and leaves the
+        // recoverable draft untouched.
+        void sendDraft('', 'stalled').catch(() => {});
+        return;
+      }
+      lastDraftRef.current = text;
+      void sendDraft(text, 'stalled').catch(() => {
+        if (lastDraftRef.current === text) lastDraftRef.current = null;
+      });
+      return;
+    }
+    if (!hasText || text === lastDraftRef.current) return;
     lastDraftRef.current = text;
-    const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
-    void saveTranscriptionDraft(noteId, text, elapsed).catch(() => {
+    void sendDraft(text, 'inProgress').catch(() => {
       if (lastDraftRef.current === text) lastDraftRef.current = null;
     });
-  }, [noteId]);
+  }, [sendDraft, health]);
 
   // Commit the finalised transcript as the durable TranscriptionCompleted event
   // (POST) — once per recording, on a clean exit (Stop, natural end, intentional
   // unmount/navigation). The backend deletes the draft on commit, so no recovery
   // is offered afterwards. On failure the one-shot guard is released to retry.
-  const commitTranscript = useCallback(() => {
+  const commitTranscript = useCallback((endReason: TranscriptEndReason = 'stopped') => {
     if (committedRef.current) return;
     const text = finalizedRef.current;
     if (!text) return;
     committedRef.current = true;
-    const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
+    const now = Date.now();
+    const elapsed = Math.floor((now - startTimeRef.current) / 1000);
     // BUG-55: keep the POST's promise. Fire-and-forget is right for every destination except
     // sign-out, which CLEARS THE TOKEN — an un-awaited commit then 401s, committedRef is released,
     // and nothing retries. awaitCommit() below lets that one caller wait; everyone else is unchanged.
-    commitPostRef.current = completeTranscription(noteId, text, elapsed).catch(() => {
+    commitPostRef.current = completeTranscription(noteId, text, elapsed, health.snapshot(endReason, now)).catch(() => {
       committedRef.current = false;
     });
-  }, [noteId]);
+  }, [noteId, health]);
 
   // Assemble the captured PCM into a WAV and upload it to S3, then save its key to
   // the note (33-A). Fire-and-forget on Stop / natural end — independent of the
@@ -384,8 +430,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     const onPageHide = () => {
       const text = finalizedRef.current;
       if (!text || text === resumePrefixRef.current) return;
-      const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
-      void saveTranscriptionDraft(noteId, text, elapsed, { keepalive: true }).catch(() => {});
+      void sendDraft(text, 'inProgress', { keepalive: true }).catch(() => {});
     };
     window.addEventListener('beforeunload', onBeforeUnload);
     window.addEventListener('pagehide', onPageHide);
@@ -393,7 +438,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
       window.removeEventListener('beforeunload', onBeforeUnload);
       window.removeEventListener('pagehide', onPageHide);
     };
-  }, [status, noteId]);
+  }, [status, sendDraft]);
 
   const startRecording = useCallback((includeCallAudio: boolean, autoAnalyse: boolean, resumeFrom?: string) => {
     stoppedRef.current = false;
@@ -409,6 +454,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     committedRef.current = false;
     recordedChunksRef.current = [];
     recordingUploadedRef.current = false;
+    health.reset();
     if (diarizationTimerRef.current) {
       clearTimeout(diarizationTimerRef.current);
       diarizationTimerRef.current = null;
@@ -502,6 +548,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
             // being a subarray view; ipcRenderer structured-clones it across to main).
             if (useLocal && desktopLocal) {
               desktopLocal.pushPcm(new Uint8Array(chunk).buffer);
+              health.audioSent(chunk.byteLength, Date.now());
             }
           }
           wakeupRef.current?.();
@@ -525,7 +572,9 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
             // or an engine that recovers leaves a failure message sitting above a transcript that is
             // visibly filling in.
             setError(undefined);
-            finalizedRef.current = resumePrefixRef.current + text;
+            const next = resumePrefixRef.current + text;
+            if (next !== finalizedRef.current) health.textArrived(Date.now());
+            finalizedRef.current = next;
             setTranscript(finalizedRef.current);
           });
           const offError = desktopLocal.onError((message) => {
@@ -557,6 +606,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
           try {
             await desktopLocal.start();
             localActiveRef.current = true;
+            health.streamOpened();
           } catch (err) {
             // Could not start the engine at all → clean up and fall through to the cloud path.
             localCleanupRef.current?.();
@@ -589,6 +639,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
           }
           setStatus('recording');
           startTimeRef.current = Date.now();
+          health.recordingStarted('local', audioContext.sampleRate, startTimeRef.current);
           timerRef.current = setInterval(() => {
             setElapsedSeconds(Math.floor((Date.now() - startTimeRef.current) / 1000));
           }, 1000);
@@ -613,7 +664,9 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
             while (!stoppedRef.current && audioQueue.length > 0) {
               // safe: the while-guard proves the queue is non-empty, so shift() returns a chunk
               // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-              yield { AudioEvent: { AudioChunk: audioQueue.shift()! } };
+              const chunk = audioQueue.shift()!;
+              health.audioSent(chunk.byteLength, Date.now());
+              yield { AudioEvent: { AudioChunk: chunk } };
             }
           }
         }
@@ -643,11 +696,13 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
 
         setStatus('recording');
         startTimeRef.current = Date.now();
+        health.recordingStarted('cloud', audioContext.sampleRate, startTimeRef.current);
         timerRef.current = setInterval(() => {
           setElapsedSeconds(Math.floor((Date.now() - startTimeRef.current) / 1000));
         }, 1000);
         checkpointTimerRef.current = setInterval(saveCheckpoint, CHECKPOINT_INTERVAL_MS);
 
+        health.streamOpened();
         const response = await client.send(command);
 
         if (response.TranscriptResultStream) {
@@ -674,6 +729,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
                   if (items.length === 0) continue;
                   lastPartialAtRef.current = 0;
                   speakerTranscript.append(items);
+                  health.textArrived(Date.now(), result.EndTime);
                   finalizedRef.current = resumePrefixRef.current + speakerTranscript.toString();
                   setTranscript(finalizedRef.current);
                 }
@@ -683,7 +739,8 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
         }
 
         if (!stoppedRef.current) {
-          commitTranscript();
+          health.ended('streamEnded');
+          commitTranscript('streamEnded');
           uploadRecording();
           cleanup();
           setStatus('stopped');
@@ -693,9 +750,24 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
         cleanup();
         setError(err instanceof Error ? err.message : 'Transcription failed');
         setStatus('error');
+        // TI-99 / BUG-85: keep what was captured and say why the stream died. A DRAFT, not a
+        // commit: the recording has not been stopped, so it goes to the recovery buffer that a
+        // later commit (Stop is gone, but leaving the note still commits) supersedes and deletes.
+        // With nothing captured (the stream died at the start), the reason still goes up as a
+        // health-only report with empty text, which leaves the recoverable draft untouched.
+        // After the teardown and guarded, so a reporting fault can never leave capture running.
+        try {
+          health.ended('error', err);
+          const text = finalizedRef.current;
+          const hasText = !!text && text !== resumePrefixRef.current;
+          if (hasText) lastDraftRef.current = text;
+          if (hasText || health.hasStarted) void sendDraft(hasText ? text : '', 'error').catch(() => {});
+        } catch (reportErr) {
+          console.warn('Reporting the transcription error failed.', reportErr);
+        }
       }
     })();
-  }, [cleanup, saveCheckpoint, commitTranscript, uploadRecording]);
+  }, [cleanup, saveCheckpoint, commitTranscript, uploadRecording, sendDraft, health]);
 
   const stopRecording = useCallback(() => {
     // BUG-55: idempotent. `handleConfirmedLeave` calls this unconditionally and `isRecording`

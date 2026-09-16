@@ -5,12 +5,14 @@ using Api.Contracts;
 using Api.Services;
 using EventStore.Projections;
 using Api.Auth;
+using Api.Observability;
 using Microsoft.Extensions.Logging;
 
 namespace Api.Handlers;
 
 public static class TranscriptionHandlers
 {
+    private const string LoggerCategory = "Api.Handlers.TranscriptionHandlers";
 
     public static async Task<IResult> CompleteTranscription(
         Guid noteId,
@@ -19,6 +21,7 @@ public static class TranscriptionHandlers
         INoteDetailStore noteDetailStore,
         ITranscriptionDraftStore draftStore,
         ICurrentUser currentUser,
+        IDomainMetrics metrics,
         ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
@@ -43,9 +46,10 @@ public static class TranscriptionHandlers
         }
         catch (Exception ex)
         {
-            loggerFactory.CreateLogger("Api.Handlers.TranscriptionHandlers")
+            loggerFactory.CreateLogger(LoggerCategory)
                 .LogWarning(ex, "Failed to delete transcription draft after completing note {NoteId}; a stale draft will be suppressed on read.", noteId);
         }
+        ReportHealth(loggerFactory, metrics, TranscriptHealthReporter.CompletePhase, noteId, req);
         return Results.NoContent();
     }
 
@@ -55,14 +59,39 @@ public static class TranscriptionHandlers
         ITranscriptionDraftStore draftStore,
         INoteDetailStore noteDetailStore,
         ICurrentUser currentUser,
+        IDomainMetrics metrics,
+        ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(req.TranscriptText)) return Results.UnprocessableEntity();
+        // TI-99: an empty draft is accepted only as a health report — a recording that has captured
+        // no text can still say it has stalled. The draft store is left untouched.
+        var healthOnly = string.IsNullOrWhiteSpace(req.TranscriptText);
+        if (healthOnly && !TranscriptHealthReporter.IsPresent(req.Health)) return Results.UnprocessableEntity();
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId), ct);
         if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
+        if (healthOnly)
+        {
+            ReportHealth(loggerFactory, metrics, TranscriptHealthReporter.DraftPhase, noteId, req);
+            return Results.NoContent();
+        }
         await draftStore.SaveAsync(
             new TranscriptionDraft(new NoteId(noteId), currentUser.UserId, req.TranscriptText, req.DurationSeconds, DateTimeOffset.UtcNow), ct);
+        ReportHealth(loggerFactory, metrics, TranscriptHealthReporter.DraftPhase, noteId, req);
         return Results.NoContent();
+    }
+
+    // TI-99: the save has already succeeded, so a reporting fault must never turn it into a 500.
+    private static void ReportHealth(ILoggerFactory loggerFactory, IDomainMetrics metrics, string phase, Guid noteId, CompleteTranscriptionRequest req)
+    {
+        var logger = loggerFactory.CreateLogger(LoggerCategory);
+        try
+        {
+            TranscriptHealthReporter.Report(logger, metrics, phase, noteId, req.DurationSeconds, req.Health);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to report transcript health for note {NoteId}", noteId);
+        }
     }
 
     public static async Task<IResult> DiscardDraft(
@@ -121,13 +150,13 @@ public static class TranscriptionHandlers
     {
         if (string.IsNullOrWhiteSpace(req.TranscriptText))
         {
-            loggerFactory.CreateLogger("Api.Handlers.TranscriptionHandlers")
+            loggerFactory.CreateLogger(LoggerCategory)
                 .LogWarning("Rejected transcript import: empty transcript text");
             return Results.BadRequest();
         }
         if (System.Text.Encoding.UTF8.GetByteCount(req.TranscriptText) > MaxTranscriptBytes)
         {
-            loggerFactory.CreateLogger("Api.Handlers.TranscriptionHandlers")
+            loggerFactory.CreateLogger(LoggerCategory)
                 .LogWarning("Rejected transcript import: transcript exceeds {MaxBytes} bytes", MaxTranscriptBytes);
             return Results.BadRequest();
         }
