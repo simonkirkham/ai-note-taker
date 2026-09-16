@@ -101,5 +101,12 @@ test('publish workflow never deletes the release without a history to replace it
   const wf = read('.github/workflows/publish-desktop.yml')
   expect(wf.indexOf('test -s releases.json')).toBeGreaterThan(-1)
   expect(wf.indexOf('test -s releases.json')).toBeLessThan(wf.indexOf('gh release delete'))
-  expect(wf).toMatch(/concurrency:\s*\n\s*group:\s*publish-desktop/)
+})
+
+// 53-A review: a concurrency group keeps one pending run and cancels the one it replaces. A
+// queued web-change publish replaced by a backend-only one would then never be built, because
+// the build-or-skip check looks only at its own commit. A lost history entry is the cheaper risk.
+test('publish runs are never queued behind each other', () => {
+  const wf = read('.github/workflows/publish-desktop.yml')
+  expect(wf).not.toMatch(/^concurrency:/m)
 })

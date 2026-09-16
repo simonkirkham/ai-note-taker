@@ -16,11 +16,9 @@ on:
 permissions:
   contents: write # publish a Release
 
-# 53-A: two publishes finishing together would each read the old update history and one entry
-# would be lost. Queue them instead.
-concurrency:
-  group: publish-desktop
-  cancel-in-progress: false
+# No concurrency group on purpose (53-A review): a group cancels a queued run when a newer one
+# arrives, and a cancelled web-change publish would never be built. Two overlapping publishes can
+# instead lose one update-history entry, which only makes the app under-count by one.
 
 jobs:
   publish:
