@@ -8,8 +8,9 @@ import styles from "./UpdateNotice.module.css";
 
 // Works from any PowerShell window: fetches the published update script and runs it. The app
 // cannot know where (or whether) the repository is checked out, so `npm run update` would not.
+// The desktop shell copies its own identical copy (desktop/src/updateCommand.ts).
 export const UPDATE_COMMAND =
-  '$f="$env:TEMP\\ainote-update.ps1"; irm https://github.com/simonkirkham/ai-note-taker/releases/download/desktop-latest/update.ps1 -OutFile $f; powershell -ExecutionPolicy Bypass -File $f';
+  '$f="$env:TEMP\\ainote-update.ps1"; irm https://github.com/simonkirkham/ai-note-taker/releases/download/desktop-latest/update.ps1 -OutFile $f; if ($?) { powershell -ExecutionPolicy Bypass -File $f }';
 
 const DISMISSED_KEY = "updateNotice.dismissedLatest";
 const CHECK_EVERY_MS = 60 * 60 * 1000;
@@ -33,7 +34,8 @@ export default function UpdateNotice() {
       bridge
         .getHistory()
         .then((next) => {
-          if (!cancelled) setHistory(next);
+          // A failed later check keeps what the last good one found.
+          if (!cancelled && next) setHistory(next);
         })
         .catch(() => {
           // A failed check is a hidden notice, never an error in the app.
@@ -66,7 +68,7 @@ export default function UpdateNotice() {
 
   const handleCopy = () => {
     bridge
-      .copy(UPDATE_COMMAND)
+      .copyUpdateCommand()
       .then((ok) => setCopyState(ok ? "copied" : "failed"))
       .catch(() => setCopyState("failed"));
   };

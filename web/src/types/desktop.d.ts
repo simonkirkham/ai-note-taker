@@ -33,8 +33,10 @@ export interface DesktopBridge {
   updates?: {
     // The published update history, or null when it could not be fetched or read.
     getHistory(): Promise<ReleaseEntry[] | null>;
-    // Copies text to the system clipboard; false when the copy did not happen.
-    copy(text: string): Promise<boolean>;
+    // Copies the update command to the system clipboard; false when the copy did not happen.
+    // Takes no text on purpose: the page shows note content, so it must not choose what lands
+    // on a clipboard the user may paste into PowerShell.
+    copyUpdateCommand(): Promise<boolean>;
   };
 }
 

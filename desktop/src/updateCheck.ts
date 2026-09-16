@@ -8,7 +8,10 @@
 
 export type ReleaseEntry = { sha: string; builtAt: string }
 
-type Fetch = (url: string) => Promise<Response>
+type Fetch = (url: string, init?: { signal?: AbortSignal }) => Promise<Response>
+
+// A hung request would otherwise stack one more pending check every hour.
+const TIMEOUT_MS = 15_000
 
 export const HISTORY_URL =
   'https://github.com/simonkirkham/ai-note-taker/releases/download/desktop-latest/releases.json'
@@ -33,7 +36,7 @@ export async function fetchHistory(
   warn: (message: string) => void = (m) => console.warn(m),
 ): Promise<ReleaseEntry[] | null> {
   try {
-    const response = await fetchImpl(HISTORY_URL)
+    const response = await fetchImpl(HISTORY_URL, { signal: AbortSignal.timeout(TIMEOUT_MS) })
     if (!response.ok) {
       warn(`[desktop] update check: history returned ${response.status}`)
       return null

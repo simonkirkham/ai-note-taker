@@ -14,8 +14,10 @@ export function appendHistory(previousText, entry) {
   } catch {
     // unreadable → start over
   }
-  const next = [...previous.filter((e) => e?.sha !== entry.sha), entry]
-  return next.slice(-KEEP)
+  // A re-published commit keeps its first entry: a later build time would make every copy of
+  // that commit count itself as behind, and updating could not clear it (same commit → skipped).
+  if (previous.some((e) => e?.sha === entry.sha)) return previous.slice(-KEEP)
+  return [...previous, entry].slice(-KEEP)
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

@@ -17,9 +17,12 @@ test('appends to the previous history', () => {
   expect(appendHistory(JSON.stringify([entry(1)]), entry(2))).toEqual([entry(1), entry(2)])
 })
 
-test('replaces an entry for the same commit instead of duplicating it', () => {
+// Re-publishing a commit (a re-run, a manual publish) must not move its build time later:
+// every copy from the first publish would then count it as newer, and updating would not clear
+// the notice because the update script sees the same commit and skips.
+test('keeps the original entry when the same commit is published again', () => {
   const again = { ...entry(2), sha: 's1' }
-  expect(appendHistory(JSON.stringify([entry(1)]), again)).toEqual([again])
+  expect(appendHistory(JSON.stringify([entry(1)]), again)).toEqual([entry(1)])
 })
 
 test('keeps only the newest 50', () => {

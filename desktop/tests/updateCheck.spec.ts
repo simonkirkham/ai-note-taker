@@ -30,9 +30,10 @@ test('entries missing a string sha or builtAt are dropped', () => {
   expect(parseHistory(text)).toEqual([{ sha: 'aaa', builtAt: '2026-09-10T12:00:00.000Z' }])
 })
 
-test('fetches the published history from the rolling release', async () => {
+test('fetches the published history from the rolling release, with a time limit', async () => {
   const calls: string[] = []
-  const result = await fetchHistory(async (url) => {
+  const result = await fetchHistory(async (url, init) => {
+    expect(init?.signal).toBeInstanceOf(AbortSignal)
     calls.push(url)
     return new Response(JSON.stringify(good), { status: 200 })
   })

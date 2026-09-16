@@ -15,13 +15,13 @@ const later = (days: number): ReleaseEntry => {
 };
 
 let getHistory: ReturnType<typeof vi.fn<() => Promise<ReleaseEntry[] | null>>>;
-let copy: ReturnType<typeof vi.fn<(text: string) => Promise<boolean>>>;
+let copy: ReturnType<typeof vi.fn<() => Promise<boolean>>>;
 
 function installBridge() {
   window.desktop = {
     isDesktop: true,
     platform: "win32",
-    updates: { getHistory, copy },
+    updates: { getHistory, copyUpdateCommand: copy },
   } as unknown as DesktopBridge;
 }
 
@@ -29,7 +29,7 @@ beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true, now: NOW });
   vi.stubEnv("VITE_BUILD_TIME", BUILT);
   getHistory = vi.fn<() => Promise<ReleaseEntry[] | null>>();
-  copy = vi.fn<(text: string) => Promise<boolean>>().mockResolvedValue(true);
+  copy = vi.fn<() => Promise<boolean>>().mockResolvedValue(true);
   localStorage.clear();
   installBridge();
 });
@@ -80,7 +80,7 @@ describe("UpdateNotice", () => {
     getHistory.mockResolvedValue([later(1)]);
     render(<UpdateNotice />);
     await user.click(await screen.findByRole("button", { name: "Copy update command" }));
-    expect(copy).toHaveBeenCalledWith(UPDATE_COMMAND);
+    expect(copy).toHaveBeenCalledTimes(1);
     expect(await screen.findByRole("button", { name: "Copied" })).toBeInTheDocument();
   });
 
@@ -128,6 +128,23 @@ describe("UpdateNotice", () => {
     });
     expect(getHistory).toHaveBeenCalledTimes(2);
     expect(await screen.findByText(/1 update behind/)).toBeInTheDocument();
+  });
+
+  it("keeps showing the notice when a later hourly check fails", async () => {
+    getHistory.mockResolvedValue([later(1)]);
+    render(<UpdateNotice />);
+    expect(await screen.findByText(/1 update behind/)).toBeInTheDocument();
+
+    getHistory.mockResolvedValue(null);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
+    });
+    expect(getHistory).toHaveBeenCalledTimes(2);
+    expect(screen.getByText(/1 update behind/)).toBeInTheDocument();
+  });
+
+  it("only runs the downloaded script when the download succeeded", () => {
+    expect(UPDATE_COMMAND).toMatch(/; if \(\$\?\) \{ powershell -ExecutionPolicy Bypass -File \$f \}$/);
   });
 
   it("Scenario: Check fails — no notice, no error", async () => {

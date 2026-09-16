@@ -8,6 +8,8 @@ import { decidePermissionCheck, decidePermissionRequest } from './permissionPoli
 import { registerLocalTranscription, killWhisperServer } from './localTranscriptionIpc'
 import { killActiveWhisper } from './localTranscription'
 import { fetchHistory } from './updateCheck'
+import { isBundleOrigin } from './ipcOrigin'
+import { UPDATE_COMMAND } from './updateCommand'
 
 // Phase 31-A — Windows bundle-shell.
 // Serve the compiled web/ frontend from a localhost loopback origin and proxy
@@ -206,21 +208,13 @@ function logDecision(kind: 'request' | 'check', permission: string, allow: boole
 
 // 53-A — the update notice's two main-process calls. net.fetch uses Chromium's network stack,
 // so it honours the system proxy the same way the window does.
-// The window also visits Google's sign-in pages, which get the same preload — so both calls
-// answer only the app's own origin.
-function fromBundle(event: Electron.IpcMainInvokeEvent): boolean {
-  const url = event.senderFrame?.url ?? ''
-  let origin = ''
-  try { origin = new URL(url).origin } catch { /* not a URL → refuse */ }
-  return BUNDLE_ORIGINS.includes(origin)
-}
-
 function registerUpdateNotice(): void {
-  ipcMain.handle('updates:history', (event) => (fromBundle(event) ? fetchHistory((url) => net.fetch(url)) : null))
-  ipcMain.handle('updates:copy', (event, text: unknown) => {
-    if (!fromBundle(event) || typeof text !== 'string') return false
-    clipboard.writeText(text)
-    return clipboard.readText() === text
+  const fromBundle = (event: Electron.IpcMainInvokeEvent) => isBundleOrigin(event.senderFrame?.url, BUNDLE_ORIGINS)
+  ipcMain.handle('updates:history', (event) => (fromBundle(event) ? fetchHistory((url, init) => net.fetch(url, init)) : null))
+  ipcMain.handle('updates:copy', (event) => {
+    if (!fromBundle(event)) return false
+    clipboard.writeText(UPDATE_COMMAND)
+    return clipboard.readText() === UPDATE_COMMAND
   })
 }
 

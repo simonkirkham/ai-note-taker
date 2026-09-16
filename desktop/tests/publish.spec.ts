@@ -44,7 +44,7 @@ test('npm run update pulls the published installer and installs it', () => {
   expect(pkg.scripts!.update).toContain('update.ps1')
 
   const script = read('desktop/scripts/update.ps1')
-  expect(script).toContain('gh release download')
+  expect(script).toContain('releases/tags/desktop-latest')
   expect(script).toContain('/S') // silent NSIS install
 })
 
@@ -79,4 +79,27 @@ test('publish workflow bakes the build time into the app and publishes update.ps
   const wf = read('.github/workflows/publish-desktop.yml')
   expect(wf).toContain('VITE_BUILD_TIME')
   expect(wf).toContain('desktop/scripts/update.ps1')
+})
+
+// 53-A review: the in-app command runs on machines with no GitHub CLI. The script must reach
+// the public release anonymously, never through `gh`.
+test('update.ps1 does not need the GitHub CLI', () => {
+  const script = read('desktop/scripts/update.ps1')
+  expect(script).not.toMatch(/^\s*gh\s/m)
+  expect(script).toContain('Invoke-WebRequest')
+})
+
+test('the command the app shows is the one the desktop shell copies', () => {
+  const web = read('web/src/components/UpdateNotice.tsx')
+  const shell = read('desktop/src/updateCommand.ts')
+  const quoted = (text: string) => text.match(/UPDATE_COMMAND\s*=\s*\n?\s*('.*');/)?.[1]
+  expect(quoted(shell)).toBeTruthy()
+  expect(quoted(web)).toBe(quoted(shell))
+})
+
+test('publish workflow never deletes the release without a history to replace it', () => {
+  const wf = read('.github/workflows/publish-desktop.yml')
+  expect(wf.indexOf('test -s releases.json')).toBeGreaterThan(-1)
+  expect(wf.indexOf('test -s releases.json')).toBeLessThan(wf.indexOf('gh release delete'))
+  expect(wf).toMatch(/concurrency:\s*\n\s*group:\s*publish-desktop/)
 })

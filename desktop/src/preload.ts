@@ -14,7 +14,7 @@ contextBridge.exposeInMainWorld('desktop', {
   // renderer clipboard access.
   updates: {
     getHistory: (): Promise<{ sha: string; builtAt: string }[] | null> => ipcRenderer.invoke('updates:history'),
-    copy: (text: string): Promise<boolean> => ipcRenderer.invoke('updates:copy', text),
+    copyUpdateCommand: (): Promise<boolean> => ipcRenderer.invoke('updates:copy'),
   },
   local: {
     // Ask the main process to background-download models (idempotent). Called when the user
