@@ -1087,6 +1087,16 @@ public sealed class NoteTakerStack : Stack
                 Period = Duration.Minutes(5)
             });
 
+        Amazon.CDK.AWS.CloudWatch.Metric TranscriptCoverage(string statistic) =>
+            new Amazon.CDK.AWS.CloudWatch.Metric(new Amazon.CDK.AWS.CloudWatch.MetricProps
+            {
+                Namespace = "NoteTaker/Domain",
+                MetricName = "TranscriptCoverageRatio",
+                DimensionsMap = new Dictionary<string, string> { ["Service"] = "note-taker" },
+                Statistic = statistic,
+                Period = Duration.Minutes(5)
+            });
+
         dashboard.AddWidgets(
             new Amazon.CDK.AWS.CloudWatch.LogQueryWidget(new Amazon.CDK.AWS.CloudWatch.LogQueryWidgetProps
             {
@@ -1159,6 +1169,15 @@ public sealed class NoteTakerStack : Stack
                     AnalysisDuration("p99")
                 },
                 Right = new[] { DomainTotal("AnalysisFailed") },
+                Width = 12
+            }),
+            // TI-99: how much of each finished recording the live transcript covered, and stalls
+            // reported while recording. A dip below 0.8 is an incomplete transcript.
+            new Amazon.CDK.AWS.CloudWatch.GraphWidget(new Amazon.CDK.AWS.CloudWatch.GraphWidgetProps
+            {
+                Title = "Transcript coverage (min) vs stalls",
+                Left = new[] { TranscriptCoverage("Minimum") },
+                Right = new[] { DomainTotal("TranscriptStalled") },
                 Width = 12
             }),
             // Auth: is the user being forced to re-authenticate? SignInConsentIssued rising toward
@@ -1507,6 +1526,21 @@ public sealed class NoteTakerStack : Stack
             TreatMissingData = Amazon.CDK.AWS.CloudWatch.TreatMissingData.NOT_BREACHING
         });
         analysisFailedAlarm.AddAlarmAction(alarmAction);
+
+        // TI-99: a recording whose live transcript covers under 80% of its length. The client reports
+        // the service's own end-offset on every save; the API emits the ratio only for recordings of
+        // 5 min or more. Minimum, because a single incomplete meeting is the thing to hear about.
+        var transcriptLowCoverageAlarm = new Amazon.CDK.AWS.CloudWatch.Alarm(this, "TranscriptLowCoverageAlarm", new Amazon.CDK.AWS.CloudWatch.AlarmProps
+        {
+            AlarmName = "notetaker-transcript-low-coverage",
+            AlarmDescription = "A recording's saved transcript covers under 80% of its length — the live transcription stopped early",
+            Metric = TranscriptCoverage("Minimum"),
+            Threshold = 0.8,
+            EvaluationPeriods = 1,
+            ComparisonOperator = Amazon.CDK.AWS.CloudWatch.ComparisonOperator.LESS_THAN_THRESHOLD,
+            TreatMissingData = Amazon.CDK.AWS.CloudWatch.TreatMissingData.NOT_BREACHING
+        });
+        transcriptLowCoverageAlarm.AddAlarmAction(alarmAction);
 
         // 33-B1: a batch-diarization job that FAILED (or a fetch/parse error that left the streamed
         // transcript intact) is invisible by construction — the completion Lambda is async (no

@@ -17,6 +17,8 @@ internal sealed class RecordingDomainMetrics : IDomainMetrics
     public List<string> SessionRefreshes { get; } = [];
     public int StoreWriteFaults { get; private set; }
     public int TokenRevocations { get; private set; }
+    public List<double> TranscriptCoverages { get; } = [];
+    public int TranscriptStalls { get; private set; }
 
     public void CommandHandled(string commandType, string aggregate) => Handled.Add((commandType, aggregate));
 
@@ -44,4 +46,8 @@ internal sealed class RecordingDomainMetrics : IDomainMetrics
     public void RefreshTokenStoreWriteFault() => StoreWriteFaults++;
 
     public void RefreshTokenRevoked() => TokenRevocations++;
+
+    public void TranscriptCoverage(double ratio) => TranscriptCoverages.Add(ratio);
+
+    public void TranscriptStalled() => TranscriptStalls++;
 }
