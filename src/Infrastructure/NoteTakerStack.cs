@@ -1527,21 +1527,6 @@ public sealed class NoteTakerStack : Stack
         });
         analysisFailedAlarm.AddAlarmAction(alarmAction);
 
-        // TI-99: a recording whose live transcript covers under 80% of its length. The client reports
-        // the service's own end-offset on every save; the API emits the ratio only for recordings of
-        // 5 min or more. Minimum, because a single incomplete meeting is the thing to hear about.
-        var transcriptLowCoverageAlarm = new Amazon.CDK.AWS.CloudWatch.Alarm(this, "TranscriptLowCoverageAlarm", new Amazon.CDK.AWS.CloudWatch.AlarmProps
-        {
-            AlarmName = "notetaker-transcript-low-coverage",
-            AlarmDescription = "A recording's saved transcript covers under 80% of its length — the live transcription stopped early",
-            Metric = TranscriptCoverage("Minimum"),
-            Threshold = 0.8,
-            EvaluationPeriods = 1,
-            ComparisonOperator = Amazon.CDK.AWS.CloudWatch.ComparisonOperator.LESS_THAN_THRESHOLD,
-            TreatMissingData = Amazon.CDK.AWS.CloudWatch.TreatMissingData.NOT_BREACHING
-        });
-        transcriptLowCoverageAlarm.AddAlarmAction(alarmAction);
-
         // 33-B1: a batch-diarization job that FAILED (or a fetch/parse error that left the streamed
         // transcript intact) is invisible by construction — the completion Lambda is async (no
         // synchronous 500). TranscribeBatchFailed drives this alarm. Service dimension is

@@ -853,6 +853,26 @@ public class InfraAssertionsTests
     }
 
     [Fact]
+    public void OpsDashboard_IncludesTranscriptCoverageWidget()
+    {
+        // TI-99: an incomplete transcript shows as a coverage dip on the ops dashboard, next to the
+        // stalls reported while recording. No alarm by choice — observability reviews read it.
+        foreach (var fragment in new[] { ".*Transcript coverage.*", ".*TranscriptCoverageRatio.*", ".*TranscriptStalled.*" })
+        {
+            _template.HasResourceProperties("AWS::CloudWatch::Dashboard", Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["DashboardBody"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["Fn::Join"] = Match.ArrayWith(new object[]
+                    {
+                        Match.ArrayWith(new object[] { Match.StringLikeRegexp(fragment) })
+                    })
+                })
+            }));
+        }
+    }
+
+    [Fact]
     public void OpsDashboard_IncludesAuthSignInAndRefreshWidget()
     {
         // The auth observability widget graphs sign-in consent + session-refresh outcomes so
@@ -1132,30 +1152,6 @@ public class InfraAssertionsTests
         }));
     }
 
-    // TI-99: a recording whose live transcript covers under 80% of it emails the same day, instead of
-    // being discovered when the analysis fails. Minimum, because one bad recording is the signal.
-    [Fact]
-    public void Alarms_TranscriptLowCoverageAlarmWiredToTopic()
-    {
-        _template.HasResourceProperties("AWS::CloudWatch::Alarm", Match.ObjectLike(new Dictionary<string, object>
-        {
-            ["AlarmName"] = "notetaker-transcript-low-coverage",
-            ["Namespace"] = "NoteTaker/Domain",
-            ["MetricName"] = "TranscriptCoverageRatio",
-            ["Statistic"] = "Minimum",
-            ["Period"] = 300,
-            ["Threshold"] = 0.8,
-            ["EvaluationPeriods"] = 1,
-            ["ComparisonOperator"] = "LessThanThreshold",
-            ["TreatMissingData"] = "notBreaching",
-            ["Dimensions"] = Match.ArrayWith(new object[]
-            {
-                Match.ObjectLike(new Dictionary<string, object> { ["Name"] = "Service", ["Value"] = "note-taker" })
-            }),
-            ["AlarmActions"] = Match.AnyValue()
-        }));
-    }
-
     [Theory]
     // BUG-58: a Lambda killed at its timeout emits no error, log, or domain metric — the only trace
     // is a Duration datapoint pinned at the limit. Alarm on Maximum Duration so a silent kill is
@@ -1194,15 +1190,14 @@ public class InfraAssertionsTests
     [Fact]
     public void Alarms_AllExpectedAlarmsExist()
     {
-        // Twelve alarms: error-rate, P99 latency, projection-rebuild-fault,
+        // Eleven alarms: error-rate, P99 latency, projection-rebuild-fault,
         // projection-rebuild-duration, the three 27-B projector alarms
         // (projector-error, projector-dlq-depth, projector-iterator-age),
         // analysis-failed (CHANGE-22), transcribe-failed (33-B1), and the two BUG-58
-        // host-timeout backstops (command-lambda-timeout, transcribe-completion-timeout), and
-        // transcript-low-coverage (TI-99).
+        // host-timeout backstops (command-lambda-timeout, transcribe-completion-timeout).
         // A concurrency-conflict alarm is deferred — it would need SUM(SEARCH(...)), which CloudWatch
         // rejects on metric alarms (only allowed on dashboard widgets). See phase-12 12-E.
-        _template.ResourceCountIs("AWS::CloudWatch::Alarm", 12);
+        _template.ResourceCountIs("AWS::CloudWatch::Alarm", 11);
     }
 
     [Fact]
