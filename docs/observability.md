@@ -115,23 +115,24 @@ Drop the `level` filter and add `| filter message like /note <id>/` to see one r
 | `end=` | Means | Level |
 |---|---|---|
 | `inProgress` | A 15 s autosave while recording | Information |
-| `stalled` | No new text for 2 min while recording; repeats every 5 min while it lasts | Warning |
+| `stalled` | No new text for 2 min while recording; repeats every 5 min while it lasts. Sent even when nothing was captured yet — that save carries no text and leaves the recoverable draft alone | Warning |
 | `error` | The live stream threw; `error=` names it. The text so far was saved as a recoverable draft | Warning |
 | `streamEnded` | The live stream ended on its own, without Stop | Warning |
 | `stopped` | The user pressed Stop, or left the note | Warning only if a 5 min+ recording has `ratio` under 0.8 |
 | `unknown` | The client sent a value outside the list | as above |
 | `health: absent` | An older build, or a draft recovered from the banner. `user_agent` tells them apart | Information |
+| `malformed=<fields>` (suffix) | The client sent a field of the wrong type; that field is ignored and the save still succeeded | Warning |
 
 | Field | Reads |
 |---|---|
 | `covered` vs the duration | How much audio the transcription service turned into text, by its own clock |
-| `sinceLastText` vs `sinceLastAudio` | Large text gap with small audio gap = audio flowing, no results. Both large = audio stopped arriving |
-| `streams` | Live streams opened during the recording; more than 1 means it was reopened |
+| `sinceLastText` vs `sinceLastAudio` | Large text gap with small audio gap = audio flowing, no results: a dead stream **or** a silent room. Both large = audio stopped arriving |
+| `streams` | Live streams opened during the recording. Always 1 today: nothing reopens a stream yet. Summed coverage is ready for when something does |
 | `engine=local` | On-device transcription; `covered` is `-` (not measured) |
 
 Metrics (`NoteTaker/Domain`, `Service=note-taker`), on the dashboard widget "Transcript coverage (min) vs stalls":
 
-- `TranscriptCoverageRatio`: covered ÷ duration, on the final save of a recording of 5 min or more. Below 0.8 is an incomplete transcript.
+- `TranscriptCoverageRatio`: covered ÷ duration, on the final save of a recording of 5 min or more. Below 0.8 means an incomplete transcript **or** a recording left running after the meeting ended — check whether the text ends mid-sentence.
 - `TranscriptStalled`: count of stall reports.
 
 ### Fallback for builds without the health line

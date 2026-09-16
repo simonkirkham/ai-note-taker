@@ -16,6 +16,25 @@ function round2(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
+// Anything can be thrown — including values with no string form (Object.create(null)) or an Error
+// whose name was overwritten — so every read is type-checked and the whole thing is guarded.
+function describeError(error: unknown): { errorName: string; errorMessage: string } {
+  let errorName: string = error === null ? 'null' : typeof error;
+  let errorMessage = '';
+  try {
+    if (typeof error === 'object' && error !== null) {
+      const { name, message } = error as { name?: unknown; message?: unknown };
+      if (typeof name === 'string') errorName = name;
+      if (typeof message === 'string') errorMessage = message;
+    } else {
+      errorMessage = String(error);
+    }
+  } catch {
+    // An accessor that throws leaves the defaults.
+  }
+  return { errorName: errorName.slice(0, MAX_ERROR_TEXT), errorMessage: errorMessage.slice(0, MAX_ERROR_TEXT) };
+}
+
 interface EndState {
   reason: TranscriptEndReason;
   errorName?: string;
@@ -83,20 +102,10 @@ export class TranscriptHealthTracker {
   }
 
   // Latches the first terminal outcome, so a commit that happens later (leaving the note after an
-  // error) still reports why the stream actually ended.
+  // error) still reports why the stream actually ended. Total: a thrown value can be anything.
   ended(reason: TranscriptEndReason, error?: unknown): void {
     if (this.end) return;
-    if (reason !== 'error') {
-      this.end = { reason };
-      return;
-    }
-    const name = error instanceof Error ? error.name : typeof error;
-    const message = error instanceof Error ? error.message : String(error);
-    this.end = {
-      reason,
-      errorName: name.slice(0, MAX_ERROR_TEXT),
-      errorMessage: message.slice(0, MAX_ERROR_TEXT),
-    };
+    this.end = reason === 'error' ? { reason, ...describeError(error) } : { reason };
   }
 
   // A stall is reported once when no text has arrived for STALL_AFTER_MS, then at most every

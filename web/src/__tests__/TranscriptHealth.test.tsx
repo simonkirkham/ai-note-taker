@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import type { TranscriptHealth } from '../api/transcription'
+import { TranscriptHealthTracker } from '../hooks/transcriptHealth'
 import { CHECKPOINT_INTERVAL_MS, useTranscription } from '../hooks/useTranscription'
 import { server } from '../test/setup'
 
@@ -11,7 +12,7 @@ import { server } from '../test/setup'
 // ── Scripted Transcribe stream ────────────────────────────────────
 type StreamAction =
   | { kind: 'result'; text: string; endTime: number }
-  | { kind: 'error'; error: Error }
+  | { kind: 'error'; error: unknown }
   | { kind: 'end' }
 
 interface ScriptedStream {
@@ -84,8 +85,11 @@ const workletNode = {
   port: { onmessage: null as ((e: MessageEvent) => void) | null },
 }
 
+let micTrackStop = vi.fn()
+
 function stubBrowserApis() {
-  const track = { stop: vi.fn() }
+  micTrackStop = vi.fn()
+  const track = { stop: micTrackStop }
   const mediaStream = { getTracks: () => [track], getAudioTracks: () => [] } as unknown as MediaStream
   Object.defineProperty(global.navigator, 'mediaDevices', {
     value: { getUserMedia: vi.fn().mockResolvedValue(mediaStream), getDisplayMedia: vi.fn() },
@@ -156,9 +160,9 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-async function startCloudRecording() {
+async function startCloudRecording(resumeFrom?: string) {
   const view = renderHook(() => useTranscription('note-1'))
-  act(() => view.result.current.startRecording(false, false))
+  act(() => view.result.current.startRecording(false, false, resumeFrom))
   await waitFor(() => expect(streams).toHaveLength(1))
   await waitFor(() => expect(checkpoint).not.toBeNull())
   return view
@@ -257,6 +261,43 @@ describe('a stream that errors', () => {
     expect(drafts[0].health!.errorMessage).toBe('x'.repeat(200))
   })
 
+  // Review must-fix: a thrown value that is not an Error must not stop the error handling —
+  // otherwise the microphone stays on and the screen stays on "recording".
+  it('still reaches the error state and releases capture when the stream throws a non-Error value', async () => {
+    const view = await startCloudRecording()
+    await emitResult(view, 'Captured', 1)
+    streams[0].push({ kind: 'error', error: Object.create(null) })
+
+    await waitFor(() => expect(view.result.current.status).toBe('error'))
+    expect(micTrackStop).toHaveBeenCalled()
+    await waitFor(() => expect(drafts).toHaveLength(1))
+    expect(drafts[0].health).toMatchObject({ endReason: 'error', errorName: 'object' })
+  })
+
+  it('still tears down and shows the error when reporting the error itself fails', async () => {
+    vi.spyOn(TranscriptHealthTracker.prototype, 'ended').mockImplementation(() => {
+      throw new Error('reporting broke')
+    })
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const view = await startCloudRecording()
+    await emitResult(view, 'Captured', 1)
+    streams[0].push({ kind: 'error', error: new Error('stream died') })
+
+    await waitFor(() => expect(view.result.current.status).toBe('error'))
+    expect(view.result.current.error).toBe('stream died')
+    expect(micTrackStop).toHaveBeenCalled()
+  })
+
+  it('reports a thrown error whose name is not a string without failing', async () => {
+    const view = await startCloudRecording()
+    await emitResult(view, 'Captured', 1)
+    streams[0].push({ kind: 'error', error: Object.assign(new Error('odd'), { name: 42 }) })
+
+    await waitFor(() => expect(view.result.current.status).toBe('error'))
+    await waitFor(() => expect(drafts).toHaveLength(1))
+    expect(drafts[0].health).toMatchObject({ endReason: 'error', errorMessage: 'odd' })
+  })
+
   it('saves nothing when no text had been captured', async () => {
     const view = await startCloudRecording()
     streams[0].push({ kind: 'error', error: namedError('Error', 'boom') })
@@ -340,5 +381,44 @@ describe('a stalled recording', () => {
     tick()
     await waitFor(() => expect(drafts).toHaveLength(3))
     expect(drafts[2].health).toMatchObject({ endReason: 'stalled', secondsSinceLastText: 120 })
+  })
+
+  // Review should-fix: a recording that has captured nothing is the most stalled of all — it
+  // reports with health only, and the draft text is left empty so nothing is overwritten.
+  it('reports a stall with health only when no text has been captured at all', async () => {
+    await startCloudRecording()
+    at(119)
+    tick()
+    at(120)
+    tick()
+
+    await waitFor(() => expect(drafts).toHaveLength(1))
+    expect(drafts[0].transcriptText).toBe('')
+    expect(drafts[0].health).toMatchObject({ endReason: 'stalled', secondsSinceLastText: null, coveredSeconds: null })
+
+    at(135)
+    tick()
+    await new Promise((r) => setTimeout(r, 20))
+    expect(drafts).toHaveLength(1)
+  })
+
+  it('reports a stall on a resumed recording without resending the earlier transcript', async () => {
+    await startCloudRecording('Speaker 1: earlier')
+    at(120)
+    tick()
+
+    await waitFor(() => expect(drafts).toHaveLength(1))
+    expect(drafts[0].transcriptText).toBe('')
+    expect(drafts[0].health!.endReason).toBe('stalled')
+  })
+
+  it('sends no draft at all before a stall when nothing has been captured', async () => {
+    await startCloudRecording()
+    for (const s of [15, 60, 119]) {
+      at(s)
+      tick()
+    }
+    await new Promise((r) => setTimeout(r, 20))
+    expect(drafts).toHaveLength(0)
   })
 })

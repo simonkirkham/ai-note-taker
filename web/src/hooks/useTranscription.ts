@@ -269,18 +269,26 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
   // the symptom. Once per stall episode, then at most every STALL_REPEAT_MS.
   const saveCheckpoint = useCallback(() => {
     const text = finalizedRef.current;
-    // Skip the seed-only state (a resume with no new turns yet).
-    if (!text || text === resumePrefixRef.current) return;
+    // The seed-only state (a resume with no new turns yet) counts as no text.
+    const hasText = !!text && text !== resumePrefixRef.current;
     const now = Date.now();
-    let endReason: TranscriptEndReason = 'inProgress';
     if (!stoppedRef.current && health.stallDue(now)) {
       health.stallReported(now);
-      endReason = 'stalled';
-    } else if (text === lastDraftRef.current) {
+      if (!hasText) {
+        // Nothing captured to save: send the health alone. The server records it and leaves the
+        // recoverable draft untouched.
+        void sendDraft('', 'stalled').catch(() => {});
+        return;
+      }
+      lastDraftRef.current = text;
+      void sendDraft(text, 'stalled').catch(() => {
+        if (lastDraftRef.current === text) lastDraftRef.current = null;
+      });
       return;
     }
+    if (!hasText || text === lastDraftRef.current) return;
     lastDraftRef.current = text;
-    void sendDraft(text, endReason).catch(() => {
+    void sendDraft(text, 'inProgress').catch(() => {
       if (lastDraftRef.current === text) lastDraftRef.current = null;
     });
   }, [sendDraft, health]);
@@ -739,18 +747,23 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
         }
       } catch (err) {
         if (stoppedRef.current) return;
-        // TI-99 / BUG-85: keep what was captured and say why the stream died. A DRAFT, not a
-        // commit: the recording has not been stopped, so it goes to the recovery buffer that a
-        // later commit (Stop is gone, but leaving the note still commits) supersedes and deletes.
-        health.ended('error', err);
-        const text = finalizedRef.current;
-        if (text && text !== resumePrefixRef.current) {
-          lastDraftRef.current = text;
-          void sendDraft(text, 'error').catch(() => {});
-        }
         cleanup();
         setError(err instanceof Error ? err.message : 'Transcription failed');
         setStatus('error');
+        // TI-99 / BUG-85: keep what was captured and say why the stream died. A DRAFT, not a
+        // commit: the recording has not been stopped, so it goes to the recovery buffer that a
+        // later commit (Stop is gone, but leaving the note still commits) supersedes and deletes.
+        // After the teardown and guarded, so a reporting fault can never leave capture running.
+        try {
+          health.ended('error', err);
+          const text = finalizedRef.current;
+          if (text && text !== resumePrefixRef.current) {
+            lastDraftRef.current = text;
+            void sendDraft(text, 'error').catch(() => {});
+          }
+        } catch (reportErr) {
+          console.warn('Reporting the transcription error failed.', reportErr);
+        }
       }
     })();
   }, [cleanup, saveCheckpoint, commitTranscript, uploadRecording, sendDraft, health]);

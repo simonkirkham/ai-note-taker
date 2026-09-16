@@ -143,7 +143,7 @@ public static class TranscriptHealthReporter
         {
             if (Field(json, name) is not { } value) return null;
             // A JSON number beyond double range (1e400) reads back as Infinity, so finiteness is checked too.
-        if (value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var d) && double.IsFinite(d)) return d;
+            if (value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var d) && double.IsFinite(d)) return d;
             Malformed.Add(name);
             return null;
         }
