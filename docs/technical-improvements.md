@@ -67,7 +67,7 @@ Ordered by id. Status is `Open` or `In Progress`.
 | TI-95 | **Changes can sit undelivered for weeks after a failed release, and nobody is told.** A 25-day gap has already happened. | Open | — |
 | TI-96 | **The nightly quality check on meeting summaries produces no scores at all if the marking model sends one unreadable reply.** | Open | — |
 | TI-97 | **On Windows, one of the repo's checks reports a failure that is not real.** | Open | — |
-| TI-98 | **A fault in the desktop app is never reported anywhere, so problems on the recording machine surface only if someone notices.** | Open | — |
+| TI-98 | **A fault in the desktop app is never reported anywhere, so problems on the recording machine surface only if someone notices.** The fix is in review; it counts once a real desktop session is seen reporting. | In Progress | — |
 | TI-99 | **When a meeting's transcript comes out incomplete, nothing records how much was captured or why it stopped — it took an hour of log archaeology to find out a transcript had died 34 minutes into an 88-minute meeting.** | Open | TI-98 |
 
 > **Dependency upgrade audit (2026-06-11):** [report](dependency-audits/dependency-upgrade-audit-2026-06.md). The high and medium items are done; the low-urgency ones (T5 lint tooling, T6 Tiptap 3.26, T8 CDK 2.258, T9 Playwright 1.60, T10 xUnit v3) wait in the report until picked up.
@@ -1167,6 +1167,13 @@ C:\Program Files\GitHub CLI\gh.EXE
 - The installed desktop app is still `20260811.211`; the latest release is `20260911.223`.
 
 **Fix direction.** Inject the same snippet in `publish-desktop.yml` (or in `build-web.mjs` from stack outputs). Check before shipping: the RUM monitor's allowed domain list and the Cognito guest role must accept `localhost:5180`, and the desktop's content-security and navigation rules must allow the loader host `client.rum.us-east-1.amazonaws.com` and `dataplane.rum.eu-west-2.amazonaws.com`. Close on a real desktop session appearing in the RUM log group, not on the build step existing.
+
+**Measured 2026-09-16 — the monitor refuses the desktop app's events.** Two hand-sent test events: page domain `note-taker-ai.com` → accepted (200); page domain `localhost` → refused, `400 {"message":"Error: domain localhost does not match."}`. So injecting the snippet alone would still have reported nothing.
+
+**Fix in review (branch `slice/ti-98-desktop-telemetry`):**
+- The monitor accepts `localhost` as well as the site domain (`DomainList`; updates in place, no replacement).
+- The desktop build copies the populated snippet out of the live site's `index.html` — no AWS credentials in the desktop build. The published installer build fails if it cannot.
+- **Still unproven until seen:** that the monitoring service answers cross-origin requests from `http://localhost:5180`. Close only on a desktop session (page URL `localhost:5180`) appearing in the RUM log group.
 
 **Established.** The 7 failures above came from the desktop app (proven by `user_agent`, not inferred). Missing telemetry is a real gap, but for these 7 the older build is sufficient on its own to explain the absent records.
 

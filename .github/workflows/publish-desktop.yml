@@ -76,6 +76,9 @@ jobs:
           # where the app falls back to "Build dev". build-web.mjs passes the env through.
           VITE_BUILD_NUMBER: ${{ github.event.workflow_run.run_number }}
           VITE_BUILD_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          # TI-98: build-web.mjs copies the monitoring snippet from the live site, which this
+          # run follows. Fail rather than publish an installer whose faults reach nothing.
+          REQUIRE_RUM_SNIPPET: "1"
         run: npm --prefix desktop run package
 
       - name: Publish to GitHub Releases (rolling 'desktop-latest')
