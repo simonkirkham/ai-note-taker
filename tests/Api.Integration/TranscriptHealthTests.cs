@@ -21,7 +21,7 @@ public sealed class TranscriptHealthTests(ApiFactory factory) : IClassFixture<Ap
             Logs.Entries.Where(e => e.Message.StartsWith("Transcript health", StringComparison.Ordinal)).ToList();
     }
 
-    private Harness Build()
+    private Harness Build(IDomainMetrics? metricsOverride = null)
     {
         var metrics = new RecordingDomainMetrics();
         var logs = new CapturingLoggerProvider();
@@ -29,7 +29,7 @@ public sealed class TranscriptHealthTests(ApiFactory factory) : IClassFixture<Ap
             b.ConfigureTestServices(services =>
             {
                 services.RemoveAll<IDomainMetrics>();
-                services.AddSingleton<IDomainMetrics>(metrics);
+                services.AddSingleton(metricsOverride ?? metrics);
                 services.AddSingleton<ILoggerProvider>(logs);
             }));
         var client = built.CreateClient();
@@ -48,9 +48,21 @@ public sealed class TranscriptHealthTests(ApiFactory factory) : IClassFixture<Ap
         client.PostAsync($"/notes/{noteId}/transcription",
             JsonContent.Create(new { transcriptText = TranscriptMarker, durationSeconds = duration, health }));
 
-    private static Task<HttpResponseMessage> DraftAsync(HttpClient client, string noteId, int duration, object? health) =>
+    private static Task<HttpResponseMessage> DraftAsync(HttpClient client, string noteId, int duration, object? health, string text = TranscriptMarker) =>
         client.PutAsync($"/notes/{noteId}/transcription/draft",
-            JsonContent.Create(new { transcriptText = TranscriptMarker, durationSeconds = duration, health }));
+            JsonContent.Create(new { transcriptText = text, durationSeconds = duration, health }));
+
+    private static async Task<JsonElement> GetNoteAsync(HttpClient client, string noteId)
+    {
+        var resp = await client.GetAsync($"/notes/{noteId}");
+        resp.EnsureSuccessStatusCode();
+        return await resp.Content.ReadFromJsonAsync<JsonElement>();
+    }
+
+    private static string? DraftText(JsonElement note) =>
+        note.TryGetProperty("transcriptDraft", out var d) && d.ValueKind == JsonValueKind.Object
+            ? d.GetProperty("text").GetString()
+            : null;
 
     private static object ErroredStream() => new
     {
@@ -277,5 +289,155 @@ public sealed class TranscriptHealthTests(ApiFactory factory) : IClassFixture<Ap
 
         Assert.Equal(2, h.HealthLines.Count);
         Assert.DoesNotContain(h.Logs.Entries, e => e.Message.Contains("secret budget"));
+    }
+
+    // Review must-fix: a recording that has captured no text can still report a stall — the save
+    // carries only the health block, and the recoverable draft is left exactly as it was.
+    [Fact]
+    public async Task Given_a_stall_with_no_text_captured_When_a_health_only_draft_is_saved_Then_it_reports_and_leaves_the_draft_alone()
+    {
+        var h = Build();
+        var noteId = await CreateNoteAsync(h.Client);
+        await DraftAsync(h.Client, noteId, 30, null, "Speaker 1: earlier words");
+
+        var resp = await DraftAsync(h.Client, noteId, 300, new { engine = "cloud", endReason = "stalled", streamCount = 1 }, "");
+
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+        var line = Assert.Single(h.HealthLines);
+        Assert.Equal(LogLevel.Warning, line.Level);
+        Assert.Contains("end=stalled", line.Message);
+        Assert.Equal(1, h.Metrics.TranscriptStalls);
+        Assert.Equal("Speaker 1: earlier words", DraftText(await GetNoteAsync(h.Client, noteId)));
+    }
+
+    [Fact]
+    public async Task Given_empty_text_and_no_health_When_a_draft_is_saved_Then_it_is_still_rejected()
+    {
+        var h = Build();
+        var noteId = await CreateNoteAsync(h.Client);
+
+        var resp = await DraftAsync(h.Client, noteId, 30, null, "");
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, resp.StatusCode);
+        Assert.Empty(h.HealthLines);
+    }
+
+    [Fact]
+    public async Task Given_empty_text_with_health_When_completed_Then_it_is_still_rejected()
+    {
+        var h = Build();
+        var noteId = await CreateNoteAsync(h.Client);
+
+        var resp = await h.Client.PostAsync($"/notes/{noteId}/transcription",
+            JsonContent.Create(new { transcriptText = "", durationSeconds = 600, health = new { endReason = "stopped" } }));
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task Given_someone_elses_note_When_a_health_only_draft_is_saved_Then_it_is_not_found_and_not_logged()
+    {
+        var h = Build();
+        var resp = await DraftAsync(h.Client, Guid.NewGuid().ToString(), 300, new { endReason = "stalled" }, "");
+
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+        Assert.Empty(h.HealthLines);
+        Assert.Equal(0, h.Metrics.TranscriptStalls);
+    }
+
+    // Review should-fix: the save has already succeeded when health is reported, so a metrics
+    // fault must never turn it into a 500.
+    [Fact]
+    public async Task Given_metrics_that_throw_When_saved_Then_the_save_still_succeeds()
+    {
+        var h = Build(new ThrowingTranscriptMetrics());
+        var noteId = await CreateNoteAsync(h.Client);
+
+        var draft = await DraftAsync(h.Client, noteId, 900, new { endReason = "stalled", streamCount = 1 });
+        var complete = await CompleteAsync(h.Client, noteId, 900, ErroredStream());
+
+        Assert.Equal(HttpStatusCode.NoContent, draft.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, complete.StatusCode);
+    }
+
+    public static TheoryData<string> MalformedHealth => new()
+    {
+        """{ "endReason": "stopped", "streamCount": 1.5 }""",
+        """{ "endReason": 7, "streamCount": 1 }""",
+        """{ "endReason": "stopped", "coveredSeconds": "NaN", "secondsSinceLastText": "Infinity" }""",
+        """{ "endReason": "stopped", "audioSecondsSent": "-Infinity", "engine": ["cloud"] }""",
+        """ "stopped" """,
+        """[1, 2]""",
+        """{ "endReason": "stopped", "coveredSeconds": 1e400, "streamCount": 99999999999 }""",
+    };
+
+    // Review: a malformed health block must never fail the transcript save — it is logged as
+    // malformed and the save goes through.
+    [Theory]
+    [MemberData(nameof(MalformedHealth))]
+    public async Task Given_a_malformed_health_block_When_saved_Then_the_save_succeeds_and_health_is_logged_as_malformed(string healthJson)
+    {
+        var h = Build();
+        var noteId = await CreateNoteAsync(h.Client);
+        var text = JsonSerializer.Serialize(TranscriptMarker);
+
+        var draft = await h.Client.PutAsync($"/notes/{noteId}/transcription/draft",
+            new StringContent($$"""{ "transcriptText": {{text}}, "durationSeconds": 600, "health": {{healthJson}} }""", System.Text.Encoding.UTF8, "application/json"));
+        var complete = await h.Client.PostAsync($"/notes/{noteId}/transcription",
+            new StringContent($$"""{ "transcriptText": {{text}}, "durationSeconds": 600, "health": {{healthJson}} }""", System.Text.Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.NoContent, draft.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, complete.StatusCode);
+        Assert.Equal(2, h.HealthLines.Count);
+        Assert.All(h.HealthLines, l => Assert.Contains("malformed", l.Message));
+        Assert.Empty(h.Metrics.TranscriptCoverages);
+    }
+
+    [Fact]
+    public async Task Given_a_well_formed_health_block_Then_it_is_not_logged_as_malformed()
+    {
+        var h = Build();
+        var noteId = await CreateNoteAsync(h.Client);
+
+        await CompleteAsync(h.Client, noteId, 5302, ErroredStream());
+
+        Assert.DoesNotContain("malformed", Assert.Single(h.HealthLines).Message);
+    }
+
+    // Review nit: line/paragraph separators and bidi controls can disguise a log line too.
+    [Fact]
+    public async Task Given_an_error_message_with_separators_and_bidi_controls_Then_they_are_stripped()
+    {
+        var h = Build();
+        var noteId = await CreateNoteAsync(h.Client);
+
+        await CompleteAsync(h.Client, noteId, 600, new
+        {
+            endReason = "error",
+            errorName = "Bad\u202EName",
+            errorMessage = "line one\u2028line two\u2029para\u200Fmark\u2066iso\u2069end\r\nnext",
+        });
+
+        var line = Assert.Single(h.HealthLines);
+        Assert.Contains("error=BadName: line oneline twoparamarkisoendnext", line.Message);
+    }
+
+    private sealed class ThrowingTranscriptMetrics : IDomainMetrics
+    {
+        public void CommandHandled(string commandType, string aggregate) { }
+        public void CommandFailed(string commandType, string exceptionType) { }
+        public void EventsAppended(string aggregate, int count) { }
+        public void ConcurrencyConflict(string aggregate) { }
+        public void SearchPerformed(int resultCount, int notesScanned, double latencyMs) { }
+        public void ProjectionRebuildDuration(double milliseconds) { }
+        public void ProjectionRebuildFault() { }
+        public void AnalysisCompleted(double milliseconds) { }
+        public void AnalysisFailed() { }
+        public void SignInCompleted(bool consentIssued) { }
+        public void SessionRefresh(string outcome) { }
+        public void RefreshTokenStoreWriteFault() { }
+        public void RefreshTokenRevoked() { }
+        public void TranscriptCoverage(double ratio) => throw new InvalidOperationException("metrics down");
+        public void TranscriptStalled() => throw new InvalidOperationException("metrics down");
     }
 }

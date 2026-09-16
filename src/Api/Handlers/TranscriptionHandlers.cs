@@ -63,9 +63,17 @@ public static class TranscriptionHandlers
         ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(req.TranscriptText)) return Results.UnprocessableEntity();
+        // TI-99: an empty draft is accepted only as a health report — a recording that has captured
+        // no text can still say it has stalled. The draft store is left untouched.
+        var healthOnly = string.IsNullOrWhiteSpace(req.TranscriptText);
+        if (healthOnly && !TranscriptHealthReporter.IsPresent(req.Health)) return Results.UnprocessableEntity();
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId), ct);
         if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
+        if (healthOnly)
+        {
+            ReportHealth(loggerFactory, metrics, TranscriptHealthReporter.DraftPhase, noteId, req);
+            return Results.NoContent();
+        }
         await draftStore.SaveAsync(
             new TranscriptionDraft(new NoteId(noteId), currentUser.UserId, req.TranscriptText, req.DurationSeconds, DateTimeOffset.UtcNow), ct);
         ReportHealth(loggerFactory, metrics, TranscriptHealthReporter.DraftPhase, noteId, req);

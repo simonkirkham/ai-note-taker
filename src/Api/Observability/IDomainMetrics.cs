@@ -45,8 +45,8 @@ public interface IDomainMetrics
     void RefreshTokenRevoked();
 
     // TI-99: how much of a finished recording the live transcript covers (0-1), from the transcription
-    // service's own timing. Dimensionless so notetaker-transcript-low-coverage can target it; the note
-    // id stays in the structured log.
+    // service's own timing. Dimensionless (Service only) so it graphs as one series on the ops
+    // dashboard; observability reviews read it — there is no alarm. The note id stays in the log.
     void TranscriptCoverage(double ratio);
 
     // TI-99: a recording's live transcript has produced no new text for 2+ minutes while recording.
