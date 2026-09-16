@@ -16,6 +16,7 @@ Region is **eu-west-2**; everything below is in the account the stack is deploye
 | Why is it slow? | X-Ray service map & traces; Lambda p50/p99 widget | 12-C, 12-D |
 | Are commands failing / conflicting? | Domain metrics on the dashboard + saved query | 12-B, 12-D |
 | Did the browser crash? | CloudWatch RUM console (`notetaker-rum`) | 12-F |
+| Why is a transcript incomplete? | Command Lambda call cadence during the recording (below) | BUG-85 |
 | Why did a note's analysis fail? | RUM log group → the `analyseFailed` custom event | BUG-77 |
 | Did something breach a threshold? | SNS email (`notetaker-alarms`) | 12-E |
 
@@ -88,6 +89,32 @@ To trace a request:
 **CloudWatch RUM → App monitors → `notetaker-rum`** (or use the `RumMonitorId` output). Tabs: **Errors** (JS errors with stack traces), **Performance** (Core Web Vitals), **Sessions**, **Browsers & Devices**. RUM also writes events to the log group `/aws/vendedlogs/RUMService_notetaker-rum<first-8-of-RumMonitorId>`, which the dashboard's combined error widget already queries. With X-Ray enabled on the monitor, a frontend error links to its backend trace via the propagated trace id (12-C).
 
 > The RUM web client loads from the **global** CDN `client.rum.us-east-1.amazonaws.com` (not regional); only the data plane is regional. If RUM shows "no data", first confirm the snippet is in the deployed `index.html` and `PutRumEvents` → `dataplane.rum.eu-west-2.amazonaws.com` returns 200. (See `docs/learnings/_archive.md` / BUG-6.)
+
+## Why is a transcript incomplete?
+
+**The recording's draft autosave shows when the transcript stopped growing.** While recording, the app saves the transcript every 15 s, but only when new finalised text has arrived. A gap in those saves is a gap in the transcript. Until [TI-99] lands, this is the only server-side signal; the desktop app sends no browser telemetry ([TI-98]).
+
+1. Find the note's events (`notetaker-events`, `PK = note#<id>`). `NoteLinkedToCalendarEvent`/`NoteCreated` gives the start; `TranscriptionCompleted` gives the save time and `DurationSeconds`.
+2. Read Command Lambda invocations per minute across that window:
+
+```bash
+aws cloudwatch get-metric-statistics --profile prod --region eu-west-2 \
+  --namespace AWS/Lambda --metric-name Invocations \
+  --dimensions Name=FunctionName,Value=$(aws lambda list-functions --profile prod --region eu-west-2 \
+      --query "Functions[?contains(FunctionName,'CommandFunction')].FunctionName" --output text) \
+  --start-time <start-utc> --end-time <end-utc> --period 60 --statistics Sum
+```
+
+| Reads | Means |
+|---|---|
+| 2-4 calls a minute | Text is arriving |
+| Zero for several minutes, then a burst at Stop | The transcript stopped growing at the last non-zero minute |
+
+3. Sanity-check with words per minute: `wc -w` on the saved `TranscriptText` ÷ minutes up to the stall. About 130-190 means the text before the stall is complete.
+4. `AWS/Transcribe` `TotalRequestCount` (dimension `Operation=StartStreamTranscriptionWebSocket`) counts stream **starts** only. More than one during a recording means the stream was reopened. AWS publishes nothing about how a stream ended.
+5. Which app sent it: every Command log line carries `user_agent`, including the desktop build (`ai-note-taker-desktop/<version>`).
+
+Caveat: silence also produces no saves. A long gap during a meeting that was genuinely quiet is not a failure. The `TranscriptionCompleted` text ending mid-sentence is what makes it one.
 
 ## Why did a note's analysis fail?
 
