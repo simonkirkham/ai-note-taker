@@ -337,3 +337,18 @@ They overlapped and **both completed**. Under the old key the first — the one 
 ## Note — 2026-06-17 deploy-gate stabilisation session
 
 Moved from the live doc's header on 2026-09-16. Proved **10 consecutive green deploys** (#595 ×10). Root-caused and fixed a **44-min E2E suite hang** (PR #291's fire-and-forget response-body read on the reload loop) → replaced with a hang-proof, sync-only diagnostic (PR #292) and a **hard 120 s per-test cap** (**TI-43 done**, PR #293). **TI-42** cards-list flake did not recur in 13+ runs. **BUG-31** turned out to be three stacked causes, with a residual layer carved out as **TI-44**. Full write-up: [docs/learnings/e2e-gate-hang-and-the-diagnostic-that-caused-it.md](learnings/e2e-gate-hang-and-the-diagnostic-that-caused-it.md).
+
+## TI-98. The desktop app ships with no browser telemetry, so its faults reach nothing
+
+✅ Done 2026-09-17 — PR #481, deploy #777, installer 20260916.225+.
+
+- **What the user hit:** faults in the desktop app (errors, failed requests, failed analyses) were reported nowhere.
+- **Why:** two causes, both needed:
+  1. Only the website's deploy injected the monitoring snippet, so the desktop bundle never had it.
+  2. The monitor refused events whose page domain was `localhost`. Measured with a hand-sent event: `400 domain localhost does not match`.
+- **Fix:**
+  1. The monitor's `DomainList` is now `[site domain, "localhost"]`; the update happened in place and the monitor id is unchanged.
+  2. `desktop/scripts/build-web.mjs` reads the three monitoring ids from the live site and rebuilds the snippet from a local template (`rumSnippet.mjs`).
+  3. `publish-desktop.yml` sets `REQUIRE_RUM_SNIPPET=1`, so the published installer build fails without monitoring.
+- **Watched working:** on 2026-09-17, 09:39–09:43Z, a real desktop session reached the monitoring log group with domain `localhost`. It carried page views, request traces and the custom event `noteTabOpened` (4 events). So the cross-origin path and custom events both work from the desktop app.
+- **Also found:** the 7 analysis failures of 2026-09-02→09 came from desktop build `20260811.211`, which predates the analysis-failure event, so they could never have been recorded.

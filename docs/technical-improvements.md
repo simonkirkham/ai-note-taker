@@ -67,7 +67,6 @@ Ordered by id. Status is `Open` or `In Progress`.
 | TI-95 | **Changes can sit undelivered for weeks after a failed release, and nobody is told.** A 25-day gap has already happened. | Open | — |
 | TI-96 | **The nightly quality check on meeting summaries produces no scores at all if the marking model sends one unreadable reply.** | Open | — |
 | TI-97 | **On Windows, one of the repo's checks reports a failure that is not real.** | Open | — |
-| TI-98 | **A fault in the desktop app is never reported anywhere, so problems on the recording machine surface only if someone notices.** The fix is live; it counts once a real desktop session is seen reporting. | In Progress | — |
 | TI-99 | **When a meeting's transcript comes out incomplete, nothing records how much was captured or why it stopped — it took an hour of log archaeology to find out a transcript had died 34 minutes into an 88-minute meeting.** | In Progress | TI-98 |
 | TI-100 | **The merge check once reported an older release as the latest one, so a release still running could in principle be missed and a change merged on top of it.** | Open | — |
 | TI-101 | **A web change can be missing from the desktop app for good, with no update ever offered, if its release failed and the next successful release changed only the server.** | Open | TI-95 |
@@ -1155,37 +1154,6 @@ C:\Program Files\GitHub CLI\gh.EXE
 
 ---
 
-## TI-98. The desktop app ships with no browser telemetry, so its faults reach nothing
-
-**Symptom.** Every browser-side record the app emits — script errors, failed requests, the `analyseFailed` event from [BUG-77] — is dropped when the app runs as the desktop build. Only the website reports.
-
-**Severity:** Medium — nothing breaks, but the desktop app is where recordings happen, which is where [BUG-77], [BUG-82] and [BUG-84] all live. BUG-77's fix is explicitly waiting for "the next occurrence with an `analyseFailed` record"; from the desktop app that record cannot exist.
-
-**Evidence, measured 2026-09-16.**
-- `desktop/scripts/build-web.mjs` copies `web/dist` as-is. The RUM loader is injected only by `.github/workflows/deploy.yml` ("Inject RUM snippet") into the S3 copy; in source `web/index.html` the `<script id="rum-snippet">` is deliberately empty. `publish-desktop.yml` has no equivalent step.
-- RUM over 14 days: 11 sessions, **all** on domain `note-taker-ai.com`; none from the desktop bundle origin `http://localhost:5180`.
-- Same window: 7 in-app analysis failures reached the server (2026-09-02 → 09-09), **zero** `analyseFailed` events in the RUM log group.
-- **Correction (2026-09-16):** the server logs do record the sending app (`user_agent`). All 7 failures came from desktop build `1.0.0-20260811.211`, which predates PR #472 and so contains no `analyseFailed` code at all. The record could not have existed for these 7 even with telemetry wired in.
-- The installed desktop app is still `20260811.211`; the latest release is `20260911.223`.
-
-**Fix direction.** Inject the same snippet in `publish-desktop.yml` (or in `build-web.mjs` from stack outputs). Check before shipping: the RUM monitor's allowed domain list and the Cognito guest role must accept `localhost:5180`, and the desktop's content-security and navigation rules must allow the loader host `client.rum.us-east-1.amazonaws.com` and `dataplane.rum.eu-west-2.amazonaws.com`. Close on a real desktop session appearing in the RUM log group, not on the build step existing.
-
-**Measured 2026-09-16 — the monitor refuses the desktop app's events.** Two hand-sent test events: page domain `note-taker-ai.com` → accepted (200); page domain `localhost` → refused, `400 {"message":"Error: domain localhost does not match."}`. So injecting the snippet alone would still have reported nothing.
-
-**Shipped 2026-09-16 (PR #481, deploy #777, installer run 35106841463):**
-- Prod monitor read back after deploy: `DomainList` = `note-taker-ai.com`, `localhost`; id unchanged (`5a2b155e…`), so the update was in place.
-- The installer build logged `monitoring snippet built from https://note-taker-ai.com/`.
-- **Remaining check:** update the desktop app, use it, and see a session with page URL `localhost:5180` in the RUM log group. Then archive.
-
-**What the fix does:**
-- The monitor accepts `localhost` as well as the site domain (`DomainList`; updates in place, no replacement).
-- The desktop build copies the populated snippet out of the live site's `index.html` — no AWS credentials in the desktop build. The published installer build fails if it cannot.
-- **Still unproven until seen:** that the monitoring service answers cross-origin requests from `http://localhost:5180`. Close only on a desktop session (page URL `localhost:5180`) appearing in the RUM log group.
-
-**Established.** The 7 failures above came from the desktop app (proven by `user_agent`, not inferred). Missing telemetry is a real gap, but for these 7 the older build is sufficient on its own to explain the absent records.
-
----
-
 ## TI-99. A transcript's health travels with the transcript, so an incomplete one is visible without browser telemetry
 
 **Symptom.** [BUG-85]: a live transcript stopped 34 minutes into an 88-minute meeting. The only way to find this was to infer it from the per-minute call count on the Command Lambda. The desktop app sends nothing else ([TI-98]). AWS publishes no per-stream end or error metric for live transcription.
@@ -1238,4 +1206,3 @@ It stays In Progress until a real desktop save is seen producing a `Transcript h
 **Found by.** 53-A review (PR #483): a `concurrency` group would have made this routine by cancelling queued publishes, so it was removed. The failed-deploy route predates 53-A.
 
 **Fix direction.** Diff from the commit already published (`build-sha.txt` on the `desktop-latest` release) to `HEAD`, and build when that range touches `web/` or `desktop/`; build when the marker is missing.
-
