@@ -518,7 +518,7 @@ Slices and acceptance criteria: [docs/phases/phase-52.md](phases/phase-52.md)
 
 ---
 
-## Phase 53 — Update notice in the desktop app _(Not Started)_
+## Phase 53 — Update notice in the desktop app _(Done 2026-09-16 — #483, deploy #779)_
 
 The desktop app checks for a newer published version on launch and hourly, and shows a dismissible notice with how old the running copy is, how many updates it has missed, and a copyable one-line command that updates it. Desktop only; no backend, events or CDK. The publish workflow starts keeping a short update history alongside the installer. A step toward the filed "desktop app auto-update" feature, not a replacement. Deploy-time impact: **neutral**.
 

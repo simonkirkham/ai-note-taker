@@ -70,6 +70,7 @@ Ordered by id. Status is `Open` or `In Progress`.
 | TI-98 | **A fault in the desktop app is never reported anywhere, so problems on the recording machine surface only if someone notices.** The fix is live; it counts once a real desktop session is seen reporting. | In Progress | — |
 | TI-99 | **When a meeting's transcript comes out incomplete, nothing records how much was captured or why it stopped — it took an hour of log archaeology to find out a transcript had died 34 minutes into an 88-minute meeting.** | In Progress | TI-98 |
 | TI-100 | **The merge check once reported an older release as the latest one, so a release still running could in principle be missed and a change merged on top of it.** | Open | — |
+| TI-101 | **A web change can be missing from the desktop app for good, with no update ever offered, if its release failed and the next successful release changed only the server.** | Open | TI-95 |
 
 > **Dependency upgrade audit (2026-06-11):** [report](dependency-audits/dependency-upgrade-audit-2026-06.md). The high and medium items are done; the low-urgency ones (T5 lint tooling, T6 Tiptap 3.26, T8 CDK 2.258, T9 Playwright 1.60, T10 xUnit v3) wait in the report until picked up.
 
@@ -1225,3 +1226,16 @@ It stays In Progress until a real desktop save is seen producing a `Transcript h
 **Cause: unknown.** One observation, not reproduced. `deploy-status.sh` sorts by `createdAt`, so ordering is ruled out; the run was absent from, or stale in, the `gh run list --branch main` response. Whether that filter lags GitHub's unfiltered list is unestablished.
 
 **Fix direction.** Cross-check the branch-filtered list against an unfiltered `--workflow deploy.yml` list, filtering on `headBranch == main` client-side. Take the newest run from either list, and block when they disagree. Reproduce first by polling both forms every few seconds across one deploy's creation.
+
+## TI-101. The desktop installer skips a web change whose own release did not publish
+
+**Symptom (predicted, not observed).** The desktop app keeps running old screens after a web change reached the live site, and its update notice (Phase 53) says it is up to date.
+
+**When.** A web change's deploy fails (or its publish run is cancelled), then a later backend- or docs-only deploy goes green. That later publish run checks only its own commit for `web/`/`desktop/` changes, finds none, and skips the build. The web change is live in the browser but never reaches an installer until some later web or desktop change.
+
+**Cause.** `publish-desktop.yml` decides build-or-skip with `git diff HEAD~1 HEAD`, which sees one commit, not everything since the last published installer.
+
+**Found by.** 53-A review (PR #483): a `concurrency` group would have made this routine by cancelling queued publishes, so it was removed. The failed-deploy route predates 53-A.
+
+**Fix direction.** Diff from the commit already published (`build-sha.txt` on the `desktop-latest` release) to `HEAD`, and build when that range touches `web/` or `desktop/`; build when the marker is missing.
+

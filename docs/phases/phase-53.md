@@ -1,4 +1,4 @@
-# Phase 53 — Update notice in the desktop app _(Not Started)_
+# Phase 53 — Update notice in the desktop app _(Done 2026-09-16)_
 
 **Goal:** the desktop app tells you when a newer version is out, how far behind you are, and gives you the one command that updates it.
 
@@ -6,7 +6,7 @@
 
 | Slice | What the user gets | Status | Depends on |
 |-------|--------------------|--------|------------|
-| 53-A  | A notice in the desktop app saying how old your copy is and how many updates it has missed, with a copy button for the update command | Not Started | — |
+| 53-A  | A notice in the desktop app saying how old your copy is and how many updates it has missed, with a copy button for the update command | Done | — |
 
 One slice: it proves and delivers the whole flow. The notice first appears after the **second** published update following the merge — the first one only starts the update history the app reads.
 
@@ -82,12 +82,13 @@ Scenario: Browser
 - **Polling:** on mount + every 60 min; only when `window.desktop` exists.
 - **Tests:** vitest specs for `updateStatus` (each scenario) and the banner component (render, copy, dismiss, browser → nothing, failure → nothing); desktop unit spec for history parsing (malformed JSON → `null`).
 - **Acceptance criteria:**
-  - [ ] Notice shows age + count behind when newer updates exist
-  - [ ] No notice when up to date, on failure, or in a browser
-  - [ ] Copy puts the command on the clipboard
-  - [ ] Dismiss persists until a newer update is published
-  - [ ] Re-checks hourly without a restart
-  - [ ] Publish workflow appends to and uploads the update history + update script
+  - [x] Notice shows age + count behind when newer updates exist
+  - [x] No notice when up to date, on failure, or in a browser
+  - [x] Copy puts the command on the clipboard
+  - [x] Dismiss persists until a newer update is published
+  - [x] Re-checks hourly without a restart
+  - [x] Publish workflow appends to and uploads the update history + update script
+- **Shipped:** PR #483, deploy #779, desktop publish #226 (2026-09-16). Release now carries `releases.json` (1 entry) and `update.ps1` (downloaded and parsed in PowerShell 5.1, 0 errors). The notice itself is first observable after the next web/desktop publish — `desktop/MANUAL-VERIFICATION.md` 53-A.
 - **Decisions:** one self-contained command instead of `npm run update`, because the app cannot know where the checkout lives. Full self-updating (the "desktop app auto-update" future feature) stays filed; this notice is the step before it.
 
 ### Observability
@@ -95,4 +96,4 @@ Scenario: Browser
 - Silent failure: the workflow stops appending → the app always reads "up to date". Verify after the second post-merge publish that `releases.json` holds ≥ 2 entries.
 
 ### Deploy-time
-- Neutral for `deploy.yml`. `publish-desktop.yml` gains two small download/upload steps (seconds, recurring, runs after deploy).
+- Neutral for `deploy.yml`. `publish-desktop.yml` gains one small download and two small uploads (seconds, recurring, runs after deploy). No `concurrency` group on purpose — see [TI-101](../technical-improvements.md#ti-101-the-desktop-installer-skips-a-web-change-whose-own-release-did-not-publish).

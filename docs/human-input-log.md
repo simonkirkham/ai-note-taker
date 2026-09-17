@@ -23,6 +23,7 @@ One row per interruption. Newest slices at the top.
 
 | Slice | Type | What was asked | Why it stopped | Avoidable? | Fix / where it landed |
 |-------|------|----------------|----------------|:----------:|-----------------------|
+| 53-A | Gate | One batch: what the notice lets you do, how to show age, browser too, build now or file | New feature — shape and schedule are the human's; asked together per the batching rule | No | — |
 | TI-99 | Decision | "Build it now, or leave it on the list?" asked after the human said "I'd like better observability if this were to happen again" | Followed the CLAUDE.md "file it or build it now?" rule, but the human's message already asked for the capability. Reply: "How would you know what or how to fix it without debugging information?" | Yes | `CLAUDE.md` → the file-or-build rule now excludes a message that already asks for the capability |
 | TI-99 | Clarification | Proposed a same-day email alarm for low transcript coverage; the human removed it: "I don't need an email of transcripts which finished early" | Added an alerting channel nobody asked for | Yes | Memory `feedback_observability_signals_not_alarms`: diagnostic signals go to logs, metrics and the review sweep; ask before adding an alarm |
 | TI-99 | Unblock | Update the desktop app so the new record reaches the server | The installed app is on the human's machine and updating closes it | No | — (a self-updating desktop app is in `future-features.md`) |
