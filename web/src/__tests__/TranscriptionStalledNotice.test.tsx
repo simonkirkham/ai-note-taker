@@ -5,7 +5,7 @@ import type { UseTranscriptionResult } from '../hooks/useTranscription'
 // BUG-85 slice 1 — the live transcript can stop part-way through a meeting while the timer keeps
 // running. It happened twice, costing 54 minutes of one meeting and 3.5 hours of another, and
 // nothing on screen said so at the time. The recording control now says how long it has been since
-// any words were transcribed, says which of three things it looks like, and says what to do.
+// any words were transcribed, says which of four things it looks like, and says what to do.
 //
 // Review round 1: the message must not assert that transcription has STOPPED — a meeting can be
 // quiet for two minutes — and the duration must stay out of the announced region, or a screen
@@ -69,9 +69,9 @@ it('says no sound is being picked up when the captured audio went silent', () =>
   expect(region()).toHaveTextContent(/stop and start recording again/i)
 })
 
-// The one case that may be nothing at all — a quiet patch in a healthy meeting. It states the fact
-// and leaves the judgement to the person in the room; it must never assert that something broke.
-it('states the fact without claiming transcription has stopped when only the words dried up', () => {
+// Words have stopped while speech-level audio keeps arriving: the one case that is a transcription
+// fault. The loudness says people are speaking, so the notice can say so.
+it('says speech is arriving but nothing is coming back when the loudness says people are speaking', () => {
   render(
     <RecordControl
       noteId="n1"
@@ -79,12 +79,32 @@ it('states the fact without claiming transcription has stopped when only the wor
     />,
   )
 
+  expect(region()).toHaveTextContent(/speech is being picked up/i)
   expect(region()).toHaveTextContent(/nothing is coming back from transcription/i)
-  expect(region()).toHaveTextContent(/if the meeting is not simply quiet/i)
+  expect(region()).toHaveTextContent(/stop and start recording again/i)
   expect(screen.getByTestId('transcription-stall-duration')).toHaveTextContent(
     /no words have been transcribed for 2 minutes/i,
   )
   expect(region()).not.toHaveTextContent(/has stopped/i)
+})
+
+// BUG-85, 2026-09-18: on real hardware, in a room where nobody spoke, the notice claimed sound was
+// arriving and transcription was returning nothing. Only room-level audio means there was nothing
+// to transcribe — the notice states that and must not claim a fault or push a restart.
+it('says only quiet background sound is arriving, without claiming a fault, in a quiet room', () => {
+  render(
+    <RecordControl
+      noteId="n1"
+      transcription={transcription({ status: 'recording', stall: { kind: 'quiet', stalledForSeconds: 135 } })}
+    />,
+  )
+
+  expect(region()).toHaveTextContent(/only quiet background sound/i)
+  expect(region()).not.toHaveTextContent(/nothing is coming back/i)
+  expect(region()).not.toHaveTextContent(/stop and start/i)
+  expect(screen.getByTestId('transcription-stall-duration')).toHaveTextContent(
+    /no words have been transcribed for 2 minutes/i,
+  )
 })
 
 // A screen reader re-reads a live region whenever its text changes. The duration changes every

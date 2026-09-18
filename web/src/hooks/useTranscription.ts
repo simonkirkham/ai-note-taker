@@ -84,7 +84,7 @@ export interface UseTranscriptionResult {
   recordingUpload: RecordingUploadStatus;
   diarization: DiarizationStatus;
   // BUG-85: set once a recording has gone two minutes without new finalised text, saying which of
-  // the three things went wrong so the control can say it. Optional because a caller that supplies
+  // the four situations it looks like so the control can say it. Optional because a caller that supplies
   // a session of its own (every spec that drives the record control directly) is describing a
   // healthy recording, and absent already means exactly that.
   stall?: TranscriptionStall;
@@ -571,7 +571,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
           // BUG-85: what is actually IN the audio, measured where it already flows — no second
           // audio graph, one pass over a 128-sample frame. Without it, silence and a dead
           // microphone are indistinguishable from speech all the way to the server.
-          health.audioLevel(peakOf(frame), Date.now());
+          health.audioLevel(peakOf(frame), frame.length, Date.now());
           const chunks = chunker.push(frame);
           if (chunks.length === 0) return;
           for (const chunk of chunks) {

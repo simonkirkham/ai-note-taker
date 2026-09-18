@@ -558,6 +558,92 @@ public sealed class TranscriptHealthTests(ApiFactory factory) : IClassFixture<Ap
         Assert.Contains("sourceEnded=- muted=- silent=-", line.Message);
     }
 
+    // BUG-85 — when a transcript stops, the record has to say whether people were still speaking.
+    // The silence flag catches only a dead source; a quiet room and a room full of speech looked the
+    // same. The save now carries how loud the audio was since the last words, and for how long it
+    // was at speech level.
+
+    [Fact]
+    public async Task Given_a_stall_with_speech_arriving_When_a_draft_is_saved_Then_the_line_says_how_loud_and_how_much_speech()
+    {
+        var h = Build();
+        var noteId = await CreateNoteAsync(h.Client);
+
+        var resp = await DraftAsync(h.Client, noteId, 900, new
+        {
+            engine = "cloud",
+            endReason = "stalled",
+            secondsSinceLastText = 200,
+            streamCount = 1,
+            audioSilent = false,
+            secondsSilent = 1,
+            loudestDbfs = -14.2,
+            speechSeconds = 61.37,
+        });
+
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+        var line = Assert.Single(h.HealthLines);
+        Assert.Contains("loudest=-14.2dBFS speech=61.4s", line.Message);
+        Assert.DoesNotContain("malformed", line.Message);
+    }
+
+    [Fact]
+    public async Task Given_a_build_without_the_loudness_fields_When_completed_Then_they_read_as_absent_not_zero()
+    {
+        var h = Build();
+        var noteId = await CreateNoteAsync(h.Client);
+
+        var resp = await CompleteAsync(h.Client, noteId, 600, new
+        {
+            engine = "cloud",
+            endReason = "stopped",
+            coveredSeconds = 590,
+            streamCount = 1,
+            sourceEnded = false,
+            sourceMuted = false,
+            audioSilent = false,
+            secondsSilent = 2,
+        });
+
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+        var line = Assert.Single(h.HealthLines);
+        Assert.Equal(LogLevel.Information, line.Level);
+        Assert.Contains("loudest=- speech=-", line.Message);
+        Assert.DoesNotContain("malformed", line.Message);
+    }
+
+    [Theory]
+    [InlineData(12.0, 5000.0, "loudest=0dBFS speech=5000s")]
+    [InlineData(-900.0, -3.0, "loudest=-100dBFS speech=0s")]
+    [InlineData(-45.04, 1e9, "loudest=-45dBFS speech=86400s")]
+    public async Task Given_out_of_range_loudness_When_saved_Then_it_is_clamped(double loudest, double speech, string expected)
+    {
+        var h = Build();
+        var noteId = await CreateNoteAsync(h.Client);
+
+        await DraftAsync(h.Client, noteId, 900, new { endReason = "stalled", loudestDbfs = loudest, speechSeconds = speech });
+
+        Assert.Contains(expected, Assert.Single(h.HealthLines).Message);
+    }
+
+    [Fact]
+    public async Task Given_loudness_of_the_wrong_type_When_saved_Then_it_is_named_malformed_and_the_save_succeeds()
+    {
+        var h = Build();
+        var noteId = await CreateNoteAsync(h.Client);
+        var text = JsonSerializer.Serialize(TranscriptMarker);
+
+        var resp = await h.Client.PostAsync($"/notes/{noteId}/transcription",
+            new StringContent(
+                $$"""{ "transcriptText": {{text}}, "durationSeconds": 600, "health": { "endReason": "stopped", "loudestDbfs": "loud", "speechSeconds": true } }""",
+                System.Text.Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+        var line = Assert.Single(h.HealthLines);
+        Assert.Contains("malformed=loudestDbfs,speechSeconds", line.Message);
+        Assert.Contains("loudest=- speech=-", line.Message);
+    }
+
     private sealed class ThrowingTranscriptMetrics : IDomainMetrics
     {
         public void CommandHandled(string commandType, string aggregate) { }

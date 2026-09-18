@@ -23,8 +23,30 @@ const PCM_BYTES_PER_SAMPLE = 2;
 // this; room tone from a live microphone sits around −60 dBFS, about a thousand times above it.
 export const SILENT_PEAK = 1 / 32767;
 
+// BUG-85: the level at which captured audio counts as SPEECH, as opposed to a live microphone in a
+// quiet room. -40 dBFS on the loudest sample of a frame.
+//
+// Basis. Conversational speech into a laptop or headset microphone peaks at roughly -30 to -10 dBFS;
+// room tone from a live microphone sits far below, around -60 to -50 dBFS, and the browser's own
+// noise suppression (on by default for this capture) pushes it lower still while its automatic gain
+// lifts speech. -40 sits between the two ranges with about 10 dB to spare on each side. Those ranges
+// are the usual figures for this kind of capture, NOT a measurement of this app's microphones: the
+// encoder specs measure what this threshold means in transmitted samples, and the first real stall
+// record settles whether the ranges hold on the user's hardware.
+export const SPEECH_PEAK = 10 ** (-40 / 20);
+
+// How much speech-level audio the stalled stretch needs before the notice claims people are
+// speaking. A remark, a cough or a door is a second or two; two minutes of conversation is tens of
+// seconds. Below this the stretch is called a quiet room.
+export const MIN_SPEECH_SECONDS = 10;
+
+// The level reported for digital silence, or for a stretch with no audio at all. A zero-filled
+// buffer has no finite level and JSON cannot carry -Infinity; null would read on the server as a
+// build that never measured. -100 sits below anything the encoder can transmit (about -96 dBFS).
+export const LOUDNESS_FLOOR_DBFS = -100;
+
 /** Why the transcript has stopped growing, in the order the evidence settles it. */
-export type TranscriptionStallKind = 'sourceEnded' | 'noSound' | 'noWords';
+export type TranscriptionStallKind = 'sourceEnded' | 'noSound' | 'quiet' | 'noWords';
 
 export interface TranscriptionStall {
   kind: TranscriptionStallKind;
@@ -44,6 +66,19 @@ export function peakOf(frame: Float32Array): number {
 
 function seconds(ms: number): number {
   return Math.round(ms / 100) / 10;
+}
+
+function round1(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+// The level of a peak in dB relative to full scale, as TRANSMITTED: quantised to 16 bits the way
+// `floatTo16BitPcm` does, so a quiet level reads as the service receives it rather than up to a few
+// tenths of a dB off. Anything that rounds to zero is digital silence.
+function toDbfs(peak: number): number {
+  const transmitted = Math.min(32767, Math.round(peak * 32767));
+  if (transmitted <= 0) return LOUDNESS_FLOOR_DBFS;
+  return round1(20 * Math.log10(transmitted / 32767));
 }
 
 function round2(value: number): number {
@@ -103,6 +138,10 @@ export class TranscriptHealthTracker {
   private releasedMuted = false;
   private released = false;
   private lastLoudAt = 0;
+  // BUG-85: how loud the audio has been since the transcript last grew — the same stretch the stall
+  // is measured over. Restarted by `textArrived`, the only place that instant moves.
+  private windowPeak = 0;
+  private windowSpeechSamples = 0;
 
   reset(): void {
     this.engine = 'cloud';
@@ -122,6 +161,8 @@ export class TranscriptHealthTracker {
     this.releasedMuted = false;
     this.released = false;
     this.lastLoudAt = 0;
+    this.windowPeak = 0;
+    this.windowSpeechSamples = 0;
   }
 
   recordingStarted(engine: TranscriptEngine, sampleRate: number, now: number): void {
@@ -146,6 +187,8 @@ export class TranscriptHealthTracker {
   textArrived(now: number, endTime?: number): void {
     this.lastTextAt = now;
     this.lastStallReportAt = 0;
+    this.windowPeak = 0;
+    this.windowSpeechSamples = 0;
     if (endTime !== undefined && Number.isFinite(endTime)) {
       this.coveredByOpenStream = Math.max(this.coveredByOpenStream, endTime);
       this.hasCoverage = true;
@@ -208,10 +251,18 @@ export class TranscriptHealthTracker {
     }
   }
 
-  // The loudest sample of a captured frame. Anything at or above the transmit floor is sound; below
-  // it, what leaves this machine is indistinguishable from a zero-filled buffer.
-  audioLevel(peak: number, now: number): void {
+  // The loudest sample of a captured frame, and how many samples it held. Anything at or above the
+  // transmit floor is sound; below it, what leaves this machine is indistinguishable from a
+  // zero-filled buffer. Speech is counted in samples, not frames, so it is seconds of audio whatever
+  // size of frame the browser delivers.
+  audioLevel(peak: number, samples: number, now: number): void {
     if (peak >= SILENT_PEAK) this.lastLoudAt = now;
+    if (peak > this.windowPeak) this.windowPeak = peak;
+    if (peak >= SPEECH_PEAK) this.windowSpeechSamples += samples;
+  }
+
+  private speechSeconds(): number {
+    return this.windowSpeechSamples / this.sampleRate;
   }
 
   // Silence is measured from the last sample above the floor, or from the start of the recording
@@ -274,6 +325,10 @@ export class TranscriptHealthTracker {
     // alive — there is no evidence of a fault, and saying there is would make a fine recording
     // worse by inviting a restart.
     if (this.lastTextAt === 0) return undefined;
+    // Sound, but is anyone speaking? Only speech-level audio with nothing coming back is a
+    // transcription fault; room tone alone is a meeting that has gone quiet. Speech only accumulates
+    // within an episode, so this settles one way and cannot flicker.
+    if (this.speechSeconds() < MIN_SPEECH_SECONDS) return { kind: 'quiet', stalledForSeconds };
     return { kind: 'noWords', stalledForSeconds };
   }
 
@@ -313,6 +368,8 @@ export class TranscriptHealthTracker {
       audioSilent: this.isSilent(now),
       // Clamped: a clock that steps backwards mid-recording must not report a negative duration.
       secondsSilent: this.hasStarted ? seconds(Math.max(0, now - this.silentSince())) : null,
+      loudestDbfs: this.hasStarted ? toDbfs(this.windowPeak) : null,
+      speechSeconds: this.hasStarted ? round1(this.speechSeconds()) : null,
     };
   }
 }

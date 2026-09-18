@@ -8,8 +8,8 @@ import styles from "./RecordControl.module.css";
 
 // BUG-85: what to say when the live transcript has stopped growing part-way through a meeting. It
 // happened twice, costing 54 minutes of one meeting and 3.5 hours of another, with nothing on
-// screen to say so. Each line names the cause in ordinary words — the three are genuinely different
-// problems and only one of them is about the microphone.
+// screen to say so. Each line names the cause in ordinary words — the four are genuinely different
+// situations, and a quiet room is not a fault at all, so it never advises a restart.
 //
 // Review round 1: none of these asserts that transcription HAS STOPPED. A meeting can be quiet, and
 // telling someone to restart a recording that is working would make a good recording worse. The
@@ -17,13 +17,15 @@ import styles from "./RecordControl.module.css";
 const STALL_REASONS: Record<TranscriptionStallKind, string> = {
   sourceEnded: "The audio source ended — the microphone or shared audio was disconnected.",
   noSound: "No sound is being picked up from the microphone or shared audio.",
-  noWords: "Sound is arriving, but nothing is coming back from transcription.",
+  quiet: "Only quiet background sound is being picked up — nobody seems to be speaking.",
+  noWords: "Speech is being picked up, but nothing is coming back from transcription.",
 };
 
 const STALL_ADVICE: Record<TranscriptionStallKind, string> = {
   sourceEnded: "Stop and start recording again to keep a transcript of the rest.",
   noSound: "Check the microphone or shared audio, then stop and start recording again.",
-  noWords: "If the meeting is not simply quiet, stop and start recording again.",
+  quiet: "Nothing needs doing if the meeting is quiet. If people are speaking, check the right microphone is selected.",
+  noWords: "Stop and start recording again to keep a transcript of the rest.",
 };
 
 function plural(n: number, unit: string): string {
