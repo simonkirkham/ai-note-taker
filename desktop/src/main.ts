@@ -241,13 +241,28 @@ function registerAutoUpdate(): void {
   const fromBundle = (event: Electron.IpcMainInvokeEvent) => isBundleOrigin(event.senderFrame?.url, BUNDLE_ORIGINS)
   const attemptFile = path.join(app.getPath('userData'), 'update-attempt.txt')
   // electron-updater logs every hourly check to the console by default; keep only what matters.
-  autoUpdater.logger = { info: () => {}, warn: (m: unknown) => console.warn('[desktop] updater:', m), error: () => {} }
+  // Errors reach our own warning through the 'error' event. The installer's launch failure is
+  // reported only as info, so that one line is kept.
+  autoUpdater.logger = {
+    info: (m: unknown) => {
+      if (String(m).includes('Cannot run installer')) console.warn('[desktop] updater:', m)
+    },
+    warn: (m: unknown) => console.warn('[desktop] updater:', m),
+    error: () => {},
+  }
   autoUpdate = createAutoUpdate({
     updater: autoUpdater,
     isPackaged: app.isPackaged,
     currentVersion: app.getVersion(),
     attempts: {
-      read: () => (existsSync(attemptFile) ? readFileSync(attemptFile, 'utf8').trim() || null : null),
+      read: () => {
+        try {
+          return existsSync(attemptFile) ? readFileSync(attemptFile, 'utf8').trim() || null : null
+        } catch (err) {
+          console.warn('[desktop] could not read the update attempt:', err)
+          return null
+        }
+      },
       write: (version) => {
         try {
           writeFileSync(attemptFile, version ?? '')

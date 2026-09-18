@@ -44,6 +44,9 @@ export function createAutoUpdate({
   let readyVersion: string | null = null
   // Once the installer has been launched, an error can only be the install failing.
   let installing = false
+  // An install that did not take would otherwise re-download (~89 MB) and fail again every hour.
+  // The fallback command is showing; a relaunch tries again.
+  let installDidNotTake = false
 
   const set = (next: AutoUpdateState) => {
     // A downloaded update is installed on quit whatever a later check says, so 'ready' holds —
@@ -61,6 +64,7 @@ export function createAutoUpdate({
     const version = info?.version ?? null
     if (version && version === attempts.read() && version !== currentVersion) {
       warn(`[desktop] auto-update failed: ${version} was downloaded and handed to the installer, but this copy is still ${currentVersion}`)
+      installDidNotTake = true
       set('failed')
       return
     }
@@ -74,7 +78,7 @@ export function createAutoUpdate({
   }
 
   const check = () => {
-    if (state === 'downloading' || state === 'ready') return
+    if (state === 'downloading' || state === 'ready' || installDidNotTake) return
     // electron-updater both emits 'error' and rejects for the same failure; log it once. The
     // background download rejects separately — already reported through 'error', so it is only
     // caught here to keep it from surfacing as an unhandled rejection.

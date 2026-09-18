@@ -214,3 +214,19 @@ test('a failed background download never leaves an unhandled rejection', async (
     process.off('unhandledRejection', onUnhandled)
   }
 })
+
+test('an install that did not take is not re-downloaded every hour', () => {
+  const { updater, timers, auto } = setup({ attempted: '1.0.0-20260918.2', currentVersion: '1.0.0-20260918.1' })
+  auto.start()
+  updater.emit('update-downloaded', { version: '1.0.0-20260918.2' })
+  timers[0].fn()
+  expect(updater.checks).toBe(1)
+})
+
+test('an ordinary failure is still retried on the next hourly check', () => {
+  const { updater, timers, auto } = setup()
+  auto.start()
+  updater.emit('error', new Error('offline'))
+  timers[0].fn()
+  expect(updater.checks).toBe(2)
+})
