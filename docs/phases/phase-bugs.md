@@ -219,6 +219,26 @@ Worth keeping for two reasons. The failure was the same shape as the bug — som
 
 **What it cost:** the meeting ran on past 15:32 and none of it was transcribed. Nothing on screen said so for 3.5 hours.
 
+**Research pass, 2026-09-18 (AWS docs + the installed SDK's source). The leading candidate is now much stronger, and two of the facts were mis-read.**
+
+| Established | Source |
+|---|---|
+| **The service ends a stream that stops receiving audio after ~15 s.** Ours survived 3.5 h, so the app was genuinely sending bytes the whole time — and the service was accepting them | Widely reported (`Your request timed out because no new audio was received for 15 seconds`); not in AWS's own docs |
+| **Digital silence is a valid, expected input** — AWS's own best practice is to keep sending zero bytes when there is no speech. Results are emitted per speech segment, so silence produces no partials and no finals, indefinitely, on a healthy connection | [streaming.html](https://docs.aws.amazon.com/transcribe/latest/dg/streaming.html), [partial results](https://docs.aws.amazon.com/transcribe/latest/dg/streaming-partial-results.html) |
+| **4 h is the documented maximum session length**, a hard limit — so the 14,400 s ending is expected, not a fault | [Transcribe FAQs](https://aws.amazon.com/transcribe/faqs/) |
+| **The non-`Error` thrown value is the SDK, not the service.** This client runs over WebSocket, and `@aws-sdk/middleware-websocket` throws the raw DOM `Event` from `socket.onerror` — no `name`, no `message`. An abnormal close (1006) produces exactly the `error=object: -` we logged | Read in `web/node_modules/@aws-sdk/middleware-websocket/dist-cjs/index.js` |
+| Every service-side rejection — expired token, bad signature, throttling, limit — is documented and reported to **close the stream with an error within seconds**. None sits open and silent | [streaming-setting-up.html](https://docs.aws.amazon.com/transcribe/latest/dg/streaming-setting-up.html) + issues [7443](https://github.com/aws/aws-sdk-js-v3/issues/7443), [7496](https://github.com/aws/aws-sdk-js-v3/issues/7496) |
+
+**So the audio almost certainly went silent at 28m45s, and the service behaved correctly throughout.** Zero partials is the decisive fact: no service-side failure produces that while holding a connection open. A Chromium variant makes it worse — a capture track can go silent **without** changing `muted`, `enabled` or `readyState` on a device change (e.g. a USB headset connecting), so even watching track state would not always catch it.
+
+**Two corrections to earlier notes here.** "The app kept sending audio" is true but proves only that bytes flowed, not that they carried sound. And the audio is **not** available to check: the error path tears down without uploading (`useTranscription.ts:748-752`), the recordings bucket is empty, and nothing is kept on disk unless "keep recordings on this device" is on, which applies to the on-device engine only.
+
+**Two further defects found while researching, both open:**
+1. **Credentials are resolved once per stream and never refreshed** — the SDK caches them at stream construction (`eventStreamCredentials: await staticCredentials`), so no refreshing provider can help. Every recording over 15 min runs on an expired token. Not this symptom, but real.
+2. **A clean server close ends the result loop with no error at all**, and the app treats that as a normal end (`streamEnded` → commit). A stream that died at minute 29 and a recording the user stopped take the same path.
+
+**The documented pattern for long recordings is to reopen, not to refresh:** a fresh `StartStreamTranscription` reusing the same `SessionId` within `SessionResumeWindow` (1-300 min), with the client stitching the results.
+
 **Root cause: narrowed, not established.** Candidates:
 1. The stream errored. The catch in `useTranscription.ts` sets `status: 'error'` and shows the error text, but does not save the transcript captured so far.
 2. The audio source stopped delivering chunks, for example a device change or the shared-audio capture ending. `audioStream()` then waits forever, and the service ends the stream for lack of audio.
