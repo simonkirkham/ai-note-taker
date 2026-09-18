@@ -20,7 +20,7 @@ Ordered by severity, then by id.
 | BUG-79 | An action item you add in the first second or two after making a note is silently thrown away for good, and while that happens everything else you do for the next half minute stops updating. | Open | — |
 | BUG-81 | Typing a title on a brand-new note and clicking Save can delete the note instead — the button changes from Save to Cancel under your cursor, and Cancel throws a new note away. | Open | — |
 | BUG-84 | Asking the app to analyse a longer meeting fails almost every time — 7 of the last 9 tries failed — and the message tells you to try again in a minute, which cannot help. | Open | TI-63 |
-| BUG-85 | The live transcript can silently stop part-way through a meeting while the recording timer keeps running — on 2026-09-16 the last 54 minutes of an 88-minute meeting were never transcribed, and nothing on screen said so until the analysis failed. | Open | TI-99 |
+| BUG-85 | The live transcript can silently stop part-way through a meeting while the recording timer keeps running. It has now happened twice, costing 54 minutes of one meeting and 3.5 hours of another; nothing on screen says so at the time. | Open | — |
 | BUG-70 | Clicking "+ New Note" while recording and then choosing to keep recording still leaves a blank, untitled note behind on your home list. | Open — held behind 51-C | BUG-54, 51-C |
 | BUG-73 | Signing out while an on-device transcript is still finishing can park you for up to an hour with no way to leave — a real problem on a shared machine. | Open | BUG-55 |
 | BUG-75 | Reopening a note while its on-device transcript is still finishing shows no transcript, and nothing appears until you navigate again or reload. | Open | BUG-72 |
@@ -197,7 +197,29 @@ Worth keeping for two reasons. The failure was the same shape as the bug — som
 
 6,291 words over the 34 minutes to 11:08 is ~185 words/min — a normal speaking rate. The transcript is most likely complete up to 11:08 and empty after it.
 
-**Root cause: unknown.** Candidates, none evidenced:
+**Second occurrence, 2026-09-17 — "Crosslake Town Hall" (`bc0e9df2…`), now with the health record [TI-99] added for exactly this.**
+
+| Time (UTC) | Health record |
+|---|---|
+| 15:03:53 | Recording starts; one stream, cloud engine. Credentials issued once, valid 15 min (`StsCredentialService` `DurationSeconds = 900`) |
+| 15:04-15:32 | Normal: `covered` tracks `duration` within a few seconds, ratio 0.99-1.00 |
+| **15:32:38** | **Last finalised text. `covered` freezes at 1724.7 s (28.7 min) and never moves again** |
+| 15:35:11 → 19:03:14 | 47 `end=stalled` Warnings. `sinceLastAudio=0s` throughout — the app keeps pushing audio — while `sinceLastText` climbs to 12,628 s and the ratio falls 0.92 → 0.12 |
+| 19:03:57 | `end=error`, `error=object: -` — a non-`Error` value thrown at **exactly 14,400 s = 4 h**, AWS Transcribe streaming's documented maximum session length. The stream had stayed open the whole time |
+| 2026-09-18 08:49:35 | The user recovered the draft: 5,433 words, 30 KB. 189 words/min over the 28.7 min captured — a normal rate, so the text is complete up to the stop and empty after it |
+
+**What this rules in and out.**
+
+| Candidate | Verdict |
+|---|---|
+| The stream errored at the stop | **Out.** It stayed open 3.5 h past the stop and ended only at AWS's 4 h cap |
+| The app stopped sending audio | **Out** as written: the app kept pushing buffers (`sinceLastAudio=0s`) |
+| **The captured audio went silent or its track died** (the meeting's shared-audio capture ended, a device changed) | **The leading candidate, and untestable today.** `audioSecondsSent` counts buffers pushed, not sound: a dead or silent track still yields zero-filled buffers at the same rate. The app never listens for a track's `ended`/`mute` event (`useTranscription.ts:493-512`) and never measures level, so silence and a dead source are indistinguishable from real speech |
+| Credentials expiring mid-recording | **Open, unlikely as the trigger.** They are issued once for 15 min and never refreshed, so every recording over 15 min runs on expired credentials — but text continued for 13.8 min past expiry, and the stream stayed open for hours |
+
+**What it cost:** the meeting ran on past 15:32 and none of it was transcribed. Nothing on screen said so for 3.5 hours.
+
+**Root cause: narrowed, not established.** Candidates:
 1. The stream errored. The catch in `useTranscription.ts` sets `status: 'error'` and shows the error text, but does not save the transcript captured so far.
 2. The audio source stopped delivering chunks, for example a device change or the shared-audio capture ending. `audioStream()` then waits forever, and the service ends the stream for lack of audio.
 3. The stream stayed open but returned no finalised results.
@@ -206,7 +228,12 @@ Nothing records which one happened: the desktop build sends no browser telemetry
 
 **Observable?** No, except by inference from the draft-autosave cadence. That method is now in [observability.md](../observability.md#why-is-a-transcript-incomplete). [TI-99] adds the direct signal.
 
-**Fix direction:** the app should notice when no new text has arrived for a few minutes while audio is flowing. It should then tell the user, try to reopen the stream, and keep the text captured so far. Reproduce first by forcing each candidate above on a desktop build (kill the network, switch the audio device, end the screen share) and watching which one yields "timer running, no text".
+**Fix direction (in this order):**
+1. **Tell the user.** After ~2 min with no new text, the recording UI says transcription has stopped and offers to restart it. This alone would have saved 3.5 h of the 2026-09-17 meeting.
+2. **Tell silence from a dead source.** Measure the level of the audio actually being captured and listen for each track's `ended`/`mute` event. That settles the leading candidate and makes `audioSecondsSent` mean what it claims.
+3. **Reopen the stream** when text has stopped while real audio is arriving, with fresh credentials (which also removes the expired-credential exposure on any recording over 15 min).
+
+Reproduce by ending the shared-audio capture mid-recording on a desktop build and watching for "timer running, no text".
 
 ---
 
