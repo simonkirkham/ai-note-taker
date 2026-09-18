@@ -125,6 +125,18 @@ function makeTrack(kind: 'audio' | 'video', onStop?: () => void): FakeTrack {
   return track
 }
 
+// A track whose state getter throws — a revoked or already-released device track. Reading it must
+// never cost the recording (BUG-74's shape: the read happens inside commitTranscript's argument
+// list, AFTER the one-shot guard has been set).
+function breakTrackState(track: FakeTrack, property: 'readyState' | 'muted'): void {
+  Object.defineProperty(track, property, {
+    get() {
+      throw new Error(`the ${property} of a released track`)
+    },
+    configurable: true,
+  })
+}
+
 function fakeStream(tracks: FakeTrack[]): MediaStream {
   return {
     getTracks: () => tracks,
@@ -545,8 +557,11 @@ describe('a recording whose transcript has stopped growing', () => {
   // has stopped, so the sound-but-no-words case waits for proof that words were once flowing.
   it('says nothing about missing words before any words have ever arrived, however long it takes', async () => {
     const view = await startCloudRecording()
-    at(5)
-    await sendAudio(3)
+    // Sound keeps arriving throughout — a live microphone in a room where nobody has spoken yet.
+    for (const second of [5, 300, 595]) {
+      at(second)
+      await sendAudio(3)
+    }
 
     at(600)
     tickSecond()
@@ -595,6 +610,9 @@ describe('a recording whose transcript has stopped growing', () => {
     await sendAudio(3)
     at(20)
     systemVideoTrack.end()
+    // The microphone carries on — stopping a screen share does not stop the room.
+    at(145)
+    await sendAudio(3)
 
     at(150)
     tickSecond()
@@ -678,6 +696,61 @@ describe('a recording whose transcript has stopped growing', () => {
     expect(drafts[0].health).toMatchObject({ endReason: 'error', sourceEnded: true })
   })
 
+  // Review round 2 should-fix: the state read happens inside commitTranscript's argument list,
+  // AFTER the one-shot guard is set — so a throw there loses the transcript outright and the retry
+  // is refused. Same shape as BUG-74, one frame further on.
+  it('still commits the transcript when a track state read throws', async () => {
+    const view = await startCloudRecording()
+    at(5)
+    await sendAudio(3)
+    at(10)
+    await emitResult(view, 'every word of this must survive', 9)
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    breakTrackState(micTrack, 'readyState')
+
+    at(40)
+    act(() => view.result.current.stopRecording())
+
+    await waitFor(() => expect(commits).toHaveLength(1))
+    expect(commits[0].transcriptText).toContain('every word of this must survive')
+  })
+
+  it('keeps reporting the stall when a track state read throws', async () => {
+    const view = await startCloudRecording()
+    at(5)
+    await sendAudio(3)
+    at(10)
+    await emitResult(view, 'Hello', 9)
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    breakTrackState(micTrack, 'muted')
+    at(145)
+    await sendAudio(3)
+
+    at(150)
+    tickSecond()
+
+    expect(view.result.current.stall).toEqual({ kind: 'noWords', stalledForSeconds: 140 })
+  })
+
+  // The mirror of the spec above, and the one that pins the ORDER of the teardown: releasing the
+  // microphone ends every track, so a reading taken after it would report a dead source on every
+  // recording that ever errored. The error path saves its draft after the teardown, so this is the
+  // only place the order is observable.
+  it('does not invent a dead source when the stream errors on a healthy microphone', async () => {
+    const view = await startCloudRecording()
+    at(5)
+    await sendAudio(3)
+    at(10)
+    await emitResult(view, 'Captured', 9)
+
+    at(60)
+    streams[0].push({ kind: 'error', error: namedError('NetworkError', 'socket closed') })
+
+    await waitFor(() => expect(view.result.current.status).toBe('error'))
+    await waitFor(() => expect(drafts).toHaveLength(1))
+    expect(drafts[0].health).toMatchObject({ endReason: 'error', sourceEnded: false })
+  })
+
   it('carries the dead source to the server on the next save', async () => {
     const view = await startCloudRecording()
     at(5)
@@ -707,11 +780,47 @@ describe('a recording whose transcript has stopped growing', () => {
     expect(view.result.current.stall).toEqual({ kind: 'noSound', stalledForSeconds: 190 })
   })
 
-  // Review round 1 should-fix: the old silence window ran on its own clock, so the notice could say
-  // "sound is arriving" while the audio had been digitally silent for 90 seconds and then flip to
-  // "no sound" mid-stall. Sound that arrived AFTER the last words settles the episode as
-  // sound-but-no-words, and it stays settled however long the silence afterwards runs.
-  it('does not flip between the two once sound has arrived since the last words', async () => {
+  // Review round 2 must-fix, and the reason this slice exists. The speech service delivers a
+  // finalised result AFTER the audio it covers, so a capture that dies during a pause leaves its
+  // last sound of audio timestamped LATER than the last words — which is the likely shape of the
+  // 28.7-minute freeze. Requiring silence to predate the last words disqualified exactly that
+  // recording: measured, audio dead from 65 s reported "not silent" at 200 s, 600 s, 1800 s and
+  // 4000 s while the silence figure climbed past an hour.
+  it('reports silence that began AFTER the last words — the ordering the speech service produces', async () => {
+    const view = await startCloudRecording()
+    at(60)
+    await emitResult(view, 'the last thing anyone said', 59)
+    at(65)
+    await sendAudio(3)
+    at(66)
+    await sendAudio(5, 0)
+
+    at(185)
+    tickSecond()
+
+    expect(view.result.current.stall).toEqual({ kind: 'noSound', stalledForSeconds: 125 })
+  })
+
+  it('tells the server the audio is silent on that same ordering', async () => {
+    const view = await startCloudRecording()
+    at(60)
+    await emitResult(view, 'the last thing anyone said', 59)
+    at(65)
+    await sendAudio(3)
+    at(66)
+    await sendAudio(5, 0)
+
+    at(200)
+    tick()
+
+    await waitFor(() => expect(drafts).toHaveLength(1))
+    expect(drafts[0].health).toMatchObject({ audioSilent: true, secondsSilent: 135 })
+  })
+
+  // Settling one way as the evidence arrives, never back and forth: sound after the last words
+  // reads as sound-but-no-words until the silence has itself lasted the window, and from there it
+  // stays no-sound unless real sound returns.
+  it('settles from no-words to no-sound as the silence lengthens, and never back', async () => {
     const view = await startCloudRecording()
     at(10)
     await emitResult(view, 'Hello', 9)
@@ -720,11 +829,33 @@ describe('a recording whose transcript has stopped growing', () => {
     at(101)
     await sendAudio(3, 0)
 
-    for (const second of [130, 200, 230, 400]) {
+    for (const second of [130, 200, 219]) {
       at(second)
       tickSecond()
       expect(view.result.current.stall!.kind).toBe('noWords')
     }
+    for (const second of [220, 400, 4000]) {
+      at(second)
+      tickSecond()
+      expect(view.result.current.stall!.kind).toBe('noSound')
+    }
+  })
+
+  it('goes back to no-words the moment real sound returns', async () => {
+    const view = await startCloudRecording()
+    at(10)
+    await emitResult(view, 'Hello', 9)
+    at(100)
+    await sendAudio(3, 0)
+    at(400)
+    tickSecond()
+    expect(view.result.current.stall!.kind).toBe('noSound')
+
+    at(410)
+    await sendAudio(3)
+    tickSecond()
+
+    expect(view.result.current.stall!.kind).toBe('noWords')
   })
 
   it('carries the silence and how long it has lasted to the server', async () => {

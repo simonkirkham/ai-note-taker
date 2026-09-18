@@ -251,6 +251,11 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     // already-ended device track is the realistic source. Releasing hardware is best-effort; it
     // must never be able to take the teardown with it. Found by this bug's own test throwing out of
     // `view.unmount()` — the same shape as the two sites above, one frame further on.
+    // BUG-85: these two lines MUST stay after `health.releaseTracks()` above — stopping a track
+    // ends it, so swapping them would report a dead audio source on every recording that errored.
+    // Pinned by "does not invent a dead source when the stream errors on a healthy microphone" in
+    // TranscriptHealth.test.tsx, which is the only place the order is observable: every other save
+    // happens before the teardown.
     stopTracks(mediaStreamRef.current);
     mediaStreamRef.current = null;
     stopTracks(displayStreamRef.current);

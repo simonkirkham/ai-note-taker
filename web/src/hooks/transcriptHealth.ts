@@ -183,14 +183,29 @@ export class TranscriptHealthTracker {
     this.tracks = [];
   }
 
+  // Both reads are guarded. `stallState` runs every second from a timer, and `snapshot` is
+  // evaluated inside `commitTranscript`'s argument list AFTER the one-shot guard is set — so a
+  // throwing getter on a revoked or already-released device track would lose the transcript
+  // outright and then refuse the retry. Same shape as BUG-74, one frame further on. A read that
+  // cannot be made falls back to the last reading taken while the tracks were held.
   private anyTrackEnded(): boolean {
     if (this.tracks.length === 0) return this.releasedEnded;
-    return this.tracks.some((track) => track.readyState === 'ended');
+    try {
+      return this.tracks.some((track) => track.readyState === 'ended');
+    } catch (err) {
+      console.warn('Reading whether a capture track has ended failed.', err);
+      return this.releasedEnded;
+    }
   }
 
   private anyTrackMuted(): boolean {
     if (this.tracks.length === 0) return this.releasedMuted;
-    return this.tracks.some((track) => track.muted);
+    try {
+      return this.tracks.some((track) => track.muted);
+    } catch (err) {
+      console.warn('Reading whether a capture track is muted failed.', err);
+      return this.releasedMuted;
+    }
   }
 
   // The loudest sample of a captured frame. Anything at or above the transmit floor is sound; below
@@ -213,14 +228,34 @@ export class TranscriptHealthTracker {
     return this.lastTextAt || this.startedAt;
   }
 
-  // Silent for THIS episode: no sample above the floor has arrived since the transcript last grew.
+  // Silent for THIS episode, on either of two readings — and the second one is the load-bearing
+  // half of this whole slice.
   //
-  // Deliberately not a window of its own. A second clock could say "sound is arriving" while the
-  // audio had been digitally silent for 90 seconds and then flip mid-notice. Sound arriving after
-  // the last words settles the episode as sound-but-no-words and it stays settled — a source that
-  // dies part-way through the gap is caught by the track reads above, which is the sharper signal.
+  // (a) No sample above the floor since the transcript last grew. The plain case: the capture was
+  //     already dead when the words stopped.
+  // (b) No sample above the floor for a full stall window, wherever that window started.
+  //
+  // (b) exists because the speech service delivers a finalised result AFTER the audio it covers, so
+  // a capture that dies during a pause leaves its last sound timestamped LATER than the last words
+  // — which is the likely shape of the 28.7-minute freeze this bug is about. On (a) alone that
+  // recording reads "not silent" for ever: measured, audio dead from 65 s still reported not-silent
+  // at 4000 s while the silence figure climbed past an hour, and moving the same silence five
+  // seconds earlier flipped the answer. The track reads above are NOT a fallback for it — a
+  // Chromium capture track can go silent with `readyState`, `muted` and `enabled` all unchanged —
+  // so without (b) this failure mode has no instrument at all.
+  //
+  // Only (b) is tested, because (a) cannot happen without it: past the gate below, `lastLoudAt <=
+  // stalledSince` and `now - stalledSince >= W` give `now - lastLoudAt >= W` by arithmetic alone —
+  // no assumption about ordering or a monotonic clock. Writing both would leave a branch that
+  // reads as load-bearing, that no spec can distinguish, and that nothing would ever exercise.
+  // Confirmed two ways: removing the (a) clause changes no spec of the 54, and an exhaustive
+  // search over the boundary values finds no case where (a) holds and (b) does not.
+  //
+  // Measured against an instant the stall already uses, and monotonic within an episode: it settles
+  // one way as the evidence arrives and only real sound moves it back. It cannot oscillate.
   private isSilent(now: number): boolean {
-    return this.hasStarted && now - this.stalledSince() >= STALL_AFTER_MS && this.lastLoudAt <= this.stalledSince();
+    if (!this.hasStarted || now - this.stalledSince() < STALL_AFTER_MS) return false;
+    return now - this.lastLoudAt >= STALL_AFTER_MS;
   }
 
   // BUG-85: why the transcript has stopped growing, or undefined while it is healthy. Read once a
