@@ -58,15 +58,7 @@ The original 2026-06-02 sketch assumed the feature was about **when** a to-do is
 
 ---
 
-## Desktop app auto-update (Chrome-style)
-
-**What:** make the installed desktop app update **itself**, with no command to run. Today's baseline is **one-command**, not zero: [31-D](phases/phase-31.md) shipped a CI-published installer — every successful prod deploy that touched `web/`|`desktop/` builds the `.exe` on a Windows runner and publishes it to the rolling `desktop-latest` GitHub Release, and `npm run update` (`desktop/scripts/update.ps1`) downloads it, closes the app, installs silently, and relaunches. So updating no longer needs a local rebuild — it needs the owner to remember to run one command. Since [Phase 53](phases/phase-53.md) the app also says when it is behind and offers that command to copy; this item is what removes the paste.
-
-This item closes the last gap: `autoUpdater.checkForUpdates()` on launch against a feed (`electron-builder` already emits the `latest.yml` manifest + `.blockmap` delta the `desktop-latest` Release could carry), download in the background, `quitAndInstall()` on next restart — install-alongside, swap-on-restart, because you cannot overwrite a running binary. Reuses `electron-updater`, which ships with the `electron-builder` already in `desktop/`. Note it only matters for **frontend/desktop-shell** changes — backend/API changes already reach the app live through the `/api` proxy with no rebuild.
-
-**Why it isn't scheduled yet:** 31-D removed most of the pain (a single `npm run update` against an artifact CI already builds), so the remaining benefit is "don't have to remember", for one user. The real cost is **code signing** — on Windows an unsigned auto-update triggers SmartScreen friction, or you disable electron-updater's signature check and lose the security property; on macOS an Apple Developer cert is effectively mandatory. Auto-update's machinery exists to distribute to **many untrusted machines**, which still doesn't apply. Schedule it if the app is ever shared beyond the author. When picked up it is a self-contained slice: point the feed at the existing Release → check-on-launch → relaunch-to-apply (+ a signing decision).
-
-**Raised in:** User question, 2026-06-23 — "how do other apps like Chrome handle updates?" — after Phase 31 shipped the manual-reinstall installer. **Partly addressed** by 31-D (2026-06-23), which replaced manual reinstall with `npm run update`.
+_(Desktop app auto-update graduated to **[Phase 54](phases/phase-54.md)** on 2026-09-18.)_
 
 ---
 

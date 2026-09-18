@@ -528,6 +528,16 @@ Slices and acceptance criteria: [docs/phases/phase-53.md](phases/phase-53.md)
 
 ---
 
+## Phase 54 — Desktop app updates itself _(Not Started)_
+
+The desktop app downloads each new version in the background and installs it when you close the app, with a "Restart now" option (hidden while recording). If the automatic update fails, the Phase 53 copy-command notice appears instead. Desktop shell, the web notice and the publish workflow only; no backend, events or CDK. Graduated from the "desktop app auto-update (Chrome-style)" future feature. Deploy-time impact: **neutral**.
+
+**Goal:** the desktop app downloads each new version in the background and is up to date the next time you open it — no command to paste.
+
+Slices and acceptance criteria: [docs/phases/phase-54.md](phases/phase-54.md)
+
+---
+
 ## Standing tracks and planning docs
 
 Alongside the numbered phases above, work is tracked in five standing docs. The roadmap summarises them; each doc owns its content.
@@ -555,7 +565,7 @@ An unnumbered, standing phase for iterative improvements to the AI analysis — 
 
 ### Future Features
 
-Possible user-facing features not yet committed to a numbered phase. When one is picked up it becomes a numbered phase here and its entry is reduced to a graduated-to pointer. **Currently open (12):** scalable note loading (pagination) + server-side filtering, which is the home of server-side folder tag search · dynamic folders (saved tag-based views) · desktop app auto-update (Chrome-style) · in-app microphone selector · meeting-capture audio quality mode · connect to external transcript tools (Zoom, Teams) · advanced markdown (footnotes, KaTeX, definition lists) · distinguish raw meeting notes from AI-structured notes when browsing · per-note analysis "lens" · freeform structured note output · gate live-transcript-as-saved-note on the higher-quality pass · include transcript text in global search (the deferred alternative to Phase 52's in-note find).
+Possible user-facing features not yet committed to a numbered phase. When one is picked up it becomes a numbered phase here and its entry is reduced to a graduated-to pointer. **Currently open (11):** scalable note loading (pagination) + server-side filtering, which is the home of server-side folder tag search · dynamic folders (saved tag-based views) · in-app microphone selector · meeting-capture audio quality mode · connect to external transcript tools (Zoom, Teams) · advanced markdown (footnotes, KaTeX, definition lists) · distinguish raw meeting notes from AI-structured notes when browsing · per-note analysis "lens" · freeform structured note output · gate live-transcript-as-saved-note on the higher-quality pass · include transcript text in global search (the deferred alternative to Phase 52's in-note find).
 
 → [docs/future-features.md](future-features.md)
 
