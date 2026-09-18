@@ -427,7 +427,10 @@ Related: [BUG-87] (the same stop-time pass is also slow).
 
 **Cause:** as designed, not a malfunction. The 1:1 split re-transcribes the WHOLE recording twice with the larger model, one after the other (`diarizeStreams` in `desktop/src/localTranscription.ts`). The budget comment in `useTranscription.ts` already predicts 0.87 × audio. The live `base.en` transcript is discarded when the split succeeds, so none of the live work is reused.
 
+**Likely contributing cause, found 2026-09-18:** the user's laptop is ARM (Surface Laptop 7, Snapdragon X Elite X1E80100, 12 cores, 16 GB). The app itself is a native ARM64 build, but every whisper binary it bundles is **x64** (`whisper-cli.exe`, `whisper-server.exe`, all `ggml-cpu-*.dll` — read from the PE headers of the installed copy), so all transcription runs under Windows' x64 emulation. The 48-A build note says arm64 "spawn fails → cloud fallback"; in fact it runs, emulated. No native build has been measured against it yet, so the size of the loss is unknown.
+
 **Fix directions (hypotheses):**
+0. Ship a native ARM64 whisper build and measure it against the emulated one on the same recording.
 1. Run the two passes in parallel (each is capped at half the cores, so together they would use the machine rather than wait).
 2. Label from the live transcript instead of re-transcribing: the live pass already knows when words were said; tag each by which source was louder at that moment. Cost near zero, and it would also give live labels ([CHANGE-44]).
 3. Keep `small.en` only for the Them side, where quality matters most.
