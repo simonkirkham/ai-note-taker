@@ -201,18 +201,46 @@ describe('Sidebar', () => {
       expect(screen.getByTestId('build-number')).toHaveTextContent('Build dev')
     })
 
-    it('names the commit it was built from on hover', () => {
+    it('names the release, the commit and the click on hover', () => {
       vi.stubEnv('VITE_BUILD_NUMBER', '752')
       vi.stubEnv('VITE_BUILD_SHA', '0123456789abcdef0123456789abcdef01234567')
+      vi.stubEnv('VITE_BUILD_RUN_ID', '35120085890')
       renderSidebar()
-      expect(screen.getByTestId('build-number')).toHaveAttribute('title', 'Build 752 — commit 0123456')
+      expect(screen.getByTestId('build-number')).toHaveAttribute(
+        'title',
+        'Release 752 · commit 0123456 — click to open this run',
+      )
     })
 
-    it('has no hover text when no commit was injected', () => {
+    // CHANGE-43 — finding the pipeline run behind a build used to mean searching the history.
+    it('opens the run that built it when clicked', () => {
+      vi.stubEnv('VITE_BUILD_NUMBER', '752')
+      vi.stubEnv('VITE_BUILD_RUN_ID', '35120085890')
+      renderSidebar()
+      const stamp = screen.getByTestId('build-number')
+      expect(stamp.tagName).toBe('A')
+      expect(stamp).toHaveAttribute('href', 'https://github.com/simonkirkham/ai-note-taker/actions/runs/35120085890')
+      expect(stamp).toHaveAttribute('target', '_blank')
+      expect(stamp.getAttribute('rel')).toContain('noreferrer')
+    })
+
+    it('is not a link on a hand build, which belongs to no run', () => {
+      vi.stubEnv('VITE_BUILD_NUMBER', '')
+      vi.stubEnv('VITE_BUILD_RUN_ID', '')
+      renderSidebar()
+      const stamp = screen.getByTestId('build-number')
+      expect(stamp.tagName).not.toBe('A')
+      expect(stamp).not.toHaveAttribute('href')
+    })
+
+    // CHANGE-43 changed this deliberately: the hover used to be empty without a commit; it now
+    // still names the release, which is the part that identifies the run.
+    it('names the release on hover even when no commit was injected', () => {
       vi.stubEnv('VITE_BUILD_NUMBER', '752')
       vi.stubEnv('VITE_BUILD_SHA', '')
+      vi.stubEnv('VITE_BUILD_RUN_ID', '')
       renderSidebar()
-      expect(screen.getByTestId('build-number')).not.toHaveAttribute('title')
+      expect(screen.getByTestId('build-number')).toHaveAttribute('title', 'Release 752')
     })
   })
 })

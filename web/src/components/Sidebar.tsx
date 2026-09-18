@@ -2,7 +2,7 @@ import clsx from "clsx";
 import { useState } from "react";
 import { FolderNode } from "../api/folders";
 import { UNFILED_ID } from "../constants";
-import { buildLabel, buildTitle } from "../lib/buildInfo";
+import { buildLabel, buildRunUrl, buildTitle } from "../lib/buildInfo";
 import FolderTree from "./FolderTree";
 import folderTreeStyles from "./FolderTree.module.css";
 import KeepAudioLocalToggle from "./KeepAudioLocalToggle";
@@ -172,11 +172,24 @@ export default function Sidebar({
             onClick={onSignOut}
           >Sign out</button>
         )}
-        <div
-          className={styles.sidebarBuild}
-          data-testid="build-number"
-          title={buildTitle()}
-        >{buildLabel()}</div>
+        {/* CHANGE-43: a link to the run that built this copy, when there was one — a hand build
+            belongs to no run and stays plain text. */}
+        {buildRunUrl() ? (
+          <a
+            className={styles.sidebarBuild}
+            data-testid="build-number"
+            title={buildTitle()}
+            href={buildRunUrl()}
+            target="_blank"
+            rel="noopener noreferrer"
+          >{buildLabel()}</a>
+        ) : (
+          <div
+            className={styles.sidebarBuild}
+            data-testid="build-number"
+            title={buildTitle()}
+          >{buildLabel()}</div>
+        )}
       </div>
     </nav>
   );

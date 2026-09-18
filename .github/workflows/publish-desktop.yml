@@ -72,6 +72,7 @@ jobs:
           # 53-A: one timestamp, baked into the app AND written to the update history, so the
           # app can count the published updates built after itself.
           echo "BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+          echo "INSTALLER_VERSION=$VER" >> "$GITHUB_ENV"
 
       - name: Build the Windows installer
         if: steps.changed.outputs.build == 'true'
@@ -85,6 +86,10 @@ jobs:
           VITE_BUILD_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
           # 53-A: the update notice compares this against the published update history.
           VITE_BUILD_TIME: ${{ env.BUILD_TIME }}
+          # CHANGE-43: the DEPLOY's run, matching the release number the app already shows, plus
+          # the installer version from the filename — both readable by hovering the stamp.
+          VITE_BUILD_RUN_ID: ${{ github.event.workflow_run.id }}
+          VITE_BUILD_INSTALLER_VERSION: ${{ env.INSTALLER_VERSION }}
           # TI-98: build-web.mjs copies the monitoring snippet from the live site, which this
           # run follows. Fail rather than publish an installer whose faults reach nothing.
           REQUIRE_RUM_SNIPPET: "1"

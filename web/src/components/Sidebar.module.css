@@ -92,6 +92,25 @@
   padding-top: 0.125rem;
 }
 
+/* CHANGE-43 — as a link it must stay exactly as quiet as the plain text it replaces: no
+   underline, no link colour, until the pointer or keyboard is on it. */
+a.sidebarBuild {
+  text-decoration: none;
+  cursor: pointer;
+  width: fit-content;
+}
+
+a.sidebarBuild:hover {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
+a.sidebarBuild:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius);
+}
+
 /* Sidebar folders section */
 .sidebarFolders {
   margin-top: 1.25rem;

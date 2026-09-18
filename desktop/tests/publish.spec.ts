@@ -110,3 +110,16 @@ test('publish runs are never queued behind each other', () => {
   const wf = read('.github/workflows/publish-desktop.yml')
   expect(wf).not.toMatch(/^concurrency:/m)
 })
+
+// CHANGE-43 — the build stamp links to the run that built it, and a desktop build also names
+// the installer version, so a running copy traces back to its pipeline run in one click.
+test('both pipelines inject the run behind the build', () => {
+  const deploy = read('.github/workflows/deploy.yml')
+  const publish = read('.github/workflows/publish-desktop.yml')
+  // Both frontend builds in deploy.yml, so test and production agree.
+  expect(deploy.match(/VITE_BUILD_RUN_ID:/g)).toHaveLength(2)
+  expect(deploy).toContain('VITE_BUILD_RUN_ID: ${{ github.run_id }}')
+  // The installer carries the DEPLOY's run, matching the release number it already shows.
+  expect(publish).toContain('VITE_BUILD_RUN_ID: ${{ github.event.workflow_run.id }}')
+  expect(publish).toContain('VITE_BUILD_INSTALLER_VERSION:')
+})
