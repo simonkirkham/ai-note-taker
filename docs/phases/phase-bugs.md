@@ -20,7 +20,7 @@ Ordered by severity, then by id.
 | BUG-79 | An action item you add in the first second or two after making a note is silently thrown away for good, and while that happens everything else you do for the next half minute stops updating. | Open | — |
 | BUG-81 | Typing a title on a brand-new note and clicking Save can delete the note instead — the button changes from Save to Cancel under your cursor, and Cancel throws a new note away. | Open | — |
 | BUG-84 | Asking the app to analyse a longer meeting fails almost every time — 7 of the last 9 tries failed — and the message tells you to try again in a minute, which cannot help. | Open | TI-63 |
-| BUG-85 | The live transcript can silently stop part-way through a meeting while the recording timer keeps running. It has now happened twice, costing 54 minutes of one meeting and 3.5 hours of another; nothing on screen says so at the time. | Open | — |
+| BUG-85 | The live transcript can silently stop part-way through a meeting while the recording timer keeps running. It has now happened twice, costing 54 minutes of one meeting and 3.5 hours of another. You are now told within two minutes, and told which of three things went wrong; stopping it happening at all is still to do. | In Progress | — |
 | BUG-70 | Clicking "+ New Note" while recording and then choosing to keep recording still leaves a blank, untitled note behind on your home list. | Open — held behind 51-C | BUG-54, 51-C |
 | BUG-73 | Signing out while an on-device transcript is still finishing can park you for up to an hour with no way to leave — a real problem on a shared machine. | Open | BUG-55 |
 | BUG-75 | Reopening a note while its on-device transcript is still finishing shows no transcript, and nothing appears until you navigate again or reload. | Open | BUG-72 |
@@ -249,9 +249,20 @@ Nothing records which one happened: the desktop build sends no browser telemetry
 **Observable?** No, except by inference from the draft-autosave cadence. That method is now in [observability.md](../observability.md#why-is-a-transcript-incomplete). [TI-99] adds the direct signal.
 
 **Fix direction (in this order):**
-1. **Tell the user.** After ~2 min with no new text, the recording UI says transcription has stopped and offers to restart it. This alone would have saved 3.5 h of the 2026-09-17 meeting.
-2. **Tell silence from a dead source.** Measure the level of the audio actually being captured and listen for each track's `ended`/`mute` event. That settles the leading candidate and makes `audioSecondsSent` mean what it claims.
-3. **Reopen the stream** when text has stopped while real audio is arriving, with fresh credentials (which also removes the expired-credential exposure on any recording over 15 min).
+1. **Tell the user — slice 1, in progress.** After ~2 min with no new text the recording control says how long it has been since any words were transcribed, names which of the three cases it looks like, and says what to do. It states the fact rather than asserting a fault: a meeting can be quiet for two minutes, and a restart prompted on a working recording makes a good recording worse. **How much it would have saved on 2026-09-17 is unknown** — it saves time only if the user is looking at that note's screen while it happens, and the earlier row's claim that it "would have saved 3.5 h" assumed that without evidence.
+2. **Tell silence from a dead source — slice 1, in progress.** Every captured track is watched for `ended`/`mute`/`unmute`, and the level of the audio actually captured is measured in the existing processing path. A sample counts as sound only if it survives 16-bit quantisation (1/32767, about −90 dBFS) — below that the app is transmitting zeros, which is exactly what a dead or muted track produces. Two solid minutes under that floor is silence. The three facts (source ended, muted, silent and for how long) ride the health record to the server; older builds keep working and log them as absent.
+3. **Reopen the stream — slice 2, not started.** When text has stopped while real audio is arriving, reopen with fresh credentials (which also removes the expired-credential exposure on any recording over 15 min).
+
+**What slice 1 does NOT do.**
+
+| Not done | Consequence |
+|---|---|
+| No notice anywhere but the recording note's own screen | Looking at another note, or another app, and you see nothing. The recording control unmounts when you leave the note |
+| No stream reopening, no credential refresh | A stopped transcript still has to be stopped and started by hand. That is slice 2 |
+| No audio retention for the lost stretch | Nothing re-transcribes what was missed. The live transcript is still the only record unless speaker separation ran |
+| Nothing watched working against real hardware | The classification is proved against test doubles only; whether a real dead track reports as this code expects is settled by the next occurrence |
+
+Slice 1 makes the situation visible while it is happening and gives the server the evidence to settle the leading candidate. It does not prevent the loss. **The measurement is the point of this slice — the notice is secondary.**
 
 Reproduce by ending the shared-audio capture mid-recording on a desktop build and watching for "timer running, no text".
 

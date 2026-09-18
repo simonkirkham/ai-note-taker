@@ -10,7 +10,7 @@ import {
 import { recordRumEvent } from '../rum';
 import { PcmChunker } from './pcm';
 import { SpeakerTranscript } from './speakerSegments';
-import { TranscriptHealthTracker } from './transcriptHealth';
+import { peakOf, TranscriptHealthTracker, type TranscriptionStall } from './transcriptHealth';
 import { readStoredKeepAudioLocal } from './useKeepAudioLocal';
 import { readStoredMode } from './useTranscriptionMode';
 import { encodeWav } from './wav';
@@ -83,6 +83,11 @@ export interface UseTranscriptionResult {
   error: string | undefined;
   recordingUpload: RecordingUploadStatus;
   diarization: DiarizationStatus;
+  // BUG-85: set once a recording has gone two minutes without new finalised text, saying which of
+  // the three things went wrong so the control can say it. Optional because a caller that supplies
+  // a session of its own (every spec that drives the record control directly) is describing a
+  // healthy recording, and absent already means exactly that.
+  stall?: TranscriptionStall;
   // autoAnalyse: the caller's auto-analyse toggle at record time — carried to the diarization
   // trigger so the completion Lambda re-analyses on the winning transcript (33-B2). resumeFrom: an
   // existing committed transcript to continue (new finalised turns appended after a "— resumed —"
@@ -159,6 +164,8 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
   const [error, setError] = useState<string | undefined>();
   const [recordingUpload, setRecordingUpload] = useState<RecordingUploadStatus>('idle');
   const [diarization, setDiarization] = useState<DiarizationStatus>('idle');
+  // BUG-85: why the transcript has stopped growing, or undefined while it is healthy.
+  const [stall, setStall] = useState<TranscriptionStall | undefined>(undefined);
 
   const stoppedRef = useRef(false);
   const diarizationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -216,6 +223,11 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     // 48-A: detach the on-device engine's IPC listeners (no-op in cloud mode).
     localCleanupRef.current?.();
     localCleanupRef.current = null;
+    // BUG-85: take the last live reading of the capture tracks BEFORE `stopTracks` below ends
+    // them, so a save made after teardown reports what was true while recording rather than
+    // "the source ended" — which pressing Stop makes true of every track.
+    health.releaseTracks();
+    setStall(undefined);
     localActiveRef.current = false;
     // 48-C: release the source-separation buffers (already consumed by diarize on stop).
     meChunksRef.current = [];
@@ -239,11 +251,16 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     // already-ended device track is the realistic source. Releasing hardware is best-effort; it
     // must never be able to take the teardown with it. Found by this bug's own test throwing out of
     // `view.unmount()` — the same shape as the two sites above, one frame further on.
+    // BUG-85: these two lines MUST stay after `health.releaseTracks()` above — stopping a track
+    // ends it, so swapping them would report a dead audio source on every recording that errored.
+    // Pinned by "does not invent a dead source when the stream errors on a healthy microphone" in
+    // TranscriptHealth.test.tsx, which is the only place the order is observable: every other save
+    // happens before the teardown.
     stopTracks(mediaStreamRef.current);
     mediaStreamRef.current = null;
     stopTracks(displayStreamRef.current);
     displayStreamRef.current = null;
-  }, []);
+  }, [health]);
 
   // PUT the finalised text so far to the DRAFT store (no event), with the stream's health at this
   // moment. Returns the request so each caller decides what a failure means.
@@ -440,6 +457,16 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     };
   }, [status, sendDraft]);
 
+  // The once-a-second recording clock. Since BUG-85 it also reads whether the transcript has
+  // stopped growing, so the notice appears within a second of the two-minute mark. Reading it is a
+  // handful of field comparisons — no allocation, no scan — and the component already re-renders
+  // every second for the timer.
+  const onSecond = useCallback(() => {
+    const now = Date.now();
+    setElapsedSeconds(Math.floor((now - startTimeRef.current) / 1000));
+    setStall(health.stallState(now));
+  }, [health]);
+
   const startRecording = useCallback((includeCallAudio: boolean, autoAnalyse: boolean, resumeFrom?: string) => {
     stoppedRef.current = false;
     // BUG-72: reset alongside the other latches, so a new recording can never inherit a previous
@@ -464,6 +491,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     setError(undefined);
     setRecordingUpload('idle');
     setDiarization('idle');
+    setStall(undefined);
     setStatus('requestingCredentials');
 
     void (async () => {
@@ -484,6 +512,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
             displayStream = null;
           }
           displayStreamRef.current = displayStream;
+          health.watchStream(displayStream);
           if (stoppedRef.current) {
             cleanup();
             return;
@@ -492,6 +521,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
 
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         mediaStreamRef.current = stream;
+        health.watchStream(stream);
         if (stoppedRef.current) {
           cleanup();
           return;
@@ -537,7 +567,12 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
 
         workletNode.port.onmessage = (e: MessageEvent) => {
           if (stoppedRef.current) return;
-          const chunks = chunker.push(e.data as Float32Array);
+          const frame = e.data as Float32Array;
+          // BUG-85: what is actually IN the audio, measured where it already flows — no second
+          // audio graph, one pass over a 128-sample frame. Without it, silence and a dead
+          // microphone are indistinguishable from speech all the way to the server.
+          health.audioLevel(peakOf(frame), Date.now());
+          const chunks = chunker.push(frame);
           if (chunks.length === 0) return;
           for (const chunk of chunks) {
             audioQueue.push(chunk);
@@ -640,9 +675,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
           setStatus('recording');
           startTimeRef.current = Date.now();
           health.recordingStarted('local', audioContext.sampleRate, startTimeRef.current);
-          timerRef.current = setInterval(() => {
-            setElapsedSeconds(Math.floor((Date.now() - startTimeRef.current) / 1000));
-          }, 1000);
+          timerRef.current = setInterval(onSecond, 1000);
           checkpointTimerRef.current = setInterval(saveCheckpoint, CHECKPOINT_INTERVAL_MS);
           return; // Stop is driven by stopRecording (flush the session, then commit/upload).
         }
@@ -697,9 +730,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
         setStatus('recording');
         startTimeRef.current = Date.now();
         health.recordingStarted('cloud', audioContext.sampleRate, startTimeRef.current);
-        timerRef.current = setInterval(() => {
-          setElapsedSeconds(Math.floor((Date.now() - startTimeRef.current) / 1000));
-        }, 1000);
+        timerRef.current = setInterval(onSecond, 1000);
         checkpointTimerRef.current = setInterval(saveCheckpoint, CHECKPOINT_INTERVAL_MS);
 
         health.streamOpened();
@@ -767,7 +798,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
         }
       }
     })();
-  }, [cleanup, saveCheckpoint, commitTranscript, uploadRecording, sendDraft, health]);
+  }, [cleanup, saveCheckpoint, commitTranscript, uploadRecording, sendDraft, health, onSecond]);
 
   const stopRecording = useCallback(() => {
     // BUG-55: idempotent. `handleConfirmedLeave` calls this unconditionally and `isRecording`
@@ -956,5 +987,5 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     stoppedRef.current = false;
   }, [cleanup]);
 
-  return { status, transcript, elapsedSeconds, error, recordingUpload, diarization, startRecording, stopRecording, awaitCommit, reset };
+  return { status, transcript, elapsedSeconds, error, recordingUpload, diarization, stall, startRecording, stopRecording, awaitCommit, reset };
 }

@@ -440,6 +440,124 @@ public sealed class TranscriptHealthTests(ApiFactory factory) : IClassFixture<Ap
         Assert.Contains("error=BadName: line oneline twoparamarkisoendnext", line.Message);
     }
 
+    // BUG-85 slice 1 — twice the live transcript stopped part-way through a meeting while the timer
+    // kept running. Counting buffers pushed could not tell a dead microphone from a silent room, so
+    // the save now also carries whether the captured audio source died, whether any sound at all is
+    // reaching it, and for how long it has been silent.
+
+    [Fact]
+    public async Task Given_a_dead_audio_source_When_a_stalled_draft_is_saved_Then_the_line_says_the_source_ended()
+    {
+        var h = Build();
+        var noteId = await CreateNoteAsync(h.Client);
+
+        var resp = await DraftAsync(h.Client, noteId, 900, new
+        {
+            engine = "cloud",
+            endReason = "stalled",
+            coveredSeconds = 700,
+            secondsSinceLastText = 200,
+            audioSecondsSent = 900,
+            secondsSinceLastAudio = 0,
+            streamCount = 1,
+            sourceEnded = true,
+            sourceMuted = false,
+            audioSilent = true,
+            secondsSilent = 210.4,
+        });
+
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+        var line = Assert.Single(h.HealthLines);
+        Assert.Equal(LogLevel.Warning, line.Level);
+        Assert.Contains("sourceEnded=True muted=False silent=True silentFor=210s", line.Message);
+        Assert.DoesNotContain("malformed", line.Message);
+    }
+
+    // Audio arriving at a normal rate and no sound in it is the case the old record could not
+    // express at all: it looked identical to a room full of speech.
+    [Fact]
+    public async Task Given_silence_while_audio_keeps_flowing_When_a_draft_is_saved_Then_it_warns_even_in_progress()
+    {
+        var h = Build();
+        var noteId = await CreateNoteAsync(h.Client);
+
+        await DraftAsync(h.Client, noteId, 900, new
+        {
+            engine = "cloud",
+            endReason = "inProgress",
+            streamCount = 1,
+            audioSecondsSent = 900,
+            secondsSinceLastAudio = 0,
+            sourceEnded = false,
+            sourceMuted = false,
+            audioSilent = true,
+            secondsSilent = 620,
+        });
+
+        var line = Assert.Single(h.HealthLines);
+        Assert.Equal(LogLevel.Warning, line.Level);
+        Assert.Contains("silent=True silentFor=620s", line.Message);
+    }
+
+    [Fact]
+    public async Task Given_a_healthy_recording_When_completed_Then_the_new_fields_log_without_a_warning()
+    {
+        var h = Build();
+        var noteId = await CreateNoteAsync(h.Client);
+
+        await CompleteAsync(h.Client, noteId, 600, new
+        {
+            engine = "cloud",
+            endReason = "stopped",
+            coveredSeconds = 590,
+            streamCount = 1,
+            sourceEnded = false,
+            sourceMuted = false,
+            audioSilent = false,
+            secondsSilent = 2,
+        });
+
+        var line = Assert.Single(h.HealthLines);
+        Assert.Equal(LogLevel.Information, line.Level);
+        Assert.Contains("sourceEnded=False muted=False silent=False silentFor=2s", line.Message);
+    }
+
+    // An installed build from before this change sends none of these. It must still save, and the
+    // absent facts must read as absent rather than as "everything is fine".
+    [Fact]
+    public async Task Given_a_build_without_the_source_and_silence_fields_When_completed_Then_they_read_as_absent()
+    {
+        var h = Build();
+        var noteId = await CreateNoteAsync(h.Client);
+
+        var resp = await CompleteAsync(h.Client, noteId, 600,
+            new { engine = "cloud", endReason = "stopped", coveredSeconds = 590, streamCount = 1 });
+
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+        var line = Assert.Single(h.HealthLines);
+        Assert.Equal(LogLevel.Information, line.Level);
+        Assert.Contains("sourceEnded=- muted=- silent=- silentFor=-s", line.Message);
+        Assert.DoesNotContain("malformed", line.Message);
+    }
+
+    [Fact]
+    public async Task Given_a_source_flag_of_the_wrong_type_When_saved_Then_it_is_named_malformed_and_the_save_succeeds()
+    {
+        var h = Build();
+        var noteId = await CreateNoteAsync(h.Client);
+        var text = JsonSerializer.Serialize(TranscriptMarker);
+
+        var resp = await h.Client.PostAsync($"/notes/{noteId}/transcription",
+            new StringContent(
+                $$"""{ "transcriptText": {{text}}, "durationSeconds": 600, "health": { "endReason": "stopped", "sourceEnded": "yes", "audioSilent": 1, "secondsSilent": "long" } }""",
+                System.Text.Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+        var line = Assert.Single(h.HealthLines);
+        Assert.Contains("malformed=sourceEnded,audioSilent,secondsSilent", line.Message);
+        Assert.Contains("sourceEnded=- muted=- silent=-", line.Message);
+    }
+
     private sealed class ThrowingTranscriptMetrics : IDomainMetrics
     {
         public void CommandHandled(string commandType, string aggregate) { }

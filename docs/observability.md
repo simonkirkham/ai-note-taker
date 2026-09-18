@@ -97,7 +97,7 @@ To trace a request:
 ### The health line (TI-99 builds)
 
 ```
-Transcript health {complete|draft} note <id>: end=<reason> covered=<s>s of <s>s ratio=<0-1> sinceLastText=<s>s audioSent=<s>s sinceLastAudio=<s>s streams=<n> engine=<cloud|local> error=<name>: <message>
+Transcript health {complete|draft} note <id>: end=<reason> covered=<s>s of <s>s ratio=<0-1> sinceLastText=<s>s audioSent=<s>s sinceLastAudio=<s>s streams=<n> engine=<cloud|local> sourceEnded=<True|False|-> muted=<True|False|-> silent=<True|False|-> silentFor=<s>s error=<name>: <message>
 ```
 
 Logs Insights, over the Command Lambda log group (`…CommandFunctionLogGroup…`):
@@ -129,11 +129,20 @@ Drop the `level` filter and add `| filter message like /note <id>/` to see one r
 | `sinceLastText` vs `sinceLastAudio` | Large text gap with small audio gap = audio flowing, no results: a dead stream **or** a silent room. Both large = audio stopped arriving |
 | `streams` | Live streams opened during the recording. Always 1 today: nothing reopens a stream yet. Summed coverage is ready for when something does |
 | `engine=local` | On-device transcription; `covered` is `-` (not measured) |
+| `sourceEnded=True` | A captured track died mid-recording — microphone unplugged, screen share stopped, device taken by another app. Conclusive: it explains everything below it |
+| `muted=True` | A captured track was muted at the moment of the save. Reversible, unlike `sourceEnded` |
+| `silent=True` | Every captured sample stayed below the transmitted-audio floor for two solid minutes. The app was sending zero-filled buffers, so there was nothing for the service to transcribe |
+| `silentFor` | Seconds since the last sample above that floor, counted from the start of the recording if there never was one |
+| all four `-` | A build from before [BUG-85] slice 1. `user_agent` says which |
 
 Metrics (`NoteTaker/Domain`, `Service=note-taker`), on the dashboard widget "Transcript coverage (min) vs stalls":
 
 - `TranscriptCoverageRatio`: covered ÷ duration, on the final save of a recording of 5 min or more. Below 0.8 means an incomplete transcript **or** a recording left running after the meeting ended — check whether the text ends mid-sentence.
 - `TranscriptStalled`: count of stall reports.
+
+**A `silent=True` or `sourceEnded=True` line always logs at Warning**, whatever the end reason — the 2026-09-17 recording reported `inProgress` for three and a half hours while producing nothing ([BUG-85]). The user is told on screen within two minutes of the same evidence, so a line here usually has a matching report from the person in the meeting.
+
+**The silence threshold is the encoder's floor, not a loudness judgement.** Captured audio is quantised to 16-bit PCM, so anything under one quantisation step (1/32767, about −90 dBFS) leaves the machine as zeros. A dead or muted track delivers exact zeros; room tone from a live microphone sits around −60 dBFS, roughly a thousand times above the threshold.
 
 ### Fallback for builds without the health line
 

@@ -29,6 +29,16 @@ export interface TranscriptHealth {
   audioSecondsSent: number;
   secondsSinceLastAudio: number | null;
   streamCount: number;
+  // BUG-85: `audioSecondsSent` counts buffers pushed, not sound — a dead or muted track yields
+  // zero-filled buffers at exactly the same rate. These four say what was actually in them.
+  /** A captured track fired `ended`: the microphone or shared audio is gone for this recording. */
+  sourceEnded: boolean;
+  /** A captured track is muted right now. Reversible, unlike `sourceEnded`. */
+  sourceMuted: boolean;
+  /** Every captured sample has been below the transmitted-audio floor for the whole silence window. */
+  audioSilent: boolean;
+  /** Seconds since the last sample above that floor, counted from the start if there never was one. */
+  secondsSilent: number | null;
 }
 
 export function completeTranscription(
