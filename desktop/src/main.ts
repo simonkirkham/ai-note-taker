@@ -11,6 +11,8 @@ import { fetchHistory } from './updateCheck'
 import { isBundleOrigin } from './ipcOrigin'
 import { shouldOpenExternally } from './externalLink'
 import { UPDATE_COMMAND } from './updateCommand'
+import { autoUpdater } from 'electron-updater'
+import { createAutoUpdate } from './autoUpdate'
 
 // Phase 31-A — Windows bundle-shell.
 // Serve the compiled web/ frontend from a localhost loopback origin and proxy
@@ -231,6 +233,26 @@ function registerUpdateNotice(): void {
   })
 }
 
+// 54-A — download each new version in the background and install it when the app closes. The
+// renderer reads the state to show "Restart now", or the 53-A command when this fails.
+function registerAutoUpdate(): void {
+  const fromBundle = (event: Electron.IpcMainInvokeEvent) => isBundleOrigin(event.senderFrame?.url, BUNDLE_ORIGINS)
+  const auto = createAutoUpdate({
+    updater: autoUpdater,
+    isPackaged: app.isPackaged,
+    onState: (state) => mainWindow?.webContents.send('updates:state', state),
+    warn: (message) => console.warn(message),
+    setInterval: (fn, ms) => {
+      setInterval(fn, ms)
+    },
+  })
+  ipcMain.handle('updates:getState', (event) => (fromBundle(event) ? auto.getState() : null))
+  ipcMain.handle('updates:restart', (event) => {
+    if (fromBundle(event)) auto.restart()
+  })
+  auto.start()
+}
+
 function logBuildSha(): void {
   const shaFile = path.join(WEB_DIST, 'build-sha.txt')
   const sha = existsSync(shaFile) ? readFileSync(shaFile, 'utf8').trim() : 'unknown'
@@ -247,6 +269,7 @@ void app.whenReady().then(async () => {
     getWindow: () => mainWindow,
   })
   registerUpdateNotice()
+  registerAutoUpdate()
   logBuildSha()
   createWindow()
   app.on('activate', () => {

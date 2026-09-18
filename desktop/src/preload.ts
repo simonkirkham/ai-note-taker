@@ -15,6 +15,14 @@ contextBridge.exposeInMainWorld('desktop', {
   updates: {
     getHistory: (): Promise<{ sha: string; builtAt: string }[] | null> => ipcRenderer.invoke('updates:history'),
     copyUpdateCommand: (): Promise<boolean> => ipcRenderer.invoke('updates:copy'),
+    // 54-A — self-updating: the current state, each change as it happens, and "Restart now".
+    getState: (): Promise<string | null> => ipcRenderer.invoke('updates:getState'),
+    onState: (cb: (state: string) => void) => {
+      const h = (_e: unknown, state: string) => cb(state)
+      ipcRenderer.on('updates:state', h)
+      return () => ipcRenderer.removeListener('updates:state', h)
+    },
+    restart: (): Promise<void> => ipcRenderer.invoke('updates:restart'),
   },
   local: {
     // Ask the main process to background-download models (idempotent). Called when the user

@@ -109,11 +109,17 @@ jobs:
           node desktop/scripts/append-history.mjs history/releases.json releases.json "$(git rev-parse HEAD)" "$BUILD_TIME"
           # Never delete the release people update from unless its replacement history exists.
           test -s releases.json
+          # 54-A: nor without the manifest installed apps update from — a publish missing it would
+          # silently stop every copy updating itself.
+          test -s desktop/release/latest.yml
+          ls desktop/release/*.blockmap
           gh release delete desktop-latest --yes --cleanup-tag || true
           # Upload build-sha.txt (the bundled commit marker) alongside the .exe so
           # `npm run update` can version-check by pulling a tiny file, not the 82 MB installer.
           # 53-A: releases.json feeds the in-app update notice; update.ps1 is what its copied
           # command downloads and runs, so it works with no checkout.
-          gh release create desktop-latest desktop/release/*.exe desktop/web-dist/build-sha.txt releases.json desktop/scripts/update.ps1 \
+          # 54-A: latest.yml is what the installed app checks to update itself; the .blockmap lets
+          # it download only the changed parts if an older installer is ever still published.
+          gh release create desktop-latest desktop/release/*.exe desktop/release/latest.yml desktop/release/*.blockmap desktop/web-dist/build-sha.txt releases.json desktop/scripts/update.ps1 \
             --title "AI Note Taker desktop ($SHA)" \
             --notes "Unsigned Windows installer built from $SHA (latest successful prod deploy). Update with \`npm run update\`. SmartScreen may warn on first run."

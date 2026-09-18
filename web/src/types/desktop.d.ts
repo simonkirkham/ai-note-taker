@@ -10,6 +10,9 @@ export type LocalTranscriptionStatus = {
 // 53-A — one published update: the commit it was built from and when it was built.
 export type ReleaseEntry = { sha: string; builtAt: string };
 
+// 54-A — where self-updating has got to. 'disabled' is a dev (unpackaged) build.
+export type AutoUpdateState = "disabled" | "checking" | "downloading" | "ready" | "none" | "failed";
+
 export interface DesktopBridge {
   isDesktop: true;
   platform: string;
@@ -37,6 +40,11 @@ export interface DesktopBridge {
     // Takes no text on purpose: the page shows note content, so it must not choose what lands
     // on a clipboard the user may paste into PowerShell.
     copyUpdateCommand(): Promise<boolean>;
+    // 54-A — absent in a shell built before the app could update itself.
+    getState?(): Promise<AutoUpdateState | null>;
+    onState?(cb: (state: AutoUpdateState) => void): () => void;
+    // Installs the downloaded update and reopens the app.
+    restart?(): Promise<void>;
   };
 }
 
