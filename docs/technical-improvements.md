@@ -70,6 +70,7 @@ Ordered by id. Status is `Open` or `In Progress`.
 | TI-99 | **When a meeting's transcript comes out incomplete, nothing records how much was captured or why it stopped — it took an hour of log archaeology to find out a transcript had died 34 minutes into an 88-minute meeting.** | In Progress | TI-98 |
 | TI-100 | **The merge check once reported an older release as the latest one, so a release still running could in principle be missed and a change merged on top of it.** | Open | — |
 | TI-101 | **A web change can be missing from the desktop app for good, with no update ever offered, if its release failed and the next successful release changed only the server.** | Open | TI-95 |
+| TI-102 | **The machine check says a browser is available for visual work when that browser cannot start at all, so an agent either wastes a round discovering it or goes back to guessing at CSS.** | Open | — |
 
 > **Dependency upgrade audit (2026-06-11):** [report](dependency-audits/dependency-upgrade-audit-2026-06.md). The high and medium items are done; the low-urgency ones (T5 lint tooling, T6 Tiptap 3.26, T8 CDK 2.258, T9 Playwright 1.60, T10 xUnit v3) wait in the report until picked up.
 
@@ -1206,3 +1207,17 @@ It stays In Progress until a real desktop save is seen producing a `Transcript h
 **Found by.** 53-A review (PR #483): a `concurrency` group would have made this routine by cancelling queued publishes, so it was removed. The failed-deploy route predates 53-A.
 
 **Fix direction.** Diff from the commit already published (`build-sha.txt` on the `desktop-latest` release) to `HEAD`, and build when that range touches `web/` or `desktop/`; build when the marker is missing.
+
+---
+
+## TI-102. The browser check tests for a file, not for a browser that runs
+
+**Symptom.** `scripts/check-machine.sh` prints `PASS  Browser (for CSS checks)  /home/simon/.cache/ms-playwright/chromium-1243/chrome-linux-arm64/chrome`. Running that binary exits 127: `error while loading shared libraries: libnspr4.so: cannot open shared object file`. Playwright installs the browser but not its system libraries, and the check only tests that the file exists (`scripts/check-machine.sh:290-304`).
+
+**Severity:** Medium for trust. CLAUDE.md tells agents to measure CSS rather than reason about it and points at this row for the path. A false PASS sends them to a binary that cannot start; BUG-85 slice 1 hit exactly this and fell back to Edge. It is the same shape as [TI-97] and [TI-90] — a check that answers confidently about a state it never tested.
+
+**Confirmed, executed 2026-09-18:** the launch failure above, and `scripts/check-machine.sh` printing PASS for the same path in the same session.
+
+**Fix direction.** Launch each candidate once — `--headless --no-sandbox --dump-dom about:blank` with a short timeout — and accept only one that exits 0. Report the first that works, and on failure say which candidate failed and why (a missing library is fixable with `npx playwright install-deps chromium`, which needs sudo). Windows-side Chrome under WSL is unaffected; it was simply absent here.
+
+**Positive control:** point the check at a deliberately broken path and confirm it reports WARN, not PASS.
