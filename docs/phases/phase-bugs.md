@@ -20,7 +20,7 @@ Ordered by severity, then by id.
 | BUG-79 | An action item you add in the first second or two after making a note is silently thrown away for good, and while that happens everything else you do for the next half minute stops updating. | Open | — |
 | BUG-81 | Typing a title on a brand-new note and clicking Save can delete the note instead — the button changes from Save to Cancel under your cursor, and Cancel throws a new note away. | Open | — |
 | BUG-84 | Asking the app to analyse a longer meeting fails almost every time — 7 of the last 9 tries failed — and the message tells you to try again in a minute, which cannot help. | Open | TI-63 |
-| BUG-85 | The live transcript can silently stop part-way through a meeting while the recording timer keeps running. It has now happened twice, costing 54 minutes of one meeting and 3.5 hours of another. You are now told within two minutes, and told which of three things went wrong; stopping it happening at all is still to do. | In Progress | — |
+| BUG-85 | The live transcript can silently stop part-way through a meeting while the recording timer keeps running. It has now happened twice, costing 54 minutes of one meeting and 3.5 hours of another. You are now told within two minutes, and told which of three things went wrong; the loudness slice (in review) also tells a quiet room from a failure. Stopping it happening at all is still to do. | In Progress | — |
 | [BUG-86](#bug-86--on-device-speaker-labels-put-the-other-sides-words-under-me-too) | **On a call played through speakers, the on-device "who said what" labels are wrong: nearly every line the other side says appears twice, once as "Them" and once as "Me", and your own words are buried inside those repeats.** Makes the labelled transcript unreadable for any call not taken on headphones. | Open | — |
 | [BUG-87](#bug-87--finalising-transcript-takes-almost-as-long-as-the-meeting) | **After you stop an on-device recording, "Finalising transcript…" runs for almost as long as the meeting itself — 3 m 22 s for a 3 m 46 s test, so roughly 55 minutes after a one-hour meeting — before labels or analysis appear.** | Open | — |
 | BUG-70 | Clicking "+ New Note" while recording and then choosing to keep recording still leaves a blank, untitled note behind on your home list. | Open — held behind 51-C | BUG-54, 51-C |
@@ -248,9 +248,21 @@ Worth keeping for two reasons. The failure was the same shape as the bug — som
 | **A device switch does not stop transcription on this machine** | Words kept arriving after the switch — the last transcribed line is the user asking "can you hear me" on the new device |
 | Words stopped at 2:00 | `covered` froze at 120.5 s; the notice appeared on real hardware at 4:15, classified `noWords` ("sound is arriving") |
 | `silent=False`, `sourceEnded=False`, `muted=False` throughout | The source stayed live. **Nobody spoke from 2:00 to 5:00** (confirmed by the user), so the stop at 2:00 is correct behaviour and this is **not a reproduction** |
-| The notice fired on a quiet room | The known false positive: the wording is conditional ("if the meeting is not simply quiet"), and the loudness measurement below is what removes it |
+| The notice fired on a quiet room | The known false positive: the wording is conditional ("if the meeting is not simply quiet"). The loudness slice removes it: the same case now reads "only quiet background sound", with no restart advice, and is a spec |
 
-**The gap this exposed.** The silence floor (−90 dBFS) catches only a dead source. A quiet room reads as "sound", exactly like speech, so the record cannot separate "the meeting went quiet" from "speech arrived and the service returned nothing". That is the same blind spot as the 3.5-hour occurrence. **Next instrument:** record how loud the captured audio actually is over the stall window (a speech-level threshold roughly 30-40 dB above room tone), so the health record says which of the two it was.
+**The gap this exposed.** The silence floor (−90 dBFS) catches only a dead source. A quiet room reads as "sound", exactly like speech, so the record could not separate "the meeting went quiet" from "speech arrived and the service returned nothing". That is the same blind spot as the 3.5-hour occurrence.
+
+**Loudness slice (in review, 2026-09-18).** Every health record now says how loud the audio was since the last words, over the same stretch the stall is measured on.
+
+| Added | What it settles |
+|---|---|
+| `loudest` — the loudest sample, in dBFS as transmitted | Speech (about −30 to −10) vs room tone (about −60 to −50) vs digital silence (−100) |
+| `speech` — seconds at −40 dBFS or louder | 10 s or more with no words = a genuine transcription stall; less = a quiet room |
+| A fourth notice case, "only quiet background sound" | The hardware-test false positive. No restart advice; the transcription-failure wording now fires only on speech |
+
+**Threshold basis: assumed, not measured.** −40 dBFS sits between the usual ranges for this kind of capture. The encoder specs measure what it means in transmitted samples; nothing has measured it on this user's microphones.
+
+**Next instrument:** measure the threshold on real audio. The hardware-test recording is still in the recordings bucket (note `f4df0356…`: speech to 2:00, confirmed silence after) — reading its level second by second would confirm both ranges. Not done: reading the user's own audio needs their go-ahead. Failing that, the next real stall's `loudest`/`speech` settles it.
 
 **Controlled reproduction — designed, declined 2026-09-18 (cost, not merit); do not re-offer unless a new occurrence changes the picture.** Both occurrences stopped at 29-34 min, well past the 15-min credential expiry the app never refreshes. The test that settles it without waiting: two parallel one-hour streams through the same SDK and transport as the app (WebSocket, 100 ms / 3,200-byte PCM chunks at 16 kHz, `ShowSpeakerLabel` on), fed looped synthesised speech in real time — one on 900 s credentials exactly as the app obtains them, one on 3,600 s. Stops at ~30 min on the first only → credential expiry is the cause; both run clean → the connection and credentials are ruled out and the audio source is left. Cost ≈ £2.50 of streaming minutes plus pennies of speech synthesis. The chosen path instead: ship the loudness measurement and read the next real occurrence.
 
@@ -266,7 +278,8 @@ Nothing records which one happened: the desktop build sends no browser telemetry
 **Fix direction (in this order):**
 1. **Tell the user — slice 1, in progress.** After ~2 min with no new text the recording control says how long it has been since any words were transcribed, names which of the three cases it looks like, and says what to do. It states the fact rather than asserting a fault: a meeting can be quiet for two minutes, and a restart prompted on a working recording makes a good recording worse. **How much it would have saved on 2026-09-17 is unknown** — it saves time only if the user is looking at that note's screen while it happens, and the earlier row's claim that it "would have saved 3.5 h" assumed that without evidence.
 2. **Tell silence from a dead source — slice 1, in progress.** Every captured track is watched for `ended`/`mute`/`unmute`, and the level of the audio actually captured is measured in the existing processing path. A sample counts as sound only if it survives 16-bit quantisation (1/32767, about −90 dBFS) — below that the app is transmitting zeros, which is exactly what a dead or muted track produces. Two solid minutes under that floor is silence. The three facts (source ended, muted, silent and for how long) ride the health record to the server; older builds keep working and log them as absent.
-3. **Reopen the stream — slice 2, not started.** When text has stopped while real audio is arriving, reopen with fresh credentials (which also removes the expired-credential exposure on any recording over 15 min).
+3. **Tell a quiet room from a failure — loudness slice, in review.** See above.
+4. **Reopen the stream — slice 2, not started.** When text has stopped while real audio is arriving, reopen with fresh credentials (which also removes the expired-credential exposure on any recording over 15 min).
 
 **What slice 1 does NOT do.**
 

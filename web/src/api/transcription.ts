@@ -39,6 +39,12 @@ export interface TranscriptHealth {
   audioSilent: boolean;
   /** Seconds since the last sample above that floor, counted from the start if there never was one. */
   secondsSilent: number | null;
+  // BUG-85: how loud the audio was since the transcript last grew — the same stretch the stall is
+  // measured over — so a quiet room and a transcription failure no longer look the same.
+  /** The loudest sample in that stretch, in dBFS; -100 for digital silence or no audio at all. */
+  loudestDbfs: number | null;
+  /** Seconds of that stretch at speech level (a frame peak of -40 dBFS or louder). */
+  speechSeconds: number | null;
 }
 
 export function completeTranscription(
