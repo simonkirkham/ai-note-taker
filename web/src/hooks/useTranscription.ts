@@ -100,37 +100,6 @@ export interface UseTranscriptionResult {
   reset: () => void;
 }
 
-// BUG-85: watch every captured track for the events that say the audio is gone. A track that ends
-// (microphone unplugged, screen share stopped, the device taken by another app) or is muted keeps
-// delivering zero-filled buffers at exactly the normal rate, so nothing downstream could tell it
-// from a silent room. Returns one detacher per track it managed to watch.
-//
-// Best-effort, per track: a track that refuses listeners must never stop a recording starting, and
-// watching one track must not be lost because another threw.
-function watchTracks(stream: MediaStream | null, health: TranscriptHealthTracker): Array<() => void> {
-  if (!stream) return [];
-  const detachers: Array<() => void> = [];
-  for (const track of stream.getTracks()) {
-    const onEnded = () => health.sourceTrackEnded();
-    const onMute = () => health.sourceTrackMuted(true);
-    const onUnmute = () => health.sourceTrackMuted(false);
-    try {
-      track.addEventListener('ended', onEnded);
-      track.addEventListener('mute', onMute);
-      track.addEventListener('unmute', onUnmute);
-    } catch (err) {
-      console.warn('Watching a capture track for failure is unavailable.', err);
-      continue;
-    }
-    detachers.push(() => {
-      track.removeEventListener('ended', onEnded);
-      track.removeEventListener('mute', onMute);
-      track.removeEventListener('unmute', onUnmute);
-    });
-  }
-  return detachers;
-}
-
 // 48-C: concatenate captured 16-bit PCM chunks into one ArrayBuffer to hand to the diarizer.
 function concatPcm(chunks: Uint8Array[]): ArrayBuffer {
   const total = chunks.reduce((n, c) => n + c.byteLength, 0);
@@ -241,9 +210,6 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
   const meChunksRef = useRef<Uint8Array[]>([]);
   const themChunksRef = useRef<Uint8Array[]>([]);
   const diarizeActiveRef = useRef(false);
-  // BUG-85: detaches the `ended`/`mute`/`unmute` listeners from every captured track. A listener
-  // left on a hardware track outlives the recording that added it.
-  const trackCleanupRef = useRef<(() => void) | null>(null);
   // TI-99: how the live transcription is doing, sent with every save so an incomplete transcript is
   // diagnosable from the server alone. A mutable tracker in a ref — updating it never re-renders.
   const healthRef = useRef<TranscriptHealthTracker | null>(null);
@@ -257,9 +223,10 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     // 48-A: detach the on-device engine's IPC listeners (no-op in cloud mode).
     localCleanupRef.current?.();
     localCleanupRef.current = null;
-    // BUG-85: and the capture tracks' own listeners, before the tracks are stopped below.
-    trackCleanupRef.current?.();
-    trackCleanupRef.current = null;
+    // BUG-85: take the last live reading of the capture tracks BEFORE `stopTracks` below ends
+    // them, so a save made after teardown reports what was true while recording rather than
+    // "the source ended" — which pressing Stop makes true of every track.
+    health.releaseTracks();
     setStall(undefined);
     localActiveRef.current = false;
     // 48-C: release the source-separation buffers (already consumed by diarize on stop).
@@ -288,7 +255,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     mediaStreamRef.current = null;
     stopTracks(displayStreamRef.current);
     displayStreamRef.current = null;
-  }, []);
+  }, [health]);
 
   // PUT the finalised text so far to the DRAFT store (no event), with the stream's health at this
   // moment. Returns the request so each caller decides what a failure means.
@@ -523,20 +490,6 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     setStatus('requestingCredentials');
 
     void (async () => {
-      // BUG-85: assigned before the first track exists, closing over the list the watchers are
-      // pushed onto — so an early return after only the screen share was captured still detaches.
-      const trackWatchers: Array<() => void> = [];
-      trackCleanupRef.current = () => {
-        // splice(0) empties the list as it takes it, so a second teardown is a no-op; each
-        // detacher is guarded separately so one failure cannot strand the rest (BUG-74).
-        for (const detach of trackWatchers.splice(0)) {
-          try {
-            detach();
-          } catch (err) {
-            console.warn('Detaching a capture-track listener failed.', err);
-          }
-        }
-      };
       try {
         // Optionally capture remote-participant (call) audio via screen-share and mix it with the
         // mic. Requested first, before the credential and mic awaits, because getDisplayMedia needs
@@ -554,7 +507,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
             displayStream = null;
           }
           displayStreamRef.current = displayStream;
-          trackWatchers.push(...watchTracks(displayStream, health));
+          health.watchStream(displayStream);
           if (stoppedRef.current) {
             cleanup();
             return;
@@ -563,7 +516,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
 
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         mediaStreamRef.current = stream;
-        trackWatchers.push(...watchTracks(stream, health));
+        health.watchStream(stream);
         if (stoppedRef.current) {
           cleanup();
           return;

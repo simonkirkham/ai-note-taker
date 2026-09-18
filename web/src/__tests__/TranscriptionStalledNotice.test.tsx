@@ -4,8 +4,12 @@ import type { UseTranscriptionResult } from '../hooks/useTranscription'
 
 // BUG-85 slice 1 — the live transcript can stop part-way through a meeting while the timer keeps
 // running. It happened twice, costing 54 minutes of one meeting and 3.5 hours of another, and
-// nothing on screen said so at the time. The recording control now says it has stopped, says which
-// of the three things went wrong, and says what to do about it.
+// nothing on screen said so at the time. The recording control now says how long it has been since
+// any words were transcribed, says which of three things it looks like, and says what to do.
+//
+// Review round 1: the message must not assert that transcription has STOPPED — a meeting can be
+// quiet for two minutes — and the duration must stay out of the announced region, or a screen
+// reader re-reads the whole notice every minute for the length of the stall.
 
 function transcription(over: Partial<UseTranscriptionResult> = {}): UseTranscriptionResult {
   return {
@@ -23,10 +27,16 @@ function transcription(over: Partial<UseTranscriptionResult> = {}): UseTranscrip
   }
 }
 
-it('says nothing at all during a healthy recording', () => {
+function region() {
+  return screen.getByTestId('transcription-stall')
+}
+
+it('announces nothing during a healthy recording, but keeps the region there to announce into', () => {
   render(<RecordControl noteId="n1" transcription={transcription({ status: 'recording', elapsedSeconds: 900 })} />)
 
-  expect(screen.queryByTestId('transcription-stall')).not.toBeInTheDocument()
+  expect(region()).toBeInTheDocument()
+  expect(region()).toHaveTextContent('')
+  expect(screen.queryByTestId('transcription-stall-duration')).not.toBeInTheDocument()
 })
 
 it('says the audio source ended, and what to do, when a captured track died', () => {
@@ -40,48 +50,14 @@ it('says the audio source ended, and what to do, when a captured track died', ()
     />,
   )
 
-  const notice = screen.getByTestId('transcription-stall')
-  expect(notice).toHaveTextContent(/transcription has stopped/i)
-  expect(notice).toHaveTextContent(/audio source ended/i)
-  expect(notice).toHaveTextContent(/2 minutes/)
-  expect(notice).toHaveTextContent(/stop and start recording again/i)
+  expect(region()).toHaveTextContent(/audio source ended/i)
+  expect(region()).toHaveTextContent(/stop and start recording again/i)
+  expect(screen.getByTestId('transcription-stall-duration')).toHaveTextContent(
+    /no words have been transcribed for 2 minutes/i,
+  )
 })
 
 it('says no sound is being picked up when the captured audio went silent', () => {
-  render(
-    <RecordControl
-      noteId="n1"
-      transcription={transcription({
-        status: 'recording',
-        stall: { kind: 'noSound', stalledForSeconds: 200 },
-      })}
-    />,
-  )
-
-  const notice = screen.getByTestId('transcription-stall')
-  expect(notice).toHaveTextContent(/no sound is being picked up/i)
-  expect(notice).toHaveTextContent(/stop and start recording again/i)
-})
-
-it('says sound is arriving but no words are coming back when only the words stopped', () => {
-  render(
-    <RecordControl
-      noteId="n1"
-      transcription={transcription({
-        status: 'recording',
-        stall: { kind: 'noWords', stalledForSeconds: 130 },
-      })}
-    />,
-  )
-
-  const notice = screen.getByTestId('transcription-stall')
-  expect(notice).toHaveTextContent(/no words are coming back/i)
-  expect(notice).toHaveTextContent(/stop and start recording again/i)
-})
-
-// It must not read as a crash and must not steal focus: a polite status region, never an alert,
-// and never focused. The transcript is still being captured to the recording either way.
-it('announces politely rather than as an alert, and never takes focus', () => {
   render(
     <RecordControl
       noteId="n1"
@@ -89,11 +65,79 @@ it('announces politely rather than as an alert, and never takes focus', () => {
     />,
   )
 
-  const notice = screen.getByTestId('transcription-stall')
-  expect(notice).toHaveAttribute('role', 'status')
-  expect(notice).toHaveAttribute('aria-live', 'polite')
-  expect(notice).not.toHaveFocus()
-  expect(document.activeElement).toBe(document.body)
+  expect(region()).toHaveTextContent(/no sound is being picked up/i)
+  expect(region()).toHaveTextContent(/stop and start recording again/i)
+})
+
+// The one case that may be nothing at all — a quiet patch in a healthy meeting. It states the fact
+// and leaves the judgement to the person in the room; it must never assert that something broke.
+it('states the fact without claiming transcription has stopped when only the words dried up', () => {
+  render(
+    <RecordControl
+      noteId="n1"
+      transcription={transcription({ status: 'recording', stall: { kind: 'noWords', stalledForSeconds: 130 } })}
+    />,
+  )
+
+  expect(region()).toHaveTextContent(/nothing is coming back from transcription/i)
+  expect(region()).toHaveTextContent(/if the meeting is not simply quiet/i)
+  expect(screen.getByTestId('transcription-stall-duration')).toHaveTextContent(
+    /no words have been transcribed for 2 minutes/i,
+  )
+  expect(region()).not.toHaveTextContent(/has stopped/i)
+})
+
+// A screen reader re-reads a live region whenever its text changes. The duration changes every
+// minute, so a three-hour stall would re-read the whole notice 200 times if it were inside.
+it('keeps the changing duration out of the announced region', () => {
+  const view = render(
+    <RecordControl
+      noteId="n1"
+      transcription={transcription({ status: 'recording', stall: { kind: 'noSound', stalledForSeconds: 130 } })}
+    />,
+  )
+  const announced = region().textContent
+
+  view.rerender(
+    <RecordControl
+      noteId="n1"
+      transcription={transcription({ status: 'recording', stall: { kind: 'noSound', stalledForSeconds: 900 } })}
+    />,
+  )
+
+  expect(region().textContent).toBe(announced)
+  expect(region()).not.toHaveTextContent(/minute/i)
+  expect(screen.getByTestId('transcription-stall-duration')).toHaveTextContent(/15 minutes/)
+})
+
+it('announces politely rather than as an alert', () => {
+  render(
+    <RecordControl
+      noteId="n1"
+      transcription={transcription({ status: 'recording', stall: { kind: 'noSound', stalledForSeconds: 200 } })}
+    />,
+  )
+
+  expect(region()).toHaveAttribute('role', 'status')
+  expect(region()).toHaveAttribute('aria-live', 'polite')
+})
+
+// Focus is the user's place in the meeting — mid-sentence in the note, most likely. The notice
+// appearing must not move it, so the check has to start from focus being somewhere findable.
+it('leaves focus exactly where it was when the notice appears', () => {
+  const view = render(<RecordControl noteId="n1" transcription={transcription({ status: 'recording' })} />)
+  const stop = screen.getByTestId('transcription-stop-button')
+  stop.focus()
+  expect(document.activeElement).toBe(stop)
+
+  view.rerender(
+    <RecordControl
+      noteId="n1"
+      transcription={transcription({ status: 'recording', stall: { kind: 'sourceEnded', stalledForSeconds: 140 } })}
+    />,
+  )
+
+  expect(document.activeElement).toBe(stop)
 })
 
 it('clears the moment text starts arriving again', () => {
@@ -103,11 +147,12 @@ it('clears the moment text starts arriving again', () => {
       transcription={transcription({ status: 'recording', stall: { kind: 'noWords', stalledForSeconds: 130 } })}
     />,
   )
-  expect(screen.getByTestId('transcription-stall')).toBeInTheDocument()
+  expect(region()).toHaveTextContent(/transcription/i)
 
   view.rerender(<RecordControl noteId="n1" transcription={transcription({ status: 'recording' })} />)
 
-  expect(screen.queryByTestId('transcription-stall')).not.toBeInTheDocument()
+  expect(region()).toHaveTextContent('')
+  expect(screen.queryByTestId('transcription-stall-duration')).not.toBeInTheDocument()
 })
 
 // Once the recording is over the notice is history — the user is looking at a finished transcript,
@@ -121,4 +166,5 @@ it('says nothing once the recording has stopped', () => {
   )
 
   expect(screen.queryByTestId('transcription-stall')).not.toBeInTheDocument()
+  expect(screen.queryByTestId('transcription-stall-duration')).not.toBeInTheDocument()
 })

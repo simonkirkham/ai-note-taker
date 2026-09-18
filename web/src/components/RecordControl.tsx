@@ -6,14 +6,24 @@ import { type AnalyseTrigger, reportAnalyseFailure } from "../lib/analyseFailure
 import { shouldAutoWriteUp } from "../lib/autoWriteUp";
 import styles from "./RecordControl.module.css";
 
-// BUG-85: what to say when the live transcript has stopped part-way through a meeting. It happened
-// twice, costing 54 minutes of one meeting and 3.5 hours of another, with nothing on screen to say
-// so. Each line names the cause in ordinary words — the three are genuinely different problems and
-// only one of them is about the microphone.
+// BUG-85: what to say when the live transcript has stopped growing part-way through a meeting. It
+// happened twice, costing 54 minutes of one meeting and 3.5 hours of another, with nothing on
+// screen to say so. Each line names the cause in ordinary words — the three are genuinely different
+// problems and only one of them is about the microphone.
+//
+// Review round 1: none of these asserts that transcription HAS STOPPED. A meeting can be quiet, and
+// telling someone to restart a recording that is working would make a good recording worse. The
+// duration states the fact; the advice leaves the judgement with the person in the room.
 const STALL_REASONS: Record<TranscriptionStallKind, string> = {
   sourceEnded: "The audio source ended — the microphone or shared audio was disconnected.",
   noSound: "No sound is being picked up from the microphone or shared audio.",
-  noWords: "Sound is arriving, but no words are coming back.",
+  noWords: "Sound is arriving, but nothing is coming back from transcription.",
+};
+
+const STALL_ADVICE: Record<TranscriptionStallKind, string> = {
+  sourceEnded: "Stop and start recording again to keep a transcript of the rest.",
+  noSound: "Check the microphone or shared audio, then stop and start recording again.",
+  noWords: "If the meeting is not simply quiet, stop and start recording again.",
 };
 
 function plural(n: number, unit: string): string {
@@ -300,13 +310,26 @@ export default function RecordControl({
 
       {/* BUG-85: a recording that is no longer producing a transcript says so, rather than running
           silently for hours. Announced politely and never focused — the audio is still being
-          captured to the recording, so this is a problem to act on, not a crash. */}
-      {isRecording && stall && (
-        <span className={styles.stall} data-testid="transcription-stall" role="status" aria-live="polite">
-          <strong className={styles.stallHeadline}>Transcription has stopped.</strong>
-          <span>
-            No new words for {formatStallDuration(stall.stalledForSeconds)}. {STALL_REASONS[stall.kind]} Stop and
-            start recording again to keep a transcript of the rest.
+          captured to the recording, so this is a problem to act on, not a crash.
+
+          The announced region is present for the whole recording and its text is swapped in, which
+          is what makes a screen reader read it at the moment it appears. The DURATION is deliberately
+          outside it: it changes every minute, and inside the region that would re-read the whole
+          notice every minute — 200 times over the stall that cost 3.5 hours. */}
+      {isRecording && (
+        <span className={styles.stall} data-stalled={stall ? "true" : "false"}>
+          {stall && (
+            <strong className={styles.stallHeadline} data-testid="transcription-stall-duration">
+              No words have been transcribed for {formatStallDuration(stall.stalledForSeconds)}.
+            </strong>
+          )}
+          <span
+            className={styles.stallMessage}
+            data-testid="transcription-stall"
+            role="status"
+            aria-live="polite"
+          >
+            {stall ? `${STALL_REASONS[stall.kind]} ${STALL_ADVICE[stall.kind]}` : ""}
           </span>
         </span>
       )}

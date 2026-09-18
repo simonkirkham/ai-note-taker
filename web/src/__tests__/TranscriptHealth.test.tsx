@@ -88,43 +88,62 @@ const workletNode = {
 let micTrackStop = vi.fn()
 
 // A media track the specs can kill or mute the way the operating system does mid-meeting.
+//
+// Review round 1: this double used to report `getAudioTracks: () => []` while the hook watched
+// `getTracks()`, which is exactly why no spec caught the screen share's VIDEO track being watched.
+// It now models the two properties that carry the state — `readyState` and `muted` — including
+// `stop()` ending a track, which is what pressing Stop does to every one of them.
 interface FakeTrack {
+  kind: 'audio' | 'video'
+  readyState: 'live' | 'ended'
+  muted: boolean
   stop: () => void
-  addEventListener: (type: string, fn: () => void) => void
-  removeEventListener: (type: string, fn: () => void) => void
-  fire: (type: 'ended' | 'mute' | 'unmute') => void
-  listenerCount: () => number
+  end: () => void
+  setMuted: (muted: boolean) => void
 }
 
 let micTrack: FakeTrack
+let systemAudioTrack: FakeTrack
+let systemVideoTrack: FakeTrack
 
-function makeTrack(stop: () => void): FakeTrack {
-  const listeners = new Map<string, Set<() => void>>()
-  return {
-    stop,
-    addEventListener: (type, fn) => {
-      if (!listeners.has(type)) listeners.set(type, new Set())
-      listeners.get(type)!.add(fn)
+function makeTrack(kind: 'audio' | 'video', onStop?: () => void): FakeTrack {
+  const track: FakeTrack = {
+    kind,
+    readyState: 'live',
+    muted: false,
+    stop: () => {
+      track.readyState = 'ended'
+      onStop?.()
     },
-    removeEventListener: (type, fn) => {
-      listeners.get(type)?.delete(fn)
+    end: () => {
+      track.readyState = 'ended'
     },
-    fire: (type) => {
-      act(() => {
-        for (const fn of listeners.get(type) ?? []) fn()
-      })
+    setMuted: (muted) => {
+      track.muted = muted
     },
-    listenerCount: () => [...listeners.values()].reduce((n, s) => n + s.size, 0),
   }
+  return track
+}
+
+function fakeStream(tracks: FakeTrack[]): MediaStream {
+  return {
+    getTracks: () => tracks,
+    getAudioTracks: () => tracks.filter((t) => t.kind === 'audio'),
+  } as unknown as MediaStream
 }
 
 function stubBrowserApis() {
   micTrackStop = vi.fn()
-  const track = makeTrack(micTrackStop)
-  micTrack = track
-  const mediaStream = { getTracks: () => [track], getAudioTracks: () => [] } as unknown as MediaStream
+  micTrack = makeTrack('audio', micTrackStop)
+  systemAudioTrack = makeTrack('audio')
+  systemVideoTrack = makeTrack('video')
+  const mediaStream = fakeStream([micTrack])
+  const displayStream = fakeStream([systemVideoTrack, systemAudioTrack])
   Object.defineProperty(global.navigator, 'mediaDevices', {
-    value: { getUserMedia: vi.fn().mockResolvedValue(mediaStream), getDisplayMedia: vi.fn() },
+    value: {
+      getUserMedia: vi.fn().mockResolvedValue(mediaStream),
+      getDisplayMedia: vi.fn().mockResolvedValue(displayStream),
+    },
     configurable: true,
   })
   const audioContext = {
@@ -200,9 +219,9 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-async function startCloudRecording(resumeFrom?: string) {
+async function startCloudRecording(resumeFrom?: string, includeCallAudio = false) {
   const view = renderHook(() => useTranscription('note-1'))
-  act(() => view.result.current.startRecording(false, false, resumeFrom))
+  act(() => view.result.current.startRecording(includeCallAudio, false, resumeFrom))
   await waitFor(() => expect(streams).toHaveLength(1))
   await waitFor(() => expect(checkpoint).not.toBeNull())
   return view
@@ -504,11 +523,11 @@ describe('a stalled recording', () => {
 
 // BUG-85 slice 1 — twice now the live transcript has stopped part-way through a meeting while the
 // timer kept running, costing 54 minutes of one meeting and 3.5 hours of another, with nothing on
-// screen to say so. The recording now knows it has stopped, and knows which of three things went
-// wrong: the audio source died, no sound is reaching it, or sound is arriving and no words come
-// back. Counting buffers pushed could never tell those apart — a dead track delivers zero-filled
-// buffers at exactly the normal rate.
-describe('a recording whose transcript has stopped', () => {
+// screen to say so. The recording now knows the transcript has stopped growing, and knows which of
+// three things is behind it: the audio source died, no sound is reaching it, or sound is arriving
+// and nothing comes back. Counting buffers pushed could never tell those apart — a dead track
+// delivers zero-filled buffers at exactly the normal rate.
+describe('a recording whose transcript has stopped growing', () => {
   it('says nothing while text is still arriving, and nothing in the first two minutes without it', async () => {
     const view = await startCloudRecording()
     at(10)
@@ -521,11 +540,28 @@ describe('a recording whose transcript has stopped', () => {
     expect(view.result.current.stall).toBeUndefined()
   })
 
-  it('reports the audio source as ended when a captured track dies mid-recording', async () => {
+  // Review round 1 must-fix: a healthy meeting can be quiet for two minutes — people joining, a
+  // pause to read something. Before any words have ever been transcribed there is nothing to say
+  // has stopped, so the sound-but-no-words case waits for proof that words were once flowing.
+  it('says nothing about missing words before any words have ever arrived, however long it takes', async () => {
     const view = await startCloudRecording()
+    at(5)
+    await sendAudio(3)
+
+    at(600)
+    tickSecond()
+
+    expect(view.result.current.stall).toBeUndefined()
+  })
+
+  // The gate is on the words case only. A source that dies before the first word is still a dead
+  // source, and still worth saying.
+  it('still reports a dead source before any words have arrived', async () => {
+    const view = await startCloudRecording()
+    at(5)
     await sendAudio(3)
     at(20)
-    micTrack.fire('ended')
+    micTrack.end()
 
     at(150)
     tickSecond()
@@ -533,13 +569,123 @@ describe('a recording whose transcript has stopped', () => {
     expect(view.result.current.stall).toEqual({ kind: 'sourceEnded', stalledForSeconds: 150 })
   })
 
-  it('carries the dead source to the server on the next save', async () => {
+  it('reports the audio source as ended when a captured track dies mid-recording', async () => {
     const view = await startCloudRecording()
+    at(5)
+    await sendAudio(3)
     at(10)
     await emitResult(view, 'Hello', 9)
+    at(20)
+    micTrack.end()
+
+    at(150)
+    tickSecond()
+
+    expect(view.result.current.stall).toEqual({ kind: 'sourceEnded', stalledForSeconds: 140 })
+  })
+
+  // Review round 1 must-fix: the screen share's VIDEO track is not audio. Clicking "Stop sharing"
+  // used to mark the recording as a dead source for good — and mark every later save at Warning,
+  // poisoning the one piece of evidence this work exists to collect.
+  it('ignores the screen share video track ending — that is not the audio going away', async () => {
+    const view = await startCloudRecording(undefined, true)
+    at(10)
+    await emitResult(view, 'Hello', 9)
+    at(15)
     await sendAudio(3)
     at(20)
-    micTrack.fire('ended')
+    systemVideoTrack.end()
+
+    at(150)
+    tickSecond()
+    expect(view.result.current.stall).toEqual({ kind: 'noWords', stalledForSeconds: 140 })
+
+    at(160)
+    tick()
+    await waitFor(() => expect(drafts).toHaveLength(1))
+    expect(drafts[0].health!.sourceEnded).toBe(false)
+  })
+
+  it('does report the screen share AUDIO track ending', async () => {
+    const view = await startCloudRecording(undefined, true)
+    at(5)
+    await sendAudio(3)
+    at(10)
+    await emitResult(view, 'Hello', 9)
+    at(20)
+    systemAudioTrack.end()
+
+    at(150)
+    tickSecond()
+
+    expect(view.result.current.stall).toEqual({ kind: 'sourceEnded', stalledForSeconds: 140 })
+  })
+
+  // Review round 1 must-fix: read live rather than latched, so a source that ends and is replaced
+  // does not mark the rest of the meeting.
+  it('stops reporting a dead source once the track is live again', async () => {
+    const view = await startCloudRecording()
+    at(5)
+    await sendAudio(3)
+    at(10)
+    await emitResult(view, 'Hello', 9)
+    at(20)
+    micTrack.end()
+    at(150)
+    tickSecond()
+    expect(view.result.current.stall!.kind).toBe('sourceEnded')
+
+    micTrack.readyState = 'live'
+    at(160)
+    await sendAudio(3)
+    tickSecond()
+
+    expect(view.result.current.stall).toEqual({ kind: 'noWords', stalledForSeconds: 150 })
+  })
+
+  // Pressing Stop ends every captured track. That must not be read as the source having failed.
+  it('does not report a dead source just because Stop released the tracks', async () => {
+    const view = await startCloudRecording()
+    at(5)
+    await sendAudio(3)
+    at(10)
+    await emitResult(view, 'Hello', 9)
+
+    at(40)
+    act(() => view.result.current.stopRecording())
+
+    await waitFor(() => expect(commits).toHaveLength(1))
+    expect(commits[0].health!.sourceEnded).toBe(false)
+  })
+
+  // The error path saves its draft AFTER releasing the microphone, and releasing it ends every
+  // track — so the reading has to be taken before the teardown or the fact is lost in one
+  // direction and invented in the other.
+  it('still reports a source that really died when the stream errors after teardown', async () => {
+    const view = await startCloudRecording()
+    at(5)
+    await sendAudio(3)
+    at(10)
+    await emitResult(view, 'Captured', 9)
+    at(20)
+    micTrack.end()
+
+    at(60)
+    streams[0].push({ kind: 'error', error: namedError('BadRequestException', 'no new audio') })
+
+    await waitFor(() => expect(view.result.current.status).toBe('error'))
+    await waitFor(() => expect(drafts).toHaveLength(1))
+    expect(drafts[0].health).toMatchObject({ endReason: 'error', sourceEnded: true })
+  })
+
+  it('carries the dead source to the server on the next save', async () => {
+    const view = await startCloudRecording()
+    at(5)
+    await sendAudio(3)
+    at(10)
+    await emitResult(view, 'Hello', 9)
+    at(20)
+    micTrack.end()
 
     at(150)
     tick()
@@ -548,7 +694,7 @@ describe('a recording whose transcript has stopped', () => {
     expect(drafts[0].health).toMatchObject({ endReason: 'stalled', sourceEnded: true })
   })
 
-  it('reports no sound when the captured audio has been digitally silent throughout', async () => {
+  it('reports no sound when no sample above the floor has arrived since the last words', async () => {
     const view = await startCloudRecording()
     at(10)
     await emitResult(view, 'Hello', 9)
@@ -559,6 +705,26 @@ describe('a recording whose transcript has stopped', () => {
     tickSecond()
 
     expect(view.result.current.stall).toEqual({ kind: 'noSound', stalledForSeconds: 190 })
+  })
+
+  // Review round 1 should-fix: the old silence window ran on its own clock, so the notice could say
+  // "sound is arriving" while the audio had been digitally silent for 90 seconds and then flip to
+  // "no sound" mid-stall. Sound that arrived AFTER the last words settles the episode as
+  // sound-but-no-words, and it stays settled however long the silence afterwards runs.
+  it('does not flip between the two once sound has arrived since the last words', async () => {
+    const view = await startCloudRecording()
+    at(10)
+    await emitResult(view, 'Hello', 9)
+    at(100)
+    await sendAudio(3)
+    at(101)
+    await sendAudio(3, 0)
+
+    for (const second of [130, 200, 230, 400]) {
+      at(second)
+      tickSecond()
+      expect(view.result.current.stall!.kind).toBe('noWords')
+    }
   })
 
   it('carries the silence and how long it has lasted to the server', async () => {
@@ -579,6 +745,20 @@ describe('a recording whose transcript has stopped', () => {
       audioSilent: true,
       secondsSilent: 200,
     })
+  })
+
+  // Review round 1 nit: a clock that moves backwards must not produce a negative duration.
+  it('never reports a negative silence, whatever the clock does', async () => {
+    const view = await startCloudRecording()
+    at(200)
+    await emitResult(view, 'Hello', 9)
+    await sendAudio(3)
+
+    at(100)
+    tick()
+
+    await waitFor(() => expect(drafts).toHaveLength(1))
+    expect(drafts[0].health!.secondsSilent).toBeGreaterThanOrEqual(0)
   })
 
   it('reports sound arriving but no words when the audio is above the transmit floor', async () => {
@@ -621,13 +801,13 @@ describe('a recording whose transcript has stopped', () => {
     await emitResult(view, 'Hello', 9)
     await sendAudio(5)
     at(20)
-    micTrack.fire('mute')
+    micTrack.setMuted(true)
 
     at(150)
     tickSecond()
     expect(view.result.current.stall).toEqual({ kind: 'noSound', stalledForSeconds: 140 })
 
-    micTrack.fire('unmute')
+    micTrack.setMuted(false)
     at(160)
     await sendAudio(5)
     await emitResult(view, 'back again', 155)
@@ -636,15 +816,30 @@ describe('a recording whose transcript has stopped', () => {
     expect(view.result.current.stall).toBeUndefined()
   })
 
-  // Stop releases the tracks with `stop()`, which fires no `ended` — but a listener left attached
-  // to a hardware track outlives the recording, so it is detached with everything else.
-  it('detaches its track listeners when the recording ends', async () => {
+  // Review round 1 should-fix: the mute state used to be counted from events, so one duplicated
+  // mute stuck "no sound" on for the rest of the meeting. Read from the track itself, an extra
+  // mute is simply the same fact twice.
+  it('recovers from a duplicated mute — one unmute is enough however many mutes arrived', async () => {
     const view = await startCloudRecording()
-    await sendAudio(3)
-    expect(micTrack.listenerCount()).toBeGreaterThan(0)
+    at(10)
+    await emitResult(view, 'Hello', 9)
+    await sendAudio(5)
+    at(20)
+    micTrack.setMuted(true)
+    micTrack.setMuted(true)
+    micTrack.setMuted(true)
 
-    act(() => view.result.current.stopRecording())
+    // Read while it is muted, three mutes deep — a counter is now at 3, and one unmute leaves it
+    // at 2, which is how the old shape stuck "no sound" on for the rest of the meeting.
+    at(150)
+    tickSecond()
+    expect(view.result.current.stall!.kind).toBe('noSound')
 
-    await waitFor(() => expect(micTrack.listenerCount()).toBe(0))
+    micTrack.setMuted(false)
+    at(160)
+    await sendAudio(5)
+    tickSecond()
+
+    expect(view.result.current.stall).toEqual({ kind: 'noWords', stalledForSeconds: 150 })
   })
 })

@@ -15,17 +15,22 @@ function allZero(bytes: Uint8Array): boolean {
   return bytes.every((b) => b === 0)
 }
 
-describe('the level at which transmitted audio becomes digital silence', () => {
-  // The measurement itself: walk the encoder down until every transmitted byte is zero.
-  it('is the point where the 16-bit encoder stops producing a non-zero sample', () => {
-    expect(allZero(floatTo16BitPcm(constant(SILENT_PEAK, 8)))).toBe(false)
-
-    // Just under half a quantisation step: everything the app sends is zero.
+describe('the level at which captured audio counts as sound', () => {
+  // The measurement, against the app's own encoder. Review round 1 caught the comment claiming the
+  // threshold WAS the encoder's floor; it is a whole step, twice the floor. Both numbers are
+  // measured here so neither can drift back into a claim nobody checked.
+  it('sits one whole quantisation step above the encoder floor, which is half a step', () => {
+    // The encoder's own floor: half a step is the first amplitude that survives quantisation.
     expect(allZero(floatTo16BitPcm(constant(0.49 / 32767, 8)))).toBe(true)
+    expect(allZero(floatTo16BitPcm(constant(0.51 / 32767, 8)))).toBe(false)
+
+    // The threshold is above it, so a sample that only rounds to +/-1 on some frames is not sound.
+    expect(SILENT_PEAK).toBeCloseTo(1 / 32767, 12)
+    expect(0.51 / 32767).toBeLessThan(SILENT_PEAK)
+    expect(allZero(floatTo16BitPcm(constant(SILENT_PEAK, 8)))).toBe(false)
   })
 
-  it('places the threshold at one whole quantisation step, about -90 dBFS', () => {
-    expect(SILENT_PEAK).toBeCloseTo(1 / 32767, 12)
+  it('is about -90 dBFS', () => {
     expect(20 * Math.log10(SILENT_PEAK)).toBeCloseTo(-90.3, 1)
   })
 
