@@ -241,6 +241,16 @@ Worth keeping for two reasons. The failure was the same shape as the bug — som
 
 **The documented pattern for long recordings is to reopen, not to refresh:** a fresh `StartStreamTranscription` reusing the same `SessionId` within `SessionResumeWindow` (1-300 min), with the client stitching the results.
 
+**Hardware test, 2026-09-18 13:36Z (note `f4df0356…`, desktop build 20260918.228, cloud engine).** The user recorded for 5 minutes and switched audio device part-way through; they could not make the source die.
+
+| Result | Detail |
+|---|---|
+| **A device switch does not stop transcription on this machine** | Words kept arriving after the switch — the last transcribed line is the user asking "can you hear me" on the new device |
+| Words stopped at 2:00 | `covered` froze at 120.5 s; the notice appeared on real hardware at 4:15, classified `noWords` ("sound is arriving") |
+| `silent=False`, `sourceEnded=False`, `muted=False` throughout | The source stayed live. Whether anyone spoke after 2:00 is **unknown** |
+
+**The gap this exposed.** The silence floor (−90 dBFS) catches only a dead source. A quiet room reads as "sound", exactly like speech, so the record cannot separate "the meeting went quiet" from "speech arrived and the service returned nothing". That is the same blind spot as the 3.5-hour occurrence. **Next instrument:** record how loud the captured audio actually is over the stall window (a speech-level threshold roughly 30-40 dB above room tone), so the health record says which of the two it was.
+
 **Root cause: narrowed, not established.** Candidates:
 1. The stream errored. The catch in `useTranscription.ts` sets `status: 'error'` and shows the error text, but does not save the transcript captured so far.
 2. The audio source stopped delivering chunks, for example a device change or the shared-audio capture ending. `audioStream()` then waits forever, and the service ends the stream for lack of audio.
