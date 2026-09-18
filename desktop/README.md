@@ -8,6 +8,10 @@ capturing system audio. See [`docs/phases/phase-31.md`](../docs/phases/phase-31.
 **Not in the prod deploy pipeline.** This is a separate, manually-built artifact —
 nothing here runs in `deploy.yml` or `cdk deploy`. Deploy-time impact on prod: none.
 
+## Updates install themselves (Phase 54)
+
+The installed app checks for a newer published version on launch and hourly, downloads it in the background, and installs it when you close the app (or on **Restart now** in its notice). The command below is the fallback — needed once to get onto a self-updating build, and shown by the app if updating itself fails.
+
 ## Easiest: pull the published installer (recommended)
 
 CI builds the Windows installer and publishes it to **GitHub Releases** after every

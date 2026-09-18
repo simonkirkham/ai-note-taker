@@ -14,7 +14,7 @@
     "test:e2e": "playwright test",
     "test:server": "playwright test server.spec.ts",
     "fetch:whisper": "node scripts/fetch-whisper-bin.mjs",
-    "package": "npm run fetch:whisper && npm run build && electron-builder --win",
+    "package": "npm run fetch:whisper && npm run build && electron-builder --win --publish never",
     "update": "powershell -ExecutionPolicy Bypass -File scripts/update.ps1"
   },
   "devDependencies": {
@@ -22,5 +22,8 @@
     "electron": "^33.2.0",
     "electron-builder": "^25.1.8",
     "typescript": "^5.7.2"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }

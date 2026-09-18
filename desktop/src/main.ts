@@ -1,5 +1,5 @@
 import { app, BrowserWindow, clipboard, ipcMain, Menu, net, session, shell, desktopCapturer, screen } from 'electron'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { startBundleServer } from './server'
 import { pickDisplayMediaResponse } from './displayMedia'
@@ -11,6 +11,8 @@ import { fetchHistory } from './updateCheck'
 import { isBundleOrigin } from './ipcOrigin'
 import { shouldOpenExternally } from './externalLink'
 import { UPDATE_COMMAND } from './updateCommand'
+import { autoUpdater } from 'electron-updater'
+import { createAutoUpdate } from './autoUpdate'
 
 // Phase 31-A — Windows bundle-shell.
 // Serve the compiled web/ frontend from a localhost loopback origin and proxy
@@ -231,6 +233,63 @@ function registerUpdateNotice(): void {
   })
 }
 
+// 54-A — download each new version in the background and install it when the app closes. The
+// renderer reads the state to show "Restart now", or the 53-A command when this fails.
+let autoUpdate: ReturnType<typeof createAutoUpdate> | null = null
+
+function registerAutoUpdate(): void {
+  const fromBundle = (event: Electron.IpcMainInvokeEvent) => isBundleOrigin(event.senderFrame?.url, BUNDLE_ORIGINS)
+  const attemptFile = path.join(app.getPath('userData'), 'update-attempt.txt')
+  // electron-updater logs every hourly check to the console by default; keep only what matters.
+  // Errors reach our own warning through the 'error' event. The installer's launch failure is
+  // reported only as info, so that one line is kept.
+  autoUpdater.logger = {
+    info: (m: unknown) => {
+      if (String(m).includes('Cannot run installer')) console.warn('[desktop] updater:', m)
+    },
+    warn: (m: unknown) => console.warn('[desktop] updater:', m),
+    error: () => {},
+  }
+  autoUpdate = createAutoUpdate({
+    updater: autoUpdater,
+    isPackaged: app.isPackaged,
+    currentVersion: app.getVersion(),
+    attempts: {
+      read: () => {
+        try {
+          return existsSync(attemptFile) ? readFileSync(attemptFile, 'utf8').trim() || null : null
+        } catch (err) {
+          console.warn('[desktop] could not read the update attempt:', err)
+          return null
+        }
+      },
+      write: (version) => {
+        try {
+          writeFileSync(attemptFile, version ?? '')
+        } catch (err) {
+          console.warn('[desktop] could not record the update attempt:', err)
+        }
+      },
+    },
+    onState: (state) => {
+      // Only the app's own page — the window also shows Google's sign-in pages.
+      if (mainWindow && isBundleOrigin(mainWindow.webContents.getURL(), BUNDLE_ORIGINS)) {
+        mainWindow.webContents.send('updates:state', state)
+      }
+    },
+    warn: (message) => console.warn(message),
+    setInterval: (fn, ms) => {
+      setInterval(fn, ms)
+    },
+  })
+  const auto = autoUpdate
+  ipcMain.handle('updates:getState', (event) => (fromBundle(event) ? auto.getState() : null))
+  ipcMain.handle('updates:restart', (event) => {
+    if (fromBundle(event)) auto.restart()
+  })
+  auto.start()
+}
+
 function logBuildSha(): void {
   const shaFile = path.join(WEB_DIST, 'build-sha.txt')
   const sha = existsSync(shaFile) ? readFileSync(shaFile, 'utf8').trim() : 'unknown'
@@ -247,6 +306,7 @@ void app.whenReady().then(async () => {
     getWindow: () => mainWindow,
   })
   registerUpdateNotice()
+  registerAutoUpdate()
   logBuildSha()
   createWindow()
   app.on('activate', () => {
@@ -259,6 +319,7 @@ void app.whenReady().then(async () => {
 // kernel before teardown. Note: kill() terminates the direct child only (fine — whisper-cli is a
 // leaf); if anyone ever spawns whisper via a shell wrapper, kill the tree instead.
 app.on('before-quit', () => {
+  autoUpdate?.noteQuit() // 54-A: a ready update installs now — remember which one
   killActiveWhisper()
   killWhisperServer() // BUG-53: tear down the resident whisper-server child on quit
 })

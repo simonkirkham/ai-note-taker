@@ -17,6 +17,13 @@
     }
   ],
   "asar": true,
+  "publish": [
+    {
+      "provider": "generic",
+      "url": "https://github.com/simonkirkham/ai-note-taker/releases/download/desktop-latest",
+      "channel": "latest"
+    }
+  ],
   "win": {
     "target": [
       {

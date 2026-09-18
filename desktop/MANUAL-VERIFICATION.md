@@ -244,6 +244,18 @@ Only visible once **two** updates have been published after 53-A merged: the fir
 | 3 | **Up to date after updating:** Given the app just reopened from row 2, Then no notice shows. | ☐ |
 | 4 | **Failure is quiet but logged:** Given the network is off, When the app opens, Then no notice shows and the console has a `[desktop] update check failed:` line. | ☐ |
 
+## 54-A — the app updates itself
+
+Needs **two** publishes after 54-A merges: the first carries the self-updating code (install it once with the 53-A command), the second is what it updates to. Failures print a `[desktop] auto-update failed:` line in the terminal the app was started from.
+
+| # | Check | ✓ |
+|---|---|---|
+| 1 | **Switch-over:** Given the first publish after the merge, When I run the update command once, Then the app reopens on that build (hover the build stamp for its number). | ☐ |
+| 2 | **Downloads quietly:** Given a newer publish exists, When the app has been open a minute or so, Then a notice reads "An update is ready — it installs when you close the app." with **Restart now**. Nothing interrupted me before it appeared. | ☐ |
+| 3 | **Install on close:** Given row 2's notice, When I close the app, wait ~15 seconds and open it again, Then the build stamp shows the newer number and no notice shows. | ☐ |
+| 4 | **Restart now:** Given the ready notice on a later publish, When I press Restart now, Then the app closes and reopens by itself on the newer build. | ☐ |
+| 5 | **Not while recording:** Given the ready notice, When I start a recording, Then **Restart now** disappears until the recording has stopped and finished saving. | ☐ |
+
 ## Troubleshooting
 
 - **`Error 400: redirect_uri_mismatch` immediately after adding `http://localhost:5180`** — the value is correct (`redirect_uri = window.location.origin = http://localhost:5180`: no trailing slash, `localhost` not `127.0.0.1`, port `5180`, `http` not `https`). The cause is **Google propagation lag** — a freshly added+saved redirect URI is not live immediately; it can take **~5 min to a few hours**. Confirm the running app's `window.location.origin` (DevTools console) reads exactly `http://localhost:5180`, then wait and retry. **No code change.** Hit and confirmed 2026-06-22: config was right on the first attempt; the URI simply had not propagated.

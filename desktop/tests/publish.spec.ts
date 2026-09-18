@@ -123,3 +123,42 @@ test('both pipelines inject the run behind the build', () => {
   expect(publish).toContain('VITE_BUILD_RUN_ID: ${{ github.event.workflow_run.id }}')
   expect(publish).toContain('VITE_BUILD_INSTALLER_VERSION:')
 })
+
+// 54-A — the app updates itself. The installer build must write the update manifest the app
+// reads, point it at the rolling release, and the workflow must upload it next to the installer.
+test('the installer build points the app at the rolling release for its updates', () => {
+  const cfg = JSON.parse(read('desktop/electron-builder.json')) as { publish?: unknown }
+  expect(cfg.publish).toEqual([
+    {
+      provider: 'generic',
+      url: 'https://github.com/simonkirkham/ai-note-taker/releases/download/desktop-latest',
+      // Pinned: left unset, the build names its manifest after the version's prerelease part — the
+      // build DATE — so a copy built on one day would never find a later day's update.
+      channel: 'latest',
+    },
+  ])
+})
+
+test('the updater ships inside the app, not as a build-only tool', () => {
+  const pkg = JSON.parse(read('desktop/package.json')) as { dependencies?: Record<string, string> }
+  expect(pkg.dependencies?.['electron-updater']).toBeTruthy()
+})
+
+test('packaging never tries to publish on its own — the workflow uploads', () => {
+  const pkg = JSON.parse(read('desktop/package.json')) as { scripts?: Record<string, string> }
+  expect(pkg.scripts?.package).toContain('--publish never')
+})
+
+test('publish workflow uploads the update manifest the app checks', () => {
+  const wf = read('.github/workflows/publish-desktop.yml')
+  const create = wf.slice(wf.indexOf('gh release create'))
+  expect(create).toContain('desktop/release/latest.yml')
+  expect(create).toContain('desktop/release/*.blockmap')
+})
+
+test('publish workflow never deletes the release when the update manifest is missing', () => {
+  const wf = read('.github/workflows/publish-desktop.yml')
+  const guard = wf.indexOf('test -s desktop/release/latest.yml')
+  expect(guard).toBeGreaterThan(-1)
+  expect(guard).toBeLessThan(wf.indexOf('gh release delete'))
+})

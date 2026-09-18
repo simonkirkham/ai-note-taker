@@ -2,6 +2,7 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import UpdateNotice, { UPDATE_COMMAND } from "../components/UpdateNotice";
+import { RecordingControlContext, type RecordingControlValue } from "../hooks/recordingSessionContext";
 import type { DesktopBridge, ReleaseEntry } from "../types/desktop";
 
 // 53-A — the desktop update notice. Each test names the phase-doc scenario it covers.
@@ -185,5 +186,162 @@ describe("UpdateNotice", () => {
     const { container } = render(<UpdateNotice />);
     await act(async () => {});
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+// 54-A — the app updates itself. The notice offers "Restart now" once an update has downloaded,
+// stays quiet while one is downloading, and falls back to the 53-A command when updating fails.
+describe("UpdateNotice — self-updating", () => {
+  type State = "disabled" | "checking" | "downloading" | "ready" | "none" | "failed";
+  let getState: ReturnType<typeof vi.fn<() => Promise<State | null>>>;
+  let restart: ReturnType<typeof vi.fn<() => Promise<void>>>;
+  let push: (s: State) => void;
+
+  beforeEach(() => {
+    getState = vi.fn<() => Promise<State | null>>();
+    restart = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+    push = () => {};
+    window.desktop = {
+      isDesktop: true,
+      platform: "win32",
+      updates: {
+        getHistory,
+        copyUpdateCommand: copy,
+        getState,
+        restart,
+        onState: (cb: (s: State) => void) => {
+          push = (s) => act(() => cb(s));
+          return () => {
+            push = () => {};
+          };
+        },
+      },
+    } as unknown as DesktopBridge;
+  });
+
+  const busy = (noteId: string | null) =>
+    ({ children }: { children: React.ReactNode }) => (
+      <RecordingControlContext.Provider value={{ busyNoteId: noteId } as unknown as RecordingControlValue}>
+        {children}
+      </RecordingControlContext.Provider>
+    );
+
+  it("Scenario: Update ready notice — says it installs on close and offers Restart now", async () => {
+    getState.mockResolvedValue("ready");
+    getHistory.mockResolvedValue([later(1)]);
+    render(<UpdateNotice />);
+    expect(await screen.findByText("An update is ready — it installs when you close the app.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Restart now" })).toBeInTheDocument();
+    // The 53-A command is not offered alongside it.
+    expect(screen.queryByText(UPDATE_COMMAND)).not.toBeInTheDocument();
+  });
+
+  it("Scenario: Update ready notice — appears when the download finishes while the app is open", async () => {
+    getState.mockResolvedValue("downloading");
+    getHistory.mockResolvedValue([later(1)]);
+    render(<UpdateNotice />);
+    await waitFor(() => expect(getState).toHaveBeenCalled());
+    push("ready");
+    expect(await screen.findByRole("button", { name: "Restart now" })).toBeInTheDocument();
+  });
+
+  it("Scenario: Restart now — installs and reopens", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    getState.mockResolvedValue("ready");
+    getHistory.mockResolvedValue([]);
+    render(<UpdateNotice />);
+    await user.click(await screen.findByRole("button", { name: "Restart now" }));
+    expect(restart).toHaveBeenCalledTimes(1);
+  });
+
+  it("Scenario: Recording in progress — no Restart now, still says it installs on close", async () => {
+    getState.mockResolvedValue("ready");
+    getHistory.mockResolvedValue([]);
+    render(<UpdateNotice />, { wrapper: busy("note-1") });
+    expect(await screen.findByText("An update is ready — it installs when you close the app.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Restart now" })).not.toBeInTheDocument();
+  });
+
+  it("Scenario: Download in progress — no notice, not even the command", async () => {
+    getState.mockResolvedValue("downloading");
+    getHistory.mockResolvedValue([later(1), later(2)]);
+    const { container } = render(<UpdateNotice />);
+    await waitFor(() => expect(getHistory).toHaveBeenCalled());
+    await act(async () => {});
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("shows nothing until the update state is known", async () => {
+    getState.mockReturnValue(new Promise(() => {}));
+    getHistory.mockResolvedValue([later(1)]);
+    const { container } = render(<UpdateNotice />);
+    await waitFor(() => expect(getHistory).toHaveBeenCalled());
+    await act(async () => {});
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("Scenario: Automatic update fails — the notice with the copyable command appears", async () => {
+    getState.mockResolvedValue("downloading");
+    getHistory.mockResolvedValue([later(1), later(2)]);
+    render(<UpdateNotice />);
+    await waitFor(() => expect(getState).toHaveBeenCalled());
+    push("failed");
+    expect(await screen.findByText(/2 updates behind/)).toBeInTheDocument();
+    expect(screen.getByText(UPDATE_COMMAND)).toBeInTheDocument();
+  });
+
+  it("Scenario: Up to date — no notice", async () => {
+    getState.mockResolvedValue("none");
+    getHistory.mockResolvedValue([{ sha: "x", builtAt: BUILT }]);
+    const { container } = render(<UpdateNotice />);
+    await waitFor(() => expect(getState).toHaveBeenCalled());
+    await act(async () => {});
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("Scenario: Dismiss — hides the ready notice", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    getState.mockResolvedValue("ready");
+    getHistory.mockResolvedValue([later(1)]);
+    render(<UpdateNotice />);
+    await user.click(await screen.findByRole("button", { name: "Dismiss update notice" }));
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(restart).not.toHaveBeenCalled();
+  });
+
+  it("keeps a change pushed before the first answer arrives", async () => {
+    let answer: (s: State) => void = () => {};
+    getState.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    getHistory.mockResolvedValue([later(1)]);
+    render(<UpdateNotice />);
+    await waitFor(() => expect(getState).toHaveBeenCalled());
+    push("ready");
+    await act(async () => answer("downloading"));
+    expect(screen.getByRole("button", { name: "Restart now" })).toBeInTheDocument();
+  });
+
+  it("falls back to the command notice when the update state cannot be read", async () => {
+    getState.mockRejectedValue(new Error("ipc gone"));
+    getHistory.mockResolvedValue([later(1)]);
+    render(<UpdateNotice />);
+    expect(await screen.findByText(/1 update behind/)).toBeInTheDocument();
+  });
+
+  it("Scenario: Automatic update fails — 'nothing newer' while behind still shows the command", async () => {
+    getState.mockResolvedValue("none");
+    getHistory.mockResolvedValue([later(1)]);
+    render(<UpdateNotice />);
+    expect(await screen.findByText(/1 update behind/)).toBeInTheDocument();
+    expect(screen.getByText(UPDATE_COMMAND)).toBeInTheDocument();
+  });
+
+  it("stops listening for update changes when it unmounts", async () => {
+    getState.mockResolvedValue("downloading");
+    getHistory.mockResolvedValue([]);
+    const { unmount } = render(<UpdateNotice />);
+    await waitFor(() => expect(getState).toHaveBeenCalled());
+    const before = push;
+    unmount();
+    expect(push).not.toBe(before);
   });
 });

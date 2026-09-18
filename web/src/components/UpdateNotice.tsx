@@ -1,9 +1,13 @@
 // 53-A — "a newer version is available" notice for the desktop app. Checks on mount and hourly;
 // renders nothing in a browser, in a dev build, or when the check fails.
+// 54-A — the app now updates itself: once an update has downloaded the notice offers "Restart
+// now" instead, and the 53-A command is only the fallback for when updating itself fails.
 import { useEffect, useState } from "react";
+import { useBusyNoteId } from "../hooks/recordingSessionContext";
 import { buildTime } from "../lib/buildInfo";
 import { safeLocal } from "../lib/safeStorage";
 import { updateStatus, type ReleaseEntry } from "../lib/updateStatus";
+import type { AutoUpdateState } from "../types/desktop";
 import styles from "./UpdateNotice.module.css";
 
 // Works from any PowerShell window: fetches the published update script and runs it. The app
@@ -17,6 +21,10 @@ const CHECK_EVERY_MS = 60 * 60 * 1000;
 
 type CopyState = "idle" | "copied" | "failed";
 
+// While the app is checking, downloading or holding a downloaded update, the command would only
+// tell you to do by hand what is already happening.
+const SELF_UPDATING: ReadonlySet<AutoUpdateState> = new Set(["checking", "downloading", "ready"]);
+
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 export default function UpdateNotice() {
@@ -26,6 +34,31 @@ export default function UpdateNotice() {
   const [history, setHistory] = useState<ReleaseEntry[] | null>(null);
   const [dismissed, setDismissed] = useState(() => safeLocal.get(DISMISSED_KEY));
   const [copyState, setCopyState] = useState<CopyState>("idle");
+  // `undefined` until the shell answers; a shell with no self-updating stays on the 53-A notice.
+  const [autoState, setAutoState] = useState<AutoUpdateState | null | undefined>(() =>
+    bridge?.getState ? undefined : null,
+  );
+  const [readyDismissed, setReadyDismissed] = useState(false);
+  // A restart would close the app mid-recording, or before the recording has finished saving.
+  const busy = useBusyNoteId() !== null;
+
+  useEffect(() => {
+    if (!bridge?.getState) return;
+    let cancelled = false;
+    bridge
+      .getState()
+      .then((state) => {
+        if (!cancelled) setAutoState((current) => current ?? state);
+      })
+      .catch(() => {
+        if (!cancelled) setAutoState((current) => current ?? null);
+      });
+    const unsubscribe = bridge.onState?.((state) => setAutoState(state));
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
+  }, [bridge]);
 
   useEffect(() => {
     if (!bridge || !builtAt) return;
@@ -59,7 +92,33 @@ export default function UpdateNotice() {
     ? updateStatus({ builtAt, history, now: new Date(), dismissedLatest: dismissed })
     : ({ show: false } as const);
 
-  if (!bridge || !status.show) return null;
+  if (!bridge || autoState === undefined) return null;
+
+  if (autoState === "ready") {
+    if (readyDismissed) return null;
+    return (
+      <div role="status" className={styles.notice}>
+        <div className={styles.body}>
+          <p className={styles.text}>An update is ready — it installs when you close the app.</p>
+        </div>
+        {!busy && bridge.restart && (
+          <button type="button" className={styles.copy} onClick={() => void bridge.restart?.().catch(() => {})}>
+            Restart now
+          </button>
+        )}
+        <button
+          type="button"
+          className={styles.dismiss}
+          onClick={() => setReadyDismissed(true)}
+          aria-label="Dismiss update notice"
+        >
+          ×
+        </button>
+      </div>
+    );
+  }
+
+  if ((autoState && SELF_UPDATING.has(autoState)) || !status.show) return null;
 
   const handleDismiss = () => {
     safeLocal.set(DISMISSED_KEY, status.latest);

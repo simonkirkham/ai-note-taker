@@ -22,7 +22,7 @@ One slice: it proves and delivers the whole flow. The copy you have installed to
   - A newer version downloads in the background. Nothing interrupts you; recording keeps working.
   - Once downloaded, a slim notice says *"An update is ready — it installs when you close the app."* with a **Restart now** button and a dismiss ×.
   - Closing the app installs the update silently. Next time you open it, you are on the new version.
-  - **Restart now** is hidden while a recording is running, so an update can never cut off a meeting.
+  - **Restart now** is hidden while a recording is running or still saving, so an update can never cut off a meeting.
   - If the automatic update fails (download site unreachable, broken download), today's notice with the copyable command appears instead — you are never left behind silently.
   - The browser version never shows any of this.
 - **Scenarios (GWT):**
@@ -48,7 +48,7 @@ Scenario: Restart now
 
 Scenario: Recording in progress
   Given the update-ready notice is showing
-    And a recording is running
+    And a recording is running or still saving
   Then  the Restart now button is not offered
     And the notice still says it installs when I close the app
 
@@ -84,13 +84,14 @@ Scenario: Browser
 ### 54-A
 - **Events/commands/projections/API/CDK:** none. Desktop shell + `web/` notice + `publish-desktop.yml`.
 - **Updater:** `electron-updater` (runtime `dependencies` in `desktop/package.json`, so it ships in the asar). Generic provider at `https://github.com/simonkirkham/ai-note-taker/releases/download/desktop-latest/`, declared as `publish` in `electron-builder.json` → electron-builder writes `latest.yml` into `release/` and bakes `app-update.yml` into resources. Package with `--publish never` (the workflow uploads).
-- **Channel:** `latest` (electron-builder default for a generic provider). Version `1.0.0-YYYYMMDD.run` is valid semver; numeric prerelease identifiers compare numerically, so `semver.gt` orders builds correctly. Do not set `autoUpdater.channel` — it flips `allowDowngrade` on.
-- **Which installer:** `latest.yml` names the combined x64+arm64 NSIS installer (~177 MB) — it picks the arch at install. Background download, so size only costs bandwidth.
+- **Channel pinned to `latest` in the `publish` entry.** Left unset, electron-builder takes the version's prerelease part — the build **date** (`1.0.0-20260918.901` → `20260918.yml`, `channel: 20260918` in `app-update.yml`) — so each copy would look for its own day's manifest and never see a later one. Found by building a real installer locally, not by any spec. Version `1.0.0-YYYYMMDD.run` is valid semver; numeric prerelease identifiers compare numerically, so `semver.gt` orders builds correctly. Do not set `autoUpdater.channel` in code — it flips `allowDowngrade` on.
+- **Which installer:** `latest.yml` lists all three installers; electron-updater's `findFile` prefers the one whose name contains `process.arch`, so an x64 machine downloads the ~89 MB `-x64.exe`, not the ~177 MB combined one.
 - **Signature:** unsigned build → no `publisherName` → electron-updater skips signature verification. Trust is identical to `update.ps1` today (installs whatever the release holds).
 - **Differential download:** not available — the rolling release deletes the previous installer + blockmap, so electron-updater falls back to a full download. Upload the `.blockmap` anyway (harmless; enables it if the release ever keeps history).
 - **Main process (`desktop/src/autoUpdate.ts`):** `autoDownload = true`, `autoInstallOnAppQuit = true`; check on ready and every 60 min; skipped when `!app.isPackaged`. State machine `checking | downloading | ready | none | failed` pushed to the renderer on change (`updates:state`), readable on demand (`updates:getState`). `updates:restart` → `quitAndInstall(true, true)` (silent, relaunch). All IPC answers the bundle origin only (`ipcOrigin.ts`). Failures `console.warn` with the reason.
-- **Renderer (`UpdateNotice`):** `ready` → update-ready notice; Restart hidden while `useRecordingNoteId()` is non-null. `downloading`/`checking` → nothing. `failed`/`none`/bridge absent → existing 53-A behind-notice (copy command) when history says behind. Dismissing the ready notice is session-only state.
-- **Publish workflow:** upload `desktop/release/latest.yml` + `desktop/release/*.blockmap` with the existing assets. No `concurrency` group (spec forbids one).
+- **Logging:** electron-updater's per-check info lines are silenced; its warnings keep a `[desktop] updater:` prefix.
+- **Renderer (`UpdateNotice`):** `ready` → update-ready notice; Restart hidden while `useBusyNoteId()` is non-null (recording, or still saving after Stop). `downloading`/`checking` → nothing. `failed`/`none`/bridge absent → existing 53-A behind-notice (copy command) when history says behind. Dismissing the ready notice is session-only state.
+- **Publish workflow:** upload `desktop/release/latest.yml` + `desktop/release/*.blockmap` with the existing assets; `test -s desktop/release/latest.yml` runs before the old release is deleted. No `concurrency` group (spec forbids one).
 - **Tests:** desktop Playwright unit spec for the state machine (injected fake updater: each event → state; not packaged → no check; failure → `failed`); publish spec for `latest.yml` upload + `publish` config + `electron-updater` in `dependencies`; vitest for each notice scenario.
 - **Acceptance criteria:**
   - [ ] A packaged build checks on launch and hourly; dev build never checks
@@ -103,7 +104,8 @@ Scenario: Browser
 
 ### Observability
 - Silent failure: `latest.yml` missing or wrong → every check errors → `failed` → fallback notice appears (visible to the user) + `console.warn`.
-- Silent failure: install-on-quit never runs → app stays behind → the 53-A behind-count keeps growing and the fallback shows once state is `none`.
+- Silent failure: the update downloads but never installs (antivirus quarantines the unsigned installer) → the cached download would re-read `ready` every launch. Guarded: the version handed to the installer is written to `userData/update-attempt.txt` on quit/Restart; a launch that is still on the old version and downloads that same version again reports `failed` with a `console.warn` → the fallback command notice shows. Known edge: reopening the app within the ~15 s the installer runs can report one false `failed`.
+- Silent failure: a failed background download → `'error'` → `failed`; its separate rejected download promise is caught so it never surfaces as an unhandled rejection.
 
 ### Deploy-time
 - Neutral for `deploy.yml`. `publish-desktop.yml` uploads two more small files (seconds, recurring, post-deploy).
