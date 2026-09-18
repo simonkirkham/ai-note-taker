@@ -48,3 +48,51 @@ test('renderer has no Node integration (contextIsolation enforced)', async () =>
   const hasNodeRequire = await window.evaluate(() => typeof (globalThis as { require?: unknown }).require !== 'undefined')
   expect(hasNodeRequire).toBe(false)
 })
+
+// CHANGE-43 — the build stamp is a link to the pipeline run. In the shell a new window is denied,
+// so the only way it can do anything is the main process handing the URL to the system browser.
+// The predicate deciding WHICH urls qualify is unit-tested; this covers the wiring, which is the
+// half that fails silently (a denied window that opens nothing looks like a link nobody clicked).
+async function captureExternalOpens(application: ElectronApplication): Promise<void> {
+  // No return value: Playwright would serialise a COPY taken before any open happens, and an
+  // assertion against that copy could never fail. Reads go through readExternalOpens instead.
+  await application.evaluate(({ shell }) => {
+    const opened: string[] = []
+    ;(globalThis as unknown as { __opened?: string[] }).__opened = opened
+    shell.openExternal = (url: string) => {
+      opened.push(url)
+      return Promise.resolve()
+    }
+  })
+}
+
+const readExternalOpens = (application: ElectronApplication) =>
+  application.evaluate(() => (globalThis as unknown as { __opened?: string[] }).__opened ?? [])
+
+const RUN_URL = 'https://github.com/simonkirkham/ai-note-taker/actions/runs/35127113946'
+
+test("a link to this repo's pipeline run reaches the system browser", async () => {
+  const page = await app.firstWindow()
+  await page.getByRole('button', { name: /sign in with google/i }).waitFor({ timeout: APP_BOOT_TIMEOUT_MS })
+  await captureExternalOpens(app)
+
+  await page.evaluate((url) => window.open(url, '_blank'), RUN_URL)
+  await expect.poll(() => readExternalOpens(app), { timeout: APP_BOOT_TIMEOUT_MS }).toEqual([RUN_URL])
+
+  // ...and no second window was opened inside the app.
+  expect(app.windows()).toHaveLength(1)
+})
+
+test('a link anywhere else opens nothing at all', async () => {
+  const page = await app.firstWindow()
+  await page.getByRole('button', { name: /sign in with google/i }).waitFor({ timeout: APP_BOOT_TIMEOUT_MS })
+  await captureExternalOpens(app)
+
+  await page.evaluate(() => window.open('https://example.test/anything', '_blank'))
+  // The allowed URL is the flush: once it has arrived, the disallowed one has had its chance. A
+  // fixed sleep here could only ever produce a false pass, which is the one thing a control must
+  // not do.
+  await page.evaluate((url) => window.open(url, '_blank'), RUN_URL)
+  await expect.poll(() => readExternalOpens(app), { timeout: APP_BOOT_TIMEOUT_MS }).toEqual([RUN_URL])
+  expect(app.windows()).toHaveLength(1)
+})

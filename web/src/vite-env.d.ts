@@ -12,6 +12,9 @@ interface ImportMetaEnv {
   readonly VITE_BUILD_NUMBER: string
   readonly VITE_BUILD_SHA: string
   readonly VITE_BUILD_TIME: string
+  // CHANGE-43: the pipeline run the stamp links to, and (desktop only) the installer version.
+  readonly VITE_BUILD_RUN_ID: string
+  readonly VITE_BUILD_INSTALLER_VERSION: string
 }
 
 interface ImportMeta {

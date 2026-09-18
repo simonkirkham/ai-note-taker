@@ -256,6 +256,8 @@ jobs:
           # take it from the same run, so test and production can never disagree.
           VITE_BUILD_NUMBER: ${{ github.run_number }}
           VITE_BUILD_SHA: ${{ github.sha }}
+          # CHANGE-43: the stamp links to this run, so a running copy traces back in one click.
+          VITE_BUILD_RUN_ID: ${{ github.run_id }}
 
       - name: Inject RUM snippet
         working-directory: web
@@ -619,6 +621,8 @@ jobs:
           # take it from the same run, so test and production can never disagree.
           VITE_BUILD_NUMBER: ${{ github.run_number }}
           VITE_BUILD_SHA: ${{ github.sha }}
+          # CHANGE-43: the stamp links to this run, so a running copy traces back in one click.
+          VITE_BUILD_RUN_ID: ${{ github.run_id }}
 
       - name: Inject RUM snippet
         working-directory: web
