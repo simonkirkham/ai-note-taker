@@ -247,7 +247,8 @@ Worth keeping for two reasons. The failure was the same shape as the bug — som
 |---|---|
 | **A device switch does not stop transcription on this machine** | Words kept arriving after the switch — the last transcribed line is the user asking "can you hear me" on the new device |
 | Words stopped at 2:00 | `covered` froze at 120.5 s; the notice appeared on real hardware at 4:15, classified `noWords` ("sound is arriving") |
-| `silent=False`, `sourceEnded=False`, `muted=False` throughout | The source stayed live. Whether anyone spoke after 2:00 is **unknown** |
+| `silent=False`, `sourceEnded=False`, `muted=False` throughout | The source stayed live. **Nobody spoke from 2:00 to 5:00** (confirmed by the user), so the stop at 2:00 is correct behaviour and this is **not a reproduction** |
+| The notice fired on a quiet room | The known false positive: the wording is conditional ("if the meeting is not simply quiet"), and the loudness measurement below is what removes it |
 
 **The gap this exposed.** The silence floor (−90 dBFS) catches only a dead source. A quiet room reads as "sound", exactly like speech, so the record cannot separate "the meeting went quiet" from "speech arrived and the service returned nothing". That is the same blind spot as the 3.5-hour occurrence. **Next instrument:** record how loud the captured audio actually is over the stall window (a speech-level threshold roughly 30-40 dB above room tone), so the health record says which of the two it was.
 
