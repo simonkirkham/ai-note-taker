@@ -20,21 +20,24 @@ class FakeUpdater extends EventEmitter implements Updater {
   }
 }
 
-function setup(opts: { isPackaged?: boolean } = {}) {
+function setup(opts: { isPackaged?: boolean; attempted?: string | null; currentVersion?: string } = {}) {
   const updater = new FakeUpdater()
+  const attempts = { value: opts.attempted ?? null }
   const states: AutoUpdateState[] = []
   const warnings: string[] = []
   const timers: { fn: () => void; ms: number }[] = []
   const auto = createAutoUpdate({
     updater,
     isPackaged: opts.isPackaged ?? true,
+    currentVersion: opts.currentVersion ?? '1.0.0-20260918.1',
+    attempts: { read: () => attempts.value, write: (v) => (attempts.value = v) },
     onState: (s) => states.push(s),
     warn: (m) => warnings.push(m),
     setInterval: (fn, ms) => {
       timers.push({ fn, ms })
     },
   })
-  return { updater, states, warnings, timers, auto }
+  return { updater, states, warnings, timers, auto, attempts }
 }
 
 test('downloads in the background and installs when the app closes', () => {
@@ -143,4 +146,71 @@ test('only announces a state when it changes', () => {
   updater.emit('download-progress', { percent: 10 })
   updater.emit('update-available', {})
   expect(states).toEqual(['downloading'])
+})
+
+// 54-A review: an update that downloads but never installs must not read "ready" forever.
+test('Scenario: Automatic update fails — an install that did not take falls back', () => {
+  const { updater, warnings, auto } = setup({ attempted: '1.0.0-20260918.2', currentVersion: '1.0.0-20260918.1' })
+  auto.start()
+  updater.emit('update-downloaded', { version: '1.0.0-20260918.2' })
+  expect(auto.getState()).toBe('failed')
+  expect(warnings.join('\n')).toContain('1.0.0-20260918.2')
+})
+
+test('a newer download than the one that failed to install is "ready" again', () => {
+  const { updater, auto } = setup({ attempted: '1.0.0-20260918.2', currentVersion: '1.0.0-20260918.1' })
+  auto.start()
+  updater.emit('update-downloaded', { version: '1.0.0-20260918.3' })
+  expect(auto.getState()).toBe('ready')
+})
+
+test('closing the app with an update ready records it as attempted', () => {
+  const { updater, auto, attempts } = setup()
+  auto.start()
+  updater.emit('update-downloaded', { version: '1.0.0-20260918.2' })
+  auto.noteQuit()
+  expect(attempts.value).toBe('1.0.0-20260918.2')
+})
+
+test('Restart now records the attempt too', () => {
+  const { updater, auto, attempts } = setup()
+  auto.start()
+  updater.emit('update-downloaded', { version: '1.0.0-20260918.2' })
+  auto.restart()
+  expect(attempts.value).toBe('1.0.0-20260918.2')
+})
+
+test('closing with nothing ready records nothing', () => {
+  const { updater, auto, attempts } = setup()
+  auto.start()
+  updater.emit('update-not-available', {})
+  auto.noteQuit()
+  expect(attempts.value).toBeNull()
+})
+
+test('an install error after Restart now is "failed", not stuck on "ready"', () => {
+  const { updater, auto } = setup()
+  auto.start()
+  updater.emit('update-downloaded', { version: '1.0.0-20260918.2' })
+  auto.restart()
+  updater.emit('error', new Error('spawn EPERM'))
+  expect(auto.getState()).toBe('failed')
+})
+
+test('a failed background download never leaves an unhandled rejection', async () => {
+  const { updater, auto } = setup()
+  const unhandled: unknown[] = []
+  const onUnhandled = (reason: unknown) => unhandled.push(reason)
+  process.on('unhandledRejection', onUnhandled)
+  try {
+    const download = Promise.reject(new Error('download reset'))
+    updater.checkResult = Promise.resolve({ downloadPromise: download })
+    auto.start()
+    updater.emit('error', new Error('download reset'))
+    await new Promise((r) => setTimeout(r, 50))
+    expect(unhandled).toEqual([])
+    expect(auto.getState()).toBe('failed')
+  } finally {
+    process.off('unhandledRejection', onUnhandled)
+  }
 })

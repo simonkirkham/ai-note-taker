@@ -89,6 +89,7 @@ Scenario: Browser
 - **Signature:** unsigned build → no `publisherName` → electron-updater skips signature verification. Trust is identical to `update.ps1` today (installs whatever the release holds).
 - **Differential download:** not available — the rolling release deletes the previous installer + blockmap, so electron-updater falls back to a full download. Upload the `.blockmap` anyway (harmless; enables it if the release ever keeps history).
 - **Main process (`desktop/src/autoUpdate.ts`):** `autoDownload = true`, `autoInstallOnAppQuit = true`; check on ready and every 60 min; skipped when `!app.isPackaged`. State machine `checking | downloading | ready | none | failed` pushed to the renderer on change (`updates:state`), readable on demand (`updates:getState`). `updates:restart` → `quitAndInstall(true, true)` (silent, relaunch). All IPC answers the bundle origin only (`ipcOrigin.ts`). Failures `console.warn` with the reason.
+- **Logging:** electron-updater's per-check info lines are silenced; its warnings keep a `[desktop] updater:` prefix.
 - **Renderer (`UpdateNotice`):** `ready` → update-ready notice; Restart hidden while `useBusyNoteId()` is non-null (recording, or still saving after Stop). `downloading`/`checking` → nothing. `failed`/`none`/bridge absent → existing 53-A behind-notice (copy command) when history says behind. Dismissing the ready notice is session-only state.
 - **Publish workflow:** upload `desktop/release/latest.yml` + `desktop/release/*.blockmap` with the existing assets; `test -s desktop/release/latest.yml` runs before the old release is deleted. No `concurrency` group (spec forbids one).
 - **Tests:** desktop Playwright unit spec for the state machine (injected fake updater: each event → state; not packaged → no check; failure → `failed`); publish spec for `latest.yml` upload + `publish` config + `electron-updater` in `dependencies`; vitest for each notice scenario.
@@ -103,7 +104,8 @@ Scenario: Browser
 
 ### Observability
 - Silent failure: `latest.yml` missing or wrong → every check errors → `failed` → fallback notice appears (visible to the user) + `console.warn`.
-- Silent failure: install-on-quit never runs → app stays behind → the 53-A behind-count keeps growing and the fallback shows once state is `none`.
+- Silent failure: the update downloads but never installs (antivirus quarantines the unsigned installer) → the cached download would re-read `ready` every launch. Guarded: the version handed to the installer is written to `userData/update-attempt.txt` on quit/Restart; a launch that is still on the old version and downloads that same version again reports `failed` with a `console.warn` → the fallback command notice shows. Known edge: reopening the app within the ~15 s the installer runs can report one false `failed`.
+- Silent failure: a failed background download → `'error'` → `failed`; its separate rejected download promise is caught so it never surfaces as an unhandled rejection.
 
 ### Deploy-time
 - Neutral for `deploy.yml`. `publish-desktop.yml` uploads two more small files (seconds, recurring, post-deploy).

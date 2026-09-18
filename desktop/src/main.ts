@@ -1,5 +1,5 @@
 import { app, BrowserWindow, clipboard, ipcMain, Menu, net, session, shell, desktopCapturer, screen } from 'electron'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { startBundleServer } from './server'
 import { pickDisplayMediaResponse } from './displayMedia'
@@ -235,17 +235,39 @@ function registerUpdateNotice(): void {
 
 // 54-A — download each new version in the background and install it when the app closes. The
 // renderer reads the state to show "Restart now", or the 53-A command when this fails.
+let autoUpdate: ReturnType<typeof createAutoUpdate> | null = null
+
 function registerAutoUpdate(): void {
   const fromBundle = (event: Electron.IpcMainInvokeEvent) => isBundleOrigin(event.senderFrame?.url, BUNDLE_ORIGINS)
-  const auto = createAutoUpdate({
+  const attemptFile = path.join(app.getPath('userData'), 'update-attempt.txt')
+  // electron-updater logs every hourly check to the console by default; keep only what matters.
+  autoUpdater.logger = { info: () => {}, warn: (m: unknown) => console.warn('[desktop] updater:', m), error: () => {} }
+  autoUpdate = createAutoUpdate({
     updater: autoUpdater,
     isPackaged: app.isPackaged,
-    onState: (state) => mainWindow?.webContents.send('updates:state', state),
+    currentVersion: app.getVersion(),
+    attempts: {
+      read: () => (existsSync(attemptFile) ? readFileSync(attemptFile, 'utf8').trim() || null : null),
+      write: (version) => {
+        try {
+          writeFileSync(attemptFile, version ?? '')
+        } catch (err) {
+          console.warn('[desktop] could not record the update attempt:', err)
+        }
+      },
+    },
+    onState: (state) => {
+      // Only the app's own page — the window also shows Google's sign-in pages.
+      if (mainWindow && isBundleOrigin(mainWindow.webContents.getURL(), BUNDLE_ORIGINS)) {
+        mainWindow.webContents.send('updates:state', state)
+      }
+    },
     warn: (message) => console.warn(message),
     setInterval: (fn, ms) => {
       setInterval(fn, ms)
     },
   })
+  const auto = autoUpdate
   ipcMain.handle('updates:getState', (event) => (fromBundle(event) ? auto.getState() : null))
   ipcMain.handle('updates:restart', (event) => {
     if (fromBundle(event)) auto.restart()
@@ -282,6 +304,7 @@ void app.whenReady().then(async () => {
 // kernel before teardown. Note: kill() terminates the direct child only (fine — whisper-cli is a
 // leaf); if anyone ever spawns whisper via a shell wrapper, kill the tree instead.
 app.on('before-quit', () => {
+  autoUpdate?.noteQuit() // 54-A: a ready update installs now — remember which one
   killActiveWhisper()
   killWhisperServer() // BUG-53: tear down the resident whisper-server child on quit
 })

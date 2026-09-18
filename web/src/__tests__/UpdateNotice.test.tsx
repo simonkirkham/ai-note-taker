@@ -309,6 +309,32 @@ describe("UpdateNotice — self-updating", () => {
     expect(restart).not.toHaveBeenCalled();
   });
 
+  it("keeps a change pushed before the first answer arrives", async () => {
+    let answer: (s: State) => void = () => {};
+    getState.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    getHistory.mockResolvedValue([later(1)]);
+    render(<UpdateNotice />);
+    await waitFor(() => expect(getState).toHaveBeenCalled());
+    push("ready");
+    await act(async () => answer("downloading"));
+    expect(screen.getByRole("button", { name: "Restart now" })).toBeInTheDocument();
+  });
+
+  it("falls back to the command notice when the update state cannot be read", async () => {
+    getState.mockRejectedValue(new Error("ipc gone"));
+    getHistory.mockResolvedValue([later(1)]);
+    render(<UpdateNotice />);
+    expect(await screen.findByText(/1 update behind/)).toBeInTheDocument();
+  });
+
+  it("Scenario: Automatic update fails — 'nothing newer' while behind still shows the command", async () => {
+    getState.mockResolvedValue("none");
+    getHistory.mockResolvedValue([later(1)]);
+    render(<UpdateNotice />);
+    expect(await screen.findByText(/1 update behind/)).toBeInTheDocument();
+    expect(screen.getByText(UPDATE_COMMAND)).toBeInTheDocument();
+  });
+
   it("stops listening for update changes when it unmounts", async () => {
     getState.mockResolvedValue("downloading");
     getHistory.mockResolvedValue([]);

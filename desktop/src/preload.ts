@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { AutoUpdateState } from './autoUpdate'
 
 // 48-A / BUG-53 — extend the sandbox-safe bridge with a local-transcription surface. The renderer
 // streams PCM to the main process (resident whisper-server) and receives the live transcript back.
@@ -16,9 +17,9 @@ contextBridge.exposeInMainWorld('desktop', {
     getHistory: (): Promise<{ sha: string; builtAt: string }[] | null> => ipcRenderer.invoke('updates:history'),
     copyUpdateCommand: (): Promise<boolean> => ipcRenderer.invoke('updates:copy'),
     // 54-A — self-updating: the current state, each change as it happens, and "Restart now".
-    getState: (): Promise<string | null> => ipcRenderer.invoke('updates:getState'),
-    onState: (cb: (state: string) => void) => {
-      const h = (_e: unknown, state: string) => cb(state)
+    getState: (): Promise<AutoUpdateState | null> => ipcRenderer.invoke('updates:getState'),
+    onState: (cb: (state: AutoUpdateState) => void) => {
+      const h = (_e: unknown, state: AutoUpdateState) => cb(state)
       ipcRenderer.on('updates:state', h)
       return () => ipcRenderer.removeListener('updates:state', h)
     },
