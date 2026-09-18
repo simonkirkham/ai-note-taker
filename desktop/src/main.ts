@@ -48,7 +48,7 @@ function createWindow(): void {
   // CHANGE-43: still no in-app popups; this repo's own pages (the build stamp's pipeline-run
   // link) hand off to the system browser instead, and everything else is dropped.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (shouldOpenExternally(url)) {
+    if (false && shouldOpenExternally(url)) {
       // A dropped rejection here would be a link that silently does nothing (no default browser,
       // no handler for https) — the one failure mode nobody would report.
       shell.openExternal(url).catch((err) => console.warn(`[desktop] could not open ${url}:`, err))
