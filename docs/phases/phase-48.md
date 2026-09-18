@@ -185,6 +185,11 @@ Scenario: Opt back into upload
 - Route by attendee count (from the note's calendar meeting link): ≤2 → 48-C source separation; >2 → run `sherpa-onnx` `OfflineSpeakerDiarization` (pyannote **segmentation-3.0 ONNX** 5.8 MB + **NeMo TitaNet-large** 97 MB) on the **loopback** stream with `FastClusteringConfig(num_clusters=<remote attendee count>)`, merge with mic="Me".
 - Diarize the loopback (remote) side only — "me" is already isolated on the mic, which is easier than the mono spike (~14% DER) and avoids mislabelling me.
 - Engine binding: sherpa-onnx C API / prebuilt Node addon in main (no torch, no HF login — spike-confirmed). Fall back to 48-C labelling when attendee count is unavailable.
+- **Measured 2026-09-18 on the user's Snapdragon X Elite laptop** (sherpa-onnx v1.13.8 native win-arm64, pyannote segmentation-3.0, 6 threads, sherpa's own sample clips of 16-57 s):
+  - Speed: processing took 0.04-0.37 × the audio length, rising with clip length and speech density — roughly 12-20 min for an hour of call audio if it holds (unverified beyond 57 s). TitaNet-large ran ~20% faster than ERes2Net.
+  - Speaker count, told the right number: correct on 7 of 8 runs (TitaNet merged both speakers of one 55 s clip into one).
+  - Speaker count, left to guess: wrong on 5 of 8, always too many (4 for 2, 7 for 4). So passing the expected number is essential, and the attendee count is only a proxy for who actually speaks.
+  - Not measured: accuracy of who-spoke-when (no reference labels were checked), and any real call recording.
 - AC: >2-attendee transcript separates remote speakers (manual-Windows against a real group call); fallback to Me/Them without attendee data (unit-testable routing).
 
 **48-E — Keep-audio-on-device setting** _(Done — #403, deploy 52c2f20a; installer auto-rebuilt)_

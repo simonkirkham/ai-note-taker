@@ -439,6 +439,8 @@ Related: [BUG-87] (the same stop-time pass is also slow).
 
 A web source claiming 8× for the same switch (a large model with KleidiAI) did not reproduce here; expect about 2×.
 
+**Parakeet measured 2026-09-18, same laptop, same 158 s clip:** `parakeet-tdt-0.6b-v2` int8 through sherpa-onnx v1.13.8's native win-arm64 build, 6 threads: **21.6 s** of processing (25.0 s including model load), vs 37.6 s for whisper small.en native ARM and 71.4 s for today's emulated build. The transcript was correct, with punctuation. The clip is synthetic speech from Windows' built-in text-to-speech: this measures speed, not accuracy on real meetings.
+
 **Fix directions (hypotheses):**
 0. Ship the native ARM64 whisper build (measured ~2× above) — the arm64 installer bundles x64 today.
 1. Run the two passes in parallel (each is capped at half the cores, so together they would use the machine rather than wait).
