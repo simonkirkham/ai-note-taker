@@ -429,10 +429,18 @@ Related: [BUG-87] (the same stop-time pass is also slow).
 
 **Cause:** as designed, not a malfunction. The 1:1 split re-transcribes the WHOLE recording twice with the larger model, one after the other (`diarizeStreams` in `desktop/src/localTranscription.ts`). The budget comment in `useTranscription.ts` already predicts 0.87 × audio. The live `base.en` transcript is discarded when the split succeeds, so none of the live work is reused.
 
-**Likely contributing cause, found 2026-09-18:** the user's laptop is ARM (Surface Laptop 7, Snapdragon X Elite X1E80100, 12 cores, 16 GB). The app itself is a native ARM64 build, but every whisper binary it bundles is **x64** (`whisper-cli.exe`, `whisper-server.exe`, all `ggml-cpu-*.dll` — read from the PE headers of the installed copy), so all transcription runs under Windows' x64 emulation. The 48-A build note says arm64 "spawn fails → cloud fallback"; in fact it runs, emulated. No native build has been measured against it yet, so the size of the loss is unknown.
+**Likely contributing cause, found 2026-09-18:** the user's laptop is ARM (Surface Laptop 7, Snapdragon X Elite X1E80100, 12 cores, 16 GB). The app itself is a native ARM64 build, but every whisper binary it bundles is **x64** (`whisper-cli.exe`, `whisper-server.exe`, all `ggml-cpu-*.dll` — read from the PE headers of the installed copy), so all transcription runs under Windows' x64 emulation. The 48-A build note says arm64 "spawn fails → cloud fallback"; in fact it runs, emulated. **Measured 2026-09-18 on the user's laptop:** the official native build (`whisper-bin-win-cpu-arm64.zip`, whisper.cpp release b5130) against the installed x64 binary, same 158 s clip, same models, 6 threads, identical transcript text:
+
+| Model | x64 emulated | ARM64 native | Speed-up |
+|---|---|---|---|
+| small.en + VAD (the after-Stop pass) | 56.4 s | 34.2 s | 1.65× |
+| small.en, no VAD | 71.4 s | 37.6 s | 1.9× |
+| base.en, no VAD (the live model) | 23.9 s | 12.1 s | 2.0× |
+
+A web source claiming 8× for the same switch (a large model with KleidiAI) did not reproduce here; expect about 2×.
 
 **Fix directions (hypotheses):**
-0. Ship a native ARM64 whisper build and measure it against the emulated one on the same recording.
+0. Ship the native ARM64 whisper build (measured ~2× above) — the arm64 installer bundles x64 today.
 1. Run the two passes in parallel (each is capped at half the cores, so together they would use the machine rather than wait).
 2. Label from the live transcript instead of re-transcribing: the live pass already knows when words were said; tag each by which source was louder at that moment. Cost near zero, and it would also give live labels ([CHANGE-44]).
 3. Keep `small.en` only for the Them side, where quality matters most.
