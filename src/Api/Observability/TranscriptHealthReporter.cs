@@ -47,12 +47,17 @@ public static class TranscriptHealthReporter
         var isComplete = phase == CompletePhase;
         var longRecording = duration >= CoverageMinDurationSeconds;
 
+        // BUG-85: a dead capture source or silent audio is a fault whatever the end reason says —
+        // the 2026-09-17 recording reported `inProgress` for three and a half hours while producing
+        // nothing. Both deserve a Warning on their own.
         var warn = WarningEndReasons.Contains(endReason)
+            || health.SourceEnded == true
+            || health.AudioSilent == true
             || (isComplete && longRecording && ratio < LowCoverageRatio)
             || health.Malformed.Count > 0;
 
         logger.Log(warn ? LogLevel.Warning : LogLevel.Information,
-            "Transcript health {Phase} note {NoteId}: end={EndReason} covered={CoveredSeconds}s of {DurationSeconds}s ratio={Ratio} sinceLastText={SecondsSinceLastText}s audioSent={AudioSecondsSent}s sinceLastAudio={SecondsSinceLastAudio}s streams={StreamCount} engine={Engine} error={ErrorName}: {ErrorMessage}{Malformed}",
+            "Transcript health {Phase} note {NoteId}: end={EndReason} covered={CoveredSeconds}s of {DurationSeconds}s ratio={Ratio} sinceLastText={SecondsSinceLastText}s audioSent={AudioSecondsSent}s sinceLastAudio={SecondsSinceLastAudio}s streams={StreamCount} engine={Engine} sourceEnded={SourceEnded} muted={SourceMuted} silent={AudioSilent} silentFor={SecondsSilent}s error={ErrorName}: {ErrorMessage}{Malformed}",
             phase, noteId, endReason,
             OrAbsent(covered), duration, OrAbsent(ratio),
             OrAbsent(ClampRounded(health.SecondsSinceLastText, 0)),
@@ -60,6 +65,10 @@ public static class TranscriptHealthReporter
             OrAbsent(ClampRounded(health.SecondsSinceLastAudio, 0)),
             OrAbsent(health.StreamCount is { } n ? (int?)Clamp(n) : null),
             engine,
+            OrAbsent(health.SourceEnded),
+            OrAbsent(health.SourceMuted),
+            OrAbsent(health.AudioSilent),
+            OrAbsent(ClampRounded(health.SecondsSilent, 0)),
             Sanitise(health.ErrorName) ?? Absent,
             Sanitise(health.ErrorMessage) ?? Absent,
             health.Malformed.Count > 0 ? $" malformed={string.Join(",", health.Malformed)}" : "");
@@ -106,6 +115,11 @@ public static class TranscriptHealthReporter
         public double? AudioSecondsSent { get; private set; }
         public double? SecondsSinceLastAudio { get; private set; }
         public int? StreamCount { get; private set; }
+        // BUG-85: what was actually in the captured audio, as opposed to how much of it was sent.
+        public bool? SourceEnded { get; private set; }
+        public bool? SourceMuted { get; private set; }
+        public bool? AudioSilent { get; private set; }
+        public double? SecondsSilent { get; private set; }
         public List<string> Malformed { get; } = [];
 
         public static HealthFields Parse(JsonElement json)
@@ -125,6 +139,10 @@ public static class TranscriptHealthReporter
             fields.AudioSecondsSent = fields.Number(json, "audioSecondsSent");
             fields.SecondsSinceLastAudio = fields.Number(json, "secondsSinceLastAudio");
             fields.StreamCount = fields.WholeNumber(json, "streamCount");
+            fields.SourceEnded = fields.Flag(json, "sourceEnded");
+            fields.SourceMuted = fields.Flag(json, "sourceMuted");
+            fields.AudioSilent = fields.Flag(json, "audioSilent");
+            fields.SecondsSilent = fields.Number(json, "secondsSilent");
             return fields;
         }
 
@@ -144,6 +162,16 @@ public static class TranscriptHealthReporter
             if (Field(json, name) is not { } value) return null;
             // A JSON number beyond double range (1e400) reads back as Infinity, so finiteness is checked too.
             if (value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var d) && double.IsFinite(d)) return d;
+            Malformed.Add(name);
+            return null;
+        }
+
+        // Absent on a build from before BUG-85, which must keep working — so an absent flag stays
+        // null and reads as "-", never as false.
+        private bool? Flag(JsonElement json, string name)
+        {
+            if (Field(json, name) is not { } value) return null;
+            if (value.ValueKind is JsonValueKind.True or JsonValueKind.False) return value.GetBoolean();
             Malformed.Add(name);
             return null;
         }

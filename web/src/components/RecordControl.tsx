@@ -1,9 +1,33 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { analyseNote } from "../api/notes";
 import type { NoteRecording } from "../hooks/recordingSessionContext";
+import type { TranscriptionStallKind } from "../hooks/transcriptHealth";
 import { type AnalyseTrigger, reportAnalyseFailure } from "../lib/analyseFailure";
 import { shouldAutoWriteUp } from "../lib/autoWriteUp";
 import styles from "./RecordControl.module.css";
+
+// BUG-85: what to say when the live transcript has stopped part-way through a meeting. It happened
+// twice, costing 54 minutes of one meeting and 3.5 hours of another, with nothing on screen to say
+// so. Each line names the cause in ordinary words — the three are genuinely different problems and
+// only one of them is about the microphone.
+const STALL_REASONS: Record<TranscriptionStallKind, string> = {
+  sourceEnded: "The audio source ended — the microphone or shared audio was disconnected.",
+  noSound: "No sound is being picked up from the microphone or shared audio.",
+  noWords: "Sound is arriving, but no words are coming back.",
+};
+
+function plural(n: number, unit: string): string {
+  return `${n} ${unit}${n === 1 ? "" : "s"}`;
+}
+
+// Rounded down to the minute: the notice is about how long has been lost, not a stopwatch.
+function formatStallDuration(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return plural(minutes, "minute");
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest === 0 ? plural(hours, "hour") : `${plural(hours, "hour")} ${plural(rest, "minute")}`;
+}
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60)
@@ -30,7 +54,7 @@ export default function RecordControl({
   transcription: NoteRecording;
   onAnalysisComplete?: () => void;
 }) {
-  const { status, transcript, elapsedSeconds, error, startRecording, stopRecording, reset } =
+  const { status, transcript, elapsedSeconds, error, stall, startRecording, stopRecording, reset } =
     transcription;
   const otherNoteRecording = transcription.otherNoteRecording ?? false;
   const { autoWriteUp, autoWriteUpError, clearAutoWriteUp } = transcription;
@@ -272,6 +296,19 @@ export default function RecordControl({
         >
           Stop
         </button>
+      )}
+
+      {/* BUG-85: a recording that is no longer producing a transcript says so, rather than running
+          silently for hours. Announced politely and never focused — the audio is still being
+          captured to the recording, so this is a problem to act on, not a crash. */}
+      {isRecording && stall && (
+        <span className={styles.stall} data-testid="transcription-stall" role="status" aria-live="polite">
+          <strong className={styles.stallHeadline}>Transcription has stopped.</strong>
+          <span>
+            No new words for {formatStallDuration(stall.stalledForSeconds)}. {STALL_REASONS[stall.kind]} Stop and
+            start recording again to keep a transcript of the rest.
+          </span>
+        </span>
       )}
 
       {shownAnalyseError && (

@@ -8,6 +8,42 @@ const STALL_REPEAT_MS = 5 * 60_000;
 const MAX_ERROR_TEXT = 200;
 const PCM_BYTES_PER_SAMPLE = 2;
 
+// BUG-85: the level below which the audio this app TRANSMITS is all-zero bytes.
+//
+// It is not a judgement about loudness — it is where the encoder stops. Captured Float32 samples
+// are quantised to 16-bit PCM (`floatTo16BitPcm`: round(x × 32767)), so anything under half a step
+// rounds to zero and the transcription service receives digital silence whatever the analogue
+// signal was. One whole step — 1/32767, about −90 dBFS — is the first amplitude that reliably
+// survives, and `transcriptSilence.test.ts` measures that against the real encoder.
+//
+// A dead or muted track delivers buffers of exact zeros at the normal rate, so it lands far below
+// this; room tone from a live microphone sits around −60 dBFS, about a thousand times above it.
+export const SILENT_PEAK = 1 / 32767;
+
+// How long every captured sample must stay under that floor before the audio counts as silent.
+// Deliberately as long as the no-text window: two minutes of literally zero transmitted audio is
+// not a pause in a conversation, and the notice it drives only ever appears alongside no new text.
+const SILENCE_WINDOW_MS = 120_000;
+
+/** Why the transcript has stopped growing, in the order the evidence settles it. */
+export type TranscriptionStallKind = 'sourceEnded' | 'noSound' | 'noWords';
+
+export interface TranscriptionStall {
+  kind: TranscriptionStallKind;
+  /** Seconds since the last finalised text, or since the recording started if none ever arrived. */
+  stalledForSeconds: number;
+}
+
+/** The loudest sample in a captured frame, either direction. */
+export function peakOf(frame: Float32Array): number {
+  let peak = 0;
+  for (let i = 0; i < frame.length; i++) {
+    const level = frame[i] < 0 ? -frame[i] : frame[i];
+    if (level > peak) peak = level;
+  }
+  return peak;
+}
+
 function seconds(ms: number): number {
   return Math.round(ms / 100) / 10;
 }
@@ -58,6 +94,10 @@ export class TranscriptHealthTracker {
   private lastAudioAt = 0;
   private lastStallReportAt = 0;
   private end: EndState | null = null;
+  // BUG-85: what the captured audio is actually doing, as opposed to how many buffers were pushed.
+  private sourceEnded = false;
+  private mutedTracks = 0;
+  private lastLoudAt = 0;
 
   reset(): void {
     this.engine = 'cloud';
@@ -72,6 +112,9 @@ export class TranscriptHealthTracker {
     this.lastAudioAt = 0;
     this.lastStallReportAt = 0;
     this.end = null;
+    this.sourceEnded = false;
+    this.mutedTracks = 0;
+    this.lastLoudAt = 0;
   }
 
   recordingStarted(engine: TranscriptEngine, sampleRate: number, now: number): void {
@@ -107,6 +150,49 @@ export class TranscriptHealthTracker {
     this.lastAudioAt = now;
   }
 
+  // BUG-85: a captured track died — the microphone was unplugged, the screen share was stopped, the
+  // device was taken by something else. Latched: it does not come back on its own.
+  sourceTrackEnded(): void {
+    this.sourceEnded = true;
+  }
+
+  // Muting is reversible, so it is counted rather than latched — several tracks are captured and
+  // any one of them being muted is a hole in what is heard.
+  sourceTrackMuted(muted: boolean): void {
+    this.mutedTracks = Math.max(0, this.mutedTracks + (muted ? 1 : -1));
+  }
+
+  // The loudest sample of a captured frame. Anything at or above the transmit floor is sound; below
+  // it, what leaves this machine is indistinguishable from a zero-filled buffer.
+  audioLevel(peak: number, now: number): void {
+    if (peak >= SILENT_PEAK) this.lastLoudAt = now;
+  }
+
+  // Silence is measured from the last sample above the floor, or from the start of the recording
+  // when there has never been one — no audio at all is the loudest case of no sound, not an
+  // absence of evidence.
+  private silentSince(): number {
+    return this.lastLoudAt || this.startedAt;
+  }
+
+  private isSilent(now: number): boolean {
+    return this.hasStarted && now - this.silentSince() >= SILENCE_WINDOW_MS;
+  }
+
+  // BUG-85: why the transcript has stopped growing, or null while it is healthy. Read once a
+  // second by the recording UI; nothing here allocates or scans.
+  stallState(now: number): TranscriptionStall | undefined {
+    if (!this.hasStarted || this.end) return undefined;
+    const since = this.lastTextAt || this.startedAt;
+    if (now - since < STALL_AFTER_MS) return undefined;
+    const stalledForSeconds = Math.floor((now - since) / 1000);
+    // Ordered by how conclusive the evidence is: a dead track explains everything below it, and
+    // silence explains no words.
+    if (this.sourceEnded) return { kind: 'sourceEnded', stalledForSeconds };
+    if (this.mutedTracks > 0 || this.isSilent(now)) return { kind: 'noSound', stalledForSeconds };
+    return { kind: 'noWords', stalledForSeconds };
+  }
+
   // Latches the first terminal outcome, so a commit that happens later (leaving the note after an
   // error) still reports why the stream actually ended. Total: a thrown value can be anything.
   ended(reason: TranscriptEndReason, error?: unknown): void {
@@ -138,6 +224,10 @@ export class TranscriptHealthTracker {
       audioSecondsSent: round2(this.audioBytes / PCM_BYTES_PER_SAMPLE / this.sampleRate),
       secondsSinceLastAudio: this.lastAudioAt ? seconds(now - this.lastAudioAt) : null,
       streamCount: this.streams,
+      sourceEnded: this.sourceEnded,
+      sourceMuted: this.mutedTracks > 0,
+      audioSilent: this.isSilent(now),
+      secondsSilent: this.hasStarted ? seconds(now - this.silentSince()) : null,
     };
   }
 }
