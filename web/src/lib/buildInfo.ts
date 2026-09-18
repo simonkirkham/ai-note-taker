@@ -50,7 +50,7 @@ export function buildTitle(): string | undefined {
   if (parts.length === 0) return undefined
   // Name what actually opens. The link is the RELEASE's run; the installer version above it is
   // numbered by a separate packaging run, so "this run" would point at the wrong one.
-  return buildRunUrl() ? `${parts.join(' · ')} — click to open release ${number}` : parts.join(' · ')
+  return buildRunUrl() ? `${parts.join(' · ')} — click to open this release` : parts.join(' · ')
 }
 
 // 53-A — when this build was made, as the ISO timestamp the publish workflow also writes to the

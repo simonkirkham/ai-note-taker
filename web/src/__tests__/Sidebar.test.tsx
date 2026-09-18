@@ -208,7 +208,7 @@ describe('Sidebar', () => {
       renderSidebar()
       expect(screen.getByTestId('build-number')).toHaveAttribute(
         'title',
-        'Release 752 · commit 0123456 — click to open release 752',
+        'Release 752 · commit 0123456 — click to open this release',
       )
     })
 

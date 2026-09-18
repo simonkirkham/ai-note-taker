@@ -39,7 +39,7 @@ describe("buildTitle", () => {
       VITE_BUILD_RUN_ID: "35120085890",
     });
     expect(buildTitle()).toBe(
-      "Release 779 · installer 1.0.0-20260916.226 · commit ceb30a9 — click to open release 779",
+      "Release 779 · installer 1.0.0-20260916.226 · commit ceb30a9 — click to open this release",
     );
   });
 
@@ -50,7 +50,7 @@ describe("buildTitle", () => {
       VITE_BUILD_INSTALLER_VERSION: "",
       VITE_BUILD_RUN_ID: "35120085890",
     });
-    expect(buildTitle()).toBe("Release 779 · commit ceb30a9 — click to open release 779");
+    expect(buildTitle()).toBe("Release 779 · commit ceb30a9 — click to open this release");
   });
 
   it("does not promise a click when there is no run to open", () => {
@@ -67,5 +67,19 @@ describe("buildTitle", () => {
     stub({ VITE_BUILD_NUMBER: "", VITE_BUILD_SHA: "", VITE_BUILD_INSTALLER_VERSION: "", VITE_BUILD_RUN_ID: "" });
     expect(buildTitle()).toBeUndefined();
     expect(buildLabel()).toBe("Build dev");
+  });
+});
+
+// Nothing pins the release number and the run id arriving together, so cover the odd pair rather
+// than assume it: a run with no release number must not leave a dangling phrase.
+describe("buildTitle with a run but no release number", () => {
+  it("still reads as a sentence", () => {
+    stub({
+      VITE_BUILD_NUMBER: "",
+      VITE_BUILD_SHA: "ceb30a9123456789abcdef0123456789abcdef01",
+      VITE_BUILD_INSTALLER_VERSION: "",
+      VITE_BUILD_RUN_ID: "35120085890",
+    });
+    expect(buildTitle()).toBe("commit ceb30a9 — click to open this release");
   });
 });
