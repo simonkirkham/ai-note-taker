@@ -29,7 +29,9 @@ describe("buildRunUrl", () => {
 });
 
 describe("buildTitle", () => {
-  it("names the release, the installer version, the commit and the click", () => {
+  // The installer version is numbered by the packaging run, the link points at the release's own
+  // run — so the wording names the release, never "this run".
+  it("names the release, the installer version, the commit and what opens", () => {
     stub({
       VITE_BUILD_NUMBER: "779",
       VITE_BUILD_SHA: "ceb30a9123456789abcdef0123456789abcdef01",
@@ -37,7 +39,7 @@ describe("buildTitle", () => {
       VITE_BUILD_RUN_ID: "35120085890",
     });
     expect(buildTitle()).toBe(
-      "Release 779 · installer 1.0.0-20260916.226 · commit ceb30a9 — click to open this run",
+      "Release 779 · installer 1.0.0-20260916.226 · commit ceb30a9 — click to open release 779",
     );
   });
 
@@ -48,7 +50,7 @@ describe("buildTitle", () => {
       VITE_BUILD_INSTALLER_VERSION: "",
       VITE_BUILD_RUN_ID: "35120085890",
     });
-    expect(buildTitle()).toBe("Release 779 · commit ceb30a9 — click to open this run");
+    expect(buildTitle()).toBe("Release 779 · commit ceb30a9 — click to open release 779");
   });
 
   it("does not promise a click when there is no run to open", () => {

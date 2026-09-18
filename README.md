@@ -187,6 +187,8 @@ cdk deploy
 | `VITE_GOOGLE_CLIENT_ID` | _(empty)_                 | Google OAuth2 client ID for PKCE sign-in flow      |
 | `VITE_BUILD_NUMBER`     | _(leave unset)_           | Deploy run number shown at the foot of the sidebar. Set by `deploy.yml` and the desktop installer build; unset locally, where the app reads `Build dev` |
 | `VITE_BUILD_SHA`        | _(leave unset)_           | Commit the bundle was built from — the sidebar build stamp's hover text. Set alongside `VITE_BUILD_NUMBER`; unset locally, where there is no hover text |
+| `VITE_BUILD_RUN_ID`     | _(leave unset)_           | Pipeline run that built the bundle — the sidebar build stamp links to it. Set alongside `VITE_BUILD_NUMBER`; unset locally, where the stamp is plain text |
+| `VITE_BUILD_INSTALLER_VERSION` | _(leave unset)_    | Installer version of a packaged desktop build (e.g. `1.0.0-20260916.226`), shown in the stamp's hover text. Set only by the desktop installer build |
 
 **Tests** — set in CI or manually before running post-deploy test suites:
 

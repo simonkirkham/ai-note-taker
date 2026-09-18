@@ -61,6 +61,9 @@ export default function Sidebar({
     setAddingFolder(false);
   }
 
+  // CHANGE-43: read once — the value is used as the condition and as the href.
+  const runUrl = buildRunUrl();
+
   return (
     <nav
       className={clsx(styles.sidebar, open && styles.sidebarOpen)}
@@ -174,12 +177,13 @@ export default function Sidebar({
         )}
         {/* CHANGE-43: a link to the run that built this copy, when there was one — a hand build
             belongs to no run and stays plain text. */}
-        {buildRunUrl() ? (
+        {runUrl ? (
           <a
             className={styles.sidebarBuild}
             data-testid="build-number"
             title={buildTitle()}
-            href={buildRunUrl()}
+            aria-label={`${buildLabel()} — open the release that built it`}
+            href={runUrl}
             target="_blank"
             rel="noopener noreferrer"
           >{buildLabel()}</a>

@@ -48,7 +48,11 @@ function createWindow(): void {
   // CHANGE-43: still no in-app popups; this repo's own pages (the build stamp's pipeline-run
   // link) hand off to the system browser instead, and everything else is dropped.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (shouldOpenExternally(url)) void shell.openExternal(url)
+    if (shouldOpenExternally(url)) {
+      // A dropped rejection here would be a link that silently does nothing (no default browser,
+      // no handler for https) — the one failure mode nobody would report.
+      shell.openExternal(url).catch((err) => console.warn(`[desktop] could not open ${url}:`, err))
+    }
     return { action: 'deny' }
   })
   win.webContents.on('will-navigate', (event, url) => {
@@ -161,6 +165,9 @@ function registerDisplayMediaHandler(): void {
 // enumerateDevices labels, Chromium's pre-flight). The decision itself is pure and lives in
 // permissionPolicy.ts; this only unwraps Electron's two different shapes and logs.
 // Note: this does not touch the Windows OS-level microphone privacy setting.
+// Note: this policy governs what the RENDERER may ask Chromium for. It is not the whole story for
+// leaving the app — the window-open handler in createWindow hands this repo's own GitHub pages to
+// the system browser from the main process (CHANGE-43).
 function registerPermissionHandlers(): void {
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback, details) => {
     const decision = decidePermissionRequest(

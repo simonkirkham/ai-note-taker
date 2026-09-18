@@ -48,3 +48,47 @@ test('renderer has no Node integration (contextIsolation enforced)', async () =>
   const hasNodeRequire = await window.evaluate(() => typeof (globalThis as { require?: unknown }).require !== 'undefined')
   expect(hasNodeRequire).toBe(false)
 })
+
+// CHANGE-43 — the build stamp is a link to the pipeline run. In the shell a new window is denied,
+// so the only way it can do anything is the main process handing the URL to the system browser.
+// The predicate deciding WHICH urls qualify is unit-tested; this covers the wiring, which is the
+// half that fails silently (a denied window that opens nothing looks like a link nobody clicked).
+async function captureExternalOpens(application: ElectronApplication): Promise<string[]> {
+  return application.evaluate(({ shell }) => {
+    const opened: string[] = []
+    const store = globalThis as unknown as { __opened?: string[] }
+    store.__opened = opened
+    shell.openExternal = (url: string) => {
+      opened.push(url)
+      return Promise.resolve()
+    }
+    return opened
+  })
+}
+
+const readExternalOpens = (application: ElectronApplication) =>
+  application.evaluate(() => (globalThis as unknown as { __opened?: string[] }).__opened ?? [])
+
+test("a link to this repo's pipeline run reaches the system browser", async () => {
+  const window = await app.firstWindow()
+  await window.getByRole('button', { name: /sign in with google/i }).waitFor({ timeout: APP_BOOT_TIMEOUT_MS })
+  await captureExternalOpens(app)
+
+  const runUrl = 'https://github.com/simonkirkham/ai-note-taker/actions/runs/35127113946'
+  await window.evaluate((url) => window.open(url, '_blank'), runUrl)
+  await expect.poll(() => readExternalOpens(app)).toEqual([runUrl])
+
+  // ...and no second window was opened inside the app.
+  expect(app.windows()).toHaveLength(1)
+})
+
+test('a link anywhere else opens nothing at all', async () => {
+  const window = await app.firstWindow()
+  await window.getByRole('button', { name: /sign in with google/i }).waitFor({ timeout: APP_BOOT_TIMEOUT_MS })
+  await captureExternalOpens(app)
+
+  await window.evaluate(() => window.open('https://example.test/anything', '_blank'))
+  await window.waitForTimeout(500)
+  expect(await readExternalOpens(app)).toEqual([])
+  expect(app.windows()).toHaveLength(1)
+})

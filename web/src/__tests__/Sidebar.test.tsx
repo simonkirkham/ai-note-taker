@@ -208,7 +208,7 @@ describe('Sidebar', () => {
       renderSidebar()
       expect(screen.getByTestId('build-number')).toHaveAttribute(
         'title',
-        'Release 752 · commit 0123456 — click to open this run',
+        'Release 752 · commit 0123456 — click to open release 752',
       )
     })
 
@@ -222,6 +222,8 @@ describe('Sidebar', () => {
       expect(stamp).toHaveAttribute('href', 'https://github.com/simonkirkham/ai-note-taker/actions/runs/35120085890')
       expect(stamp).toHaveAttribute('target', '_blank')
       expect(stamp.getAttribute('rel')).toContain('noreferrer')
+      // A screen reader reads the label, not the hover text.
+      expect(stamp).toHaveAttribute('aria-label', 'Build 752 — open the release that built it')
     })
 
     it('is not a link on a hand build, which belongs to no run', () => {

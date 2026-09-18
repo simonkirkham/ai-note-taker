@@ -93,7 +93,12 @@
 }
 
 /* CHANGE-43 — as a link it must stay exactly as quiet as the plain text it replaces: no
-   underline, no link colour, until the pointer or keyboard is on it. */
+   underline, no link colour, until the pointer or keyboard is on it.
+   `width: fit-content` keeps the hit area to the text rather than the sidebar's full width; it
+   works because .sidebarFooter is a column flex container, which blockifies this anchor.
+   The hover deliberately does NOT change colour: --color-primary on the sidebar surface measures
+   3.19-4.10:1 in 4 of the 17 themes, under the 4.5:1 bar this 11px text was chosen to clear
+   (see the note above). The underline alone carries the affordance; --color-text darkens it. */
 a.sidebarBuild {
   text-decoration: none;
   cursor: pointer;
@@ -101,7 +106,7 @@ a.sidebarBuild {
 }
 
 a.sidebarBuild:hover {
-  color: var(--color-primary);
+  color: var(--color-text);
   text-decoration: underline;
 }
 

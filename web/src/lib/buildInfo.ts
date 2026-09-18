@@ -48,7 +48,9 @@ export function buildTitle(): string | undefined {
   if (sha) parts.push(`commit ${sha.slice(0, 7)}`)
 
   if (parts.length === 0) return undefined
-  return buildRunUrl() ? `${parts.join(' · ')} — click to open this run` : parts.join(' · ')
+  // Name what actually opens. The link is the RELEASE's run; the installer version above it is
+  // numbered by a separate packaging run, so "this run" would point at the wrong one.
+  return buildRunUrl() ? `${parts.join(' · ')} — click to open release ${number}` : parts.join(' · ')
 }
 
 // 53-A — when this build was made, as the ISO timestamp the publish workflow also writes to the
