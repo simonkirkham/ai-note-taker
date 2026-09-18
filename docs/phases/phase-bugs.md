@@ -21,6 +21,8 @@ Ordered by severity, then by id.
 | BUG-81 | Typing a title on a brand-new note and clicking Save can delete the note instead — the button changes from Save to Cancel under your cursor, and Cancel throws a new note away. | Open | — |
 | BUG-84 | Asking the app to analyse a longer meeting fails almost every time — 7 of the last 9 tries failed — and the message tells you to try again in a minute, which cannot help. | Open | TI-63 |
 | BUG-85 | The live transcript can silently stop part-way through a meeting while the recording timer keeps running. It has now happened twice, costing 54 minutes of one meeting and 3.5 hours of another. You are now told within two minutes, and told which of three things went wrong; stopping it happening at all is still to do. | In Progress | — |
+| [BUG-86](#bug-86--on-device-speaker-labels-put-the-other-sides-words-under-me-too) | **On a call played through speakers, the on-device "who said what" labels are wrong: nearly every line the other side says appears twice, once as "Them" and once as "Me", and your own words are buried inside those repeats.** Makes the labelled transcript unreadable for any call not taken on headphones. | Open | — |
+| [BUG-87](#bug-87--finalising-transcript-takes-almost-as-long-as-the-meeting) | **After you stop an on-device recording, "Finalising transcript…" runs for almost as long as the meeting itself — 3 m 22 s for a 3 m 46 s test, so roughly 55 minutes after a one-hour meeting — before labels or analysis appear.** | Open | — |
 | BUG-70 | Clicking "+ New Note" while recording and then choosing to keep recording still leaves a blank, untitled note behind on your home list. | Open — held behind 51-C | BUG-54, 51-C |
 | BUG-73 | Signing out while an on-device transcript is still finishing can park you for up to an hour with no way to leave — a real problem on a shared machine. | Open | BUG-55 |
 | BUG-75 | Reopening a note while its on-device transcript is still finishing shows no transcript, and nothing appears until you navigate again or reload. | Open | BUG-72 |
@@ -379,3 +381,42 @@ Reproduced against a real editor: adding `Renewals` to that body yields `- [ ] \
 **Reproduction attempt, 2026-09-11:** 4 more full runs, all clean (1225/1225), before the machine ran low on memory and the loop was killed. So far 1 failure in 7 full runs on this laptop, none in CI.
 
 **Next step:** capture the assertion text when it next fails — in CI, `scripts/ci-logs.sh <pr>` on the red `frontend` check; locally, keep the full `npx vitest run` output instead of a filtered tail.
+
+## BUG-86 — On-device speaker labels put the other side's words under "Me" too
+
+**Severity:** High — the labelled transcript is unreadable whenever a call plays through speakers, which is the default for a laptop. **Status:** Open. Found 2026-09-18 by the user, testing on-device transcription against a YouTube video (note `e65ad62a…`, Default workspace).
+
+**Symptom:** the saved transcript alternates `Me:`/`Them:` line by line, and the two lines say the same thing. `Them:` is the video, cleanly. `Me:` is the same video, slightly re-worded ("Baros" vs "far us", "authentic engineering" vs "agentic engineering"). The user's own sentence ("If I speak now, can you identify it as a different person? No, you can't.") is present, but inside a `Me:` turn that also carries the video's words.
+
+**Cause (from the transcript, not yet from audio):** the microphone hears the speakers. 48-C labels by source — mic = Me, system audio = Them — and assumes the mic carries only the user. With speakers on, the mic stream also carries the other side, so the Me pass transcribes it a second time. The split itself ran: the Windows process list at 13:49:48 UTC showed `whisper-cli.exe … ggml-small.en.bin … --vad -vm ggml-silero-v5.1.2.bin`, the per-source pass.
+
+**Not the cause:** the browser's echo cancellation. It only removes audio the same page plays, so it cannot remove a YouTube tab or a Teams window.
+
+**Not yet checked:** whether the test used speakers or headphones (the transcript implies speakers). Headphones would likely give clean labels — worth one test to confirm the diagnosis.
+
+**Fix directions (hypotheses, not a spec):**
+1. Drop a `Me` segment whose words largely match a `Them` segment overlapping it in time — the echo is a near-duplicate, delayed by milliseconds.
+2. Gate the mic by the loopback: suppress mic frames where loopback energy is high and mic energy tracks it.
+3. Both need a real speakers-on recording kept as a fixture — the current specs use synthetic separate streams, which structurally cannot contain echo.
+
+Related: [BUG-87] (the same stop-time pass is also slow).
+
+## BUG-87 — "Finalising transcript…" takes almost as long as the meeting
+
+**Severity:** Medium — nothing is lost, but the note has no labels and no analysis for close to the meeting's length after it ends. **Status:** Open. Found 2026-09-18 by the user (same test as [BUG-86]).
+
+**Measured (this machine, 2026-09-18, from `local-transcription.log` and the Windows process list):**
+
+| Step | UTC | Took |
+|---|---|---|
+| Recording | 13:44:23 → 13:48:09 | 3 m 46 s of audio |
+| Pass 1 (mic, `small.en` + VAD) | 13:48:09 → 13:49:48 | ~1 m 39 s |
+| Pass 2 (system audio, `small.en` + VAD) | 13:49:48 → 13:51:31 | ~1 m 43 s |
+| Total finalising | | **3 m 22 s ≈ 0.9 × the recording** |
+
+**Cause:** as designed, not a malfunction. The 1:1 split re-transcribes the WHOLE recording twice with the larger model, one after the other (`diarizeStreams` in `desktop/src/localTranscription.ts`). The budget comment in `useTranscription.ts` already predicts 0.87 × audio. The live `base.en` transcript is discarded when the split succeeds, so none of the live work is reused.
+
+**Fix directions (hypotheses):**
+1. Run the two passes in parallel (each is capped at half the cores, so together they would use the machine rather than wait).
+2. Label from the live transcript instead of re-transcribing: the live pass already knows when words were said; tag each by which source was louder at that moment. Cost near zero, and it would also give live labels ([CHANGE-44]).
+3. Keep `small.en` only for the Them side, where quality matters most.
