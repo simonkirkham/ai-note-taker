@@ -388,11 +388,11 @@ Reproduced against a real editor: adding `Renewals` to that body yields `- [ ] \
 
 **Symptom:** the saved transcript alternates `Me:`/`Them:` line by line, and the two lines say the same thing. `Them:` is the video, cleanly. `Me:` is the same video, slightly re-worded ("Baros" vs "far us", "authentic engineering" vs "agentic engineering"). The user's own sentence ("If I speak now, can you identify it as a different person? No, you can't.") is present, but inside a `Me:` turn that also carries the video's words.
 
-**Cause (from the transcript, not yet from audio):** the microphone hears the speakers. 48-C labels by source — mic = Me, system audio = Them — and assumes the mic carries only the user. With speakers on, the mic stream also carries the other side, so the Me pass transcribes it a second time. The split itself ran: the Windows process list at 13:49:48 UTC showed `whisper-cli.exe … ggml-small.en.bin … --vad -vm ggml-silero-v5.1.2.bin`, the per-source pass.
+**Cause:** the microphone hears the speakers. 48-C labels by source — mic = Me, system audio = Them — and assumes the mic carries only the user. With speakers on, the mic stream also carries the other side, so the Me pass transcribes it a second time. The split itself ran: the Windows process list at 13:49:48 UTC showed `whisper-cli.exe … ggml-small.en.bin … --vad -vm ggml-silero-v5.1.2.bin`, the per-source pass.
 
 **Not the cause:** the browser's echo cancellation. It only removes audio the same page plays, so it cannot remove a YouTube tab or a Teams window.
 
-**Not yet checked:** whether the test used speakers or headphones (the transcript implies speakers). Headphones would likely give clean labels — worth one test to confirm the diagnosis.
+**Cause confirmed 2026-09-18:** the user re-ran the same test on headphones (note `5c874d7d…`). Labels came out clean: every `Them:` line is the video, every `Me:` line is the user, with no duplicates. So the split works; only the speaker-to-mic echo defeats it.
 
 **Fix directions (hypotheses, not a spec):**
 1. Drop a `Me` segment whose words largely match a `Them` segment overlapping it in time — the echo is a near-duplicate, delayed by milliseconds.
