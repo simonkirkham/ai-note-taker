@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { createServer, type Server } from 'node:http'
 import { probeAlive, shouldReplaceWarmServer, shouldDiscardShared } from '../src/whisperServer'
+import { isHangFailure } from '../src/streamingSession'
 import {
   discardIfCurrent,
   __setSharedServerForTest,
@@ -112,6 +113,10 @@ test('BUG-88: a real /inference timeout rejects with name "TimeoutError"', async
       caught = err
     }
     expect((caught as { name?: string })?.name).toBe('TimeoutError')
+    // And join it to the decision: the predicate must agree with what a real hang actually throws,
+    // or the recovery silently never fires. Asserting the name alone leaves that link to two
+    // matching string literals in two files.
+    expect(isHangFailure(caught)).toBe(true)
   } finally {
     srv.close()
   }
@@ -131,8 +136,10 @@ test('BUG-88: a 500 from the engine does NOT look like a hang', async () => {
       signal: AbortSignal.timeout(2000),
     })
     expect(res.ok).toBe(false)
-    const thrown = new Error(`whisper-server /inference ${res.status}`)
-    expect(thrown.name).not.toBe('TimeoutError')
+    // The throw site builds exactly this; feed it to the same predicate rather than asserting
+    // that `new Error(...).name === 'Error'`, which cannot fail.
+    expect(isHangFailure(new Error(`whisper-server /inference ${res.status}`))).toBe(false)
+    expect(isHangFailure(new SyntaxError('Unexpected token'))).toBe(false)
   } finally {
     srv.close()
   }

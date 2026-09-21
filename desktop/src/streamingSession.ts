@@ -19,6 +19,17 @@ const FAIL_THRESHOLD = 3 // consecutive post-ready /inference failures before we
 // machine is in the middle of a meeting. Past this the user is told, once, as before.
 const MAX_RECOVERIES = 2
 
+// BUG-88 (review round 3) — "replace it" and "give up" must not share one counter. They did, and
+// because `failures` counts every cause while `hangFailures` counts only timeouts, `failures`
+// always reached the threshold first: ONE connection blip among the first three failures ended
+// recovery for the whole recording, and the step timer stopped, so the ~30 clean timeouts that
+// followed never got a chance. Measured. That is a path straight back to the original bug.
+//
+// The costs are asymmetric. Replacing when we did not need to costs one model load. NOT replacing
+// when we should have costs the rest of the meeting's live transcript — which is BUG-88 itself. So
+// give the timeout run its own threshold, and let "give up" sit further out.
+const GIVE_UP_THRESHOLD = FAIL_THRESHOLD * 2
+
 // BUG-88 (review) — a recovery that never returns is the bug again, one layer up: the session
 // would sit with `recovering` latched, reporting nothing, for the rest of the meeting. The thing
 // being recovered FROM is a hang, so a hanging recovery is a realistic input, not a hypothetical.
@@ -37,7 +48,7 @@ const RECOVER_TIMEOUT_MS = 90_000
 // FAIL_THRESHOLD requests parked, `/` almost certainly still answers and the gate would have
 // declined to replace a genuinely jamming engine. It would have made the headline fix inert in the
 // exact case it exists for, and logged nothing to say so.
-function isHangFailure(err: unknown): boolean {
+export function isHangFailure(err: unknown): boolean {
   const name = (err as { name?: string } | null)?.name
   return name === 'TimeoutError' || name === 'AbortError'
 }
@@ -241,7 +252,7 @@ export class StreamingSession {
         error: (err as Error).message,
       })
       this.droppedSinceLog = 0
-      if (this.failures >= FAIL_THRESHOLD && !this.terminalReported) {
+      if (!this.terminalReported && this.hangFailures >= FAIL_THRESHOLD) {
         // BUG-88: a sustained run of failures against a READY server means the engine has stopped
         // answering, and on 2026-09-21 that state never resolved on its own — the process was still
         // hung two hours later, refusing even a bare GET. Reporting it and carrying on cost 8-10
@@ -254,6 +265,12 @@ export class StreamingSession {
         void this.recoverOrGiveUp(err as Error)
         return
       }
+      // Not a hang: a run of 500s or malformed bodies. A replacement returns the same thing, so
+      // there is nothing to recover to — but the live view is still dead and the user is owed the
+      // message. Further out than the hang threshold, so a blip cannot pre-empt a recovery.
+      if (!this.terminalReported && this.failures >= GIVE_UP_THRESHOLD) {
+        this.reportTerminal(new Error(LIVE_ENGINE_UNRESPONSIVE, { cause: err }))
+      }
     } finally {
       this.busy = false
     }
@@ -265,17 +282,18 @@ export class StreamingSession {
   private async recoverOrGiveUp(cause: Error): Promise<void> {
     const recover = this.opts?.onRecover
     const budget = this.opts?.maxRecoveries ?? MAX_RECOVERIES
-    // Replacing an engine only helps when the failures are HANGS — see isHangFailure. Decided from
-    // the failures we already have, with no extra request to an engine we have just concluded is
-    // jamming, and no await before `recovering` latches.
-    if (recover && this.hangFailures < FAIL_THRESHOLD) {
-      this.reportTerminal(new Error(LIVE_ENGINE_UNRESPONSIVE, { cause }))
-      return
-    }
+    // Only ever reached on a run of HANGS — see isHangFailure and the call site. Decided from the
+    // failures already in hand, with no extra request to an engine we have just concluded is
+    // jamming.
     if (recover && this.recoveries < budget) {
       // Set synchronously, before ANY await: the step timer is unguarded the moment step()'s
       // finally clears `busy`, so a gap here lets further requests reach the jammed engine and lets
       // this method re-enter once per step, spending the whole recovery budget in one window.
+      //
+      // The other half of the same invariant: there must be no await before recover() is CALLED
+      // either, or step()'s own disposed check stops covering this call and a recording that has
+      // already ended can reach into the next one's engine. An earlier round introduced exactly
+      // that gap by accident, by adding a probe here.
       this.recovering = true
       this.recoveries++
       try {
@@ -301,6 +319,7 @@ export class StreamingSession {
         if (replacement) {
           this.server = replacement
           this.failures = 0
+          this.hangFailures = 0
           // BUG-88 (review): ticks held off DURING a restart are not the engine failing to keep
           // pace, but they land in the same `dropped` field that check-local-transcription-log.sh
           // reads to judge BUG-65/BUG-67. Left alone, a successful recovery is filed as evidence

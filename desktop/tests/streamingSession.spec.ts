@@ -625,6 +625,46 @@ test('BUG-88: an error in the middle of a run of hangs cannot be laundered into 
   expect(spawned).toBe(0)
 })
 
+test('BUG-88: one connection blip in a run of hangs does not cost the rest of the meeting', async () => {
+  // Measured in review: with a single counter deciding both "replace it" and "give up", `failures`
+  // always won the race, so ONE blip among the first three failures ended recovery for the whole
+  // recording — the step timer stopped and the ~30 clean timeouts that followed never happened.
+  // That is a path straight back to the original bug, which is why the thresholds are separate.
+  let n = 0
+  let spawned = 0
+  const blippy = {
+    running: true,
+    ready: true,
+    transcribe() {
+      n++
+      // Third failure is a dropped connection — what undici throws when the peer goes away —
+      // then clean timeouts for ever after.
+      return Promise.reject(
+        n === 3 ? new TypeError('fetch failed') : new DOMException('aborted', 'TimeoutError'),
+      )
+    },
+    kill: () => {},
+  } as unknown as WhisperServer
+  const fresh = liveServer('recovered anyway')
+  const live: string[] = []
+  const session = new StreamingSession(blippy, (x) => live.push(x), () => {}, undefined, {
+    readyTimeoutMs: 60_000,
+    stepMs: FAST_STEP,
+    onRecover: async () => {
+      spawned++
+      return fresh
+    },
+  })
+  session.start()
+  const stop = feedAudio(session)
+  await waitMs(3500)
+  stop()
+  session.dispose()
+
+  expect(spawned).toBe(1)
+  expect(live.join(' ')).toMatch(/recovered anyway/)
+})
+
 test('BUG-88: a replacement arriving after the recording ended is never adopted', async () => {
   // Stop-then-start inside the recovery window is exactly what the user did on 2026-09-21.
   //
