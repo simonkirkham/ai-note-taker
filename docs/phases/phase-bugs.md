@@ -467,7 +467,7 @@ A web source claiming 8× for the same switch (a large model with KleidiAI) did 
 | 09:26:27 → 09:33:50 | 7 m 23 s of "Finalising transcript…" ([BUG-87]) while the dead live session keeps firing a 20 s timeout every 21 s against the hung engine |
 | 09:33:50 | Speaker-separation pass completes, session disposed, log ends |
 
-**The engine was still hung more than two hours later, and this was measured rather than inferred.** `whisper-server.exe` pid 13236, started 09:16:30, was still alive and still listening on 127.0.0.1:55592. A plain `GET /` — not even `/inference` — timed out after 20.1 s. Two CPU samples 5 s apart moved 0.03 s: it is **blocked, not busy**. It had burned 1 991 s of CPU and then stopped.
+**The engine was still hung more than two hours later, and this was measured rather than inferred.** `whisper-server.exe` pid 13236, started 09:16:30, was still alive and still listening on 127.0.0.1:55592. A plain `GET /` — not even `/inference` — timed out after 20.1 s. Two CPU samples 5 s apart moved 0.03 s: it is **blocked, not busy**. It had burned 1 991 s of CPU and then stopped. **Windows then refused to terminate it** — both `Stop-Process -Force` and `taskkill /F` returned *Access is denied* to the owning user, which points at a stuck kernel-level wait rather than a spin in whisper's own code, and is consistent with the zero CPU. A hung engine therefore may not be clearable even by killing it; relaunching the app is what restores service, because a fresh run builds a new server on a new port.
 
 **Diagnosis:**
 
