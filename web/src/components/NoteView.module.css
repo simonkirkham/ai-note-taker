@@ -136,6 +136,41 @@
   cursor: default;
 }
 
+/* CHANGE-46 — the copy-link button. Same neutral shape as the other header controls
+   (--color-border-strong for the 17-theme contrast floor, see CHANGE-39). */
+.copyLinkButton {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius);
+  padding: 0.375rem 0.875rem;
+  font-family: inherit;
+  font-size: 0.875rem;
+  color: var(--color-text);
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition), background var(--transition);
+}
+
+.copyLinkButton:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: var(--color-primary-bg);
+}
+
+.copyLinkButton:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Sits beside the button rather than replacing its label, so the control keeps its name.
+   Always present (empty until copied) and width-reserved, so nothing shifts when it fills. */
+.copyLinkStatus {
+  min-width: 4rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
 .deleteNoteButton {
   background: none;
   border: 1px solid var(--color-error);

@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
 import { useEffect, useRef, useState } from "react";
+import { useLocation } from "react-router";
 import { ApiError } from "../api/client";
 import { contentHash } from "../api/contentHash";
 import { type CalendarMeeting } from "../api/meetings";
@@ -14,6 +15,7 @@ import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useCreateNoteFromNextOccurrence, useLinkNoteToCalendar, useUnlinkNoteFromCalendar } from "../hooks/useMeetingMutations";
 import { useNoteDetail } from "../hooks/useNoteDetail";
 import { useAnalyseNote, useEditContent, useRenameNoteDetail, useSetNoteDate } from "../hooks/useNoteDetailMutations";
+import { usePublicOrigin } from "../hooks/usePublicOrigin";
 import { useTagNote, useUntagNote } from "../hooks/useTagMutations";
 import { useTags } from "../hooks/useTags";
 import type { useTranscription } from "../hooks/useTranscription";
@@ -36,6 +38,10 @@ import RecordControl from "./RecordControl";
 import ShortcutsPanel from "./ShortcutsPanel";
 import { useToast } from "./toastContext";
 import TranscriptTab, { type RecordingDownloadStatus, type DiarizationDisplayStatus } from "./TranscriptTab";
+
+// CHANGE-46: how long the copy-link button reads "Copied" before going back to its label.
+// Exported so the spec advances exactly this long instead of guessing at it.
+export const COPIED_LABEL_MS = 2000;
 
 type NoteTab = "quick" | "transcript" | "final";
 
@@ -163,6 +169,14 @@ export default function NoteView({
   // Bumped to remount the (uncontrolled) editor onto freshly-refetched content after a stale conflict.
   const [editorReseedKey, setEditorReseedKey] = useState(0);
   const { showError } = useToast();
+  // CHANGE-46: the link is built from the ROUTER's path, not window.location.href — the note's
+  // address without whatever query or hash happens to be on the URL. NoteView only ever mounts
+  // under the `notes/:noteId` route (App.tsx), so that path is always the note's own. The origin
+  // comes from the hook because the desktop window's own origin is a localhost nobody else can
+  // open.
+  const { pathname } = useLocation();
+  const publicOrigin = usePublicOrigin();
+  const [linkCopied, setLinkCopied] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const dateDefaultedFor = useRef<string | null>(null);
   // BUG-18: content otherwise persists only via the editor's onBlur. Removing an
@@ -273,6 +287,30 @@ export default function NoteView({
       window.open(url, "_blank", "noopener");
     } catch {
       showError("Could not download the recording. Please try again.");
+    }
+  };
+
+  // Clears itself so the button does not sit on "Copied" for the rest of the note's life,
+  // claiming a copy the user made minutes ago. setState in the timer callback, never in the
+  // effect body (react-hooks/set-state-in-effect is a hard CI gate).
+  useEffect(() => {
+    if (!linkCopied) return;
+    const timer = setTimeout(() => setLinkCopied(false), COPIED_LABEL_MS);
+    return () => clearTimeout(timer);
+  }, [linkCopied]);
+
+  const handleCopyLink = async () => {
+    const link = `${publicOrigin}${pathname}`;
+    try {
+      await navigator.clipboard.writeText(link);
+      setLinkCopied(true);
+    } catch {
+      // A button that silently does nothing is worse than no button here: the user walks away
+      // believing they have the link. The failure is permanent, not transient (no clipboard
+      // permission, or no clipboard at all), so "try again" would be false advice — and in the
+      // desktop window there is no address bar to fall back to. Hand over the link itself.
+      setLinkCopied(false);
+      showError(`Couldn't copy the link — here it is: ${link}`);
     }
   };
 
@@ -828,6 +866,34 @@ export default function NoteView({
               workspaces={otherWorkspaces}
               onMove={onMoveToWorkspace}
             />
+          )}
+          {hasContent && (
+            <>
+              {/* The label stays "Copy link" and the confirmation lives in its own status
+                  region. Swapping the button's text would change its accessible NAME — a
+                  control that announces itself as "Copied" tells a user tabbing to it nothing
+                  about what it does, and the name change is announced unreliably. Same split
+                  as the "No upcoming occurrences" status above. */}
+              <button
+                type="button"
+                data-testid="copy-note-link-button"
+                onClick={() => void handleCopyLink()}
+                className={styles.copyLinkButton}
+              >
+                Copy link
+              </button>
+              {/* Always rendered, empty until copied: a live region has to be in the
+                  accessibility tree BEFORE its content changes or the announcement is
+                  commonly dropped. Reserving its width also stops Delete — a destructive
+                  control 12px away — jumping sideways under the cursor for two seconds. */}
+              <span
+                data-testid="copy-note-link-status"
+                role="status"
+                className={styles.copyLinkStatus}
+              >
+                {linkCopied ? "Copied" : ""}
+              </span>
+            </>
           )}
           {hasContent && (
             <button

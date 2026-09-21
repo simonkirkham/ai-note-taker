@@ -7,7 +7,7 @@ import { ToastProvider } from '../components/ToastProvider'
 import { RecordingSessionProvider } from '../hooks/recordingSession'
 import { APP_TITLE } from '../hooks/useDocumentTitle'
 import type { TranscriptionStatus, UseTranscriptionResult } from '../hooks/useTranscription'
-import { render, screen, waitFor, fireEvent } from '../test/render'
+import { act, render, screen, waitFor, fireEvent } from '../test/render'
 import { server } from '../test/setup'
 
 // NoteView renders the editor through LazyNoteEditor (19-I1: React.lazy + Suspense
@@ -81,10 +81,12 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-function renderNoteView(props: { noteId?: string; initialTitle?: string; onBack?: () => void; onDelete?: (noteId: string) => Promise<void>; onOpenNote?: (noteId: string, title?: string, isNew?: boolean) => void; isNew?: boolean; otherWorkspaces?: { workspaceId: string; name: string }[]; onMoveToWorkspace?: (workspaceId: string) => void } = {}) {
-  const { noteId = 'note-1', initialTitle = 'Test Note', onBack = noop, onDelete = asyncNoop, onOpenNote = noop, isNew, otherWorkspaces, onMoveToWorkspace } = props
+function renderNoteView(props: { noteId?: string; initialTitle?: string; onBack?: () => void; onDelete?: (noteId: string) => Promise<void>; onOpenNote?: (noteId: string, title?: string, isNew?: boolean) => void; isNew?: boolean; otherWorkspaces?: { workspaceId: string; name: string }[]; onMoveToWorkspace?: (workspaceId: string) => void; route?: string } = {}) {
+  const { noteId = 'note-1', initialTitle = 'Test Note', onBack = noop, onDelete = asyncNoop, onOpenNote = noop, isNew, otherWorkspaces, onMoveToWorkspace, route } = props
   return render(
-    <ToastProvider><MemoryRouter><RecordingSessionProvider>
+    // CHANGE-46: the copy-link button reads the note's address off the router, so a test that
+    // cares about the link renders at the real note path instead of the default '/'.
+    <ToastProvider><MemoryRouter initialEntries={route ? [route] : undefined}><RecordingSessionProvider>
       <NoteView
         noteId={noteId}
         initialTitle={initialTitle}
@@ -1362,6 +1364,149 @@ describe('NoteView', () => {
       const alert = await screen.findByRole('alert')
       expect(alert).toHaveTextContent(/temporarily unavailable/i)
       expect(alert).not.toHaveTextContent(/Couldn't generate final notes/i)
+    })
+  })
+
+  // CHANGE-46. There was no way to hand someone a link to a note: the web app keeps one in the
+  // address bar, and the desktop window has no address bar at all.
+  describe('copying a link to the note (CHANGE-46)', () => {
+    const NOTE_ROUTE = '/w/ws-7/notes/note-1'
+    const restores: (() => void)[] = []
+
+    // Replaces ONLY navigator.clipboard and puts it back afterwards. `vi.stubGlobal('navigator',
+    // {...navigator})` looks equivalent and is not: Navigator's properties live on its prototype,
+    // so the spread is `{}` and the whole rest of the Navigator (userAgent, mediaDevices, …)
+    // vanishes for the duration of the test.
+    function stubClipboard(writeText: (text: string) => Promise<void>) {
+      const original = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
+      Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+      restores.push(() => {
+        if (original) Object.defineProperty(navigator, 'clipboard', original)
+        else Reflect.deleteProperty(navigator, 'clipboard')
+      })
+    }
+
+    function stubDesktopShell(publicOrigin: string | null) {
+      const original = Object.getOwnPropertyDescriptor(window, 'desktop')
+      Object.defineProperty(window, 'desktop', {
+        value: { isDesktop: true, platform: 'win32', app: { getPublicOrigin: () => Promise.resolve(publicOrigin) } },
+        configurable: true,
+      })
+      restores.push(() => {
+        if (original) Object.defineProperty(window, 'desktop', original)
+        else Reflect.deleteProperty(window, 'desktop')
+      })
+    }
+
+    function renderAtNoteRoute() {
+      server.use(
+        http.get('/api/notes/:noteId', () =>
+          HttpResponse.json({ noteId: 'note-1', title: 'Roadmap review', content: 'x', date: null, tags: [] })),
+      )
+      return renderNoteView({ route: NOTE_ROUTE })
+    }
+
+    afterEach(() => {
+      while (restores.length) restores.pop()!()
+    })
+
+    it('Scenario: copy the link — puts the note\'s own web address on the clipboard', async () => {
+      const writeText = vi.fn().mockResolvedValue(undefined)
+      stubClipboard(writeText)
+      renderAtNoteRoute()
+
+      await userEvent.click(await screen.findByTestId('copy-note-link-button'))
+
+      await waitFor(() =>
+        expect(writeText).toHaveBeenCalledWith(`${window.location.origin}${NOTE_ROUTE}`))
+    })
+
+    // The desktop window serves the app from http://localhost:5180. Copying THAT gives an address
+    // that opens on one machine, only while the app is running — useless to send to anyone, and
+    // the desktop is the surface with no address bar to fall back to.
+    it('Scenario: copy the link in the desktop app — copies the public web address, not localhost', async () => {
+      const writeText = vi.fn().mockResolvedValue(undefined)
+      stubClipboard(writeText)
+      stubDesktopShell('https://note-taker-ai.com')
+      renderAtNoteRoute()
+
+      await userEvent.click(await screen.findByTestId('copy-note-link-button'))
+
+      await waitFor(() =>
+        expect(writeText).toHaveBeenCalledWith(`https://note-taker-ai.com${NOTE_ROUTE}`))
+    })
+
+    it('Scenario: an older desktop shell that cannot answer still copies something usable', async () => {
+      const writeText = vi.fn().mockResolvedValue(undefined)
+      stubClipboard(writeText)
+      stubDesktopShell(null)
+      renderAtNoteRoute()
+
+      await userEvent.click(await screen.findByTestId('copy-note-link-button'))
+
+      await waitFor(() =>
+        expect(writeText).toHaveBeenCalledWith(`${window.location.origin}${NOTE_ROUTE}`))
+    })
+
+    it('Scenario: copy the link — says Copied, so the click is visibly confirmed', async () => {
+      stubClipboard(vi.fn().mockResolvedValue(undefined))
+      renderAtNoteRoute()
+      const button = await screen.findByTestId('copy-note-link-button')
+      // Queried by ROLE, not test id: `role="status"` is what makes the confirmation reach a
+      // screen reader at all, and a test id would still find the span without it.
+      expect(await screen.findByRole('status')).toBeEmptyDOMElement()
+
+      await userEvent.click(button)
+
+      await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Copied'))
+      // The button keeps its own name: a control announcing itself as "Copied" says nothing
+      // about what pressing it does.
+      expect(button).toHaveTextContent('Copy link')
+    })
+
+    it('Scenario: the confirmation clears after about two seconds, not later', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+      stubClipboard(vi.fn().mockResolvedValue(undefined))
+      renderAtNoteRoute()
+
+      // Literals, not the constant under test: advancing by the component's own value would
+      // pass for any duration at all. Measured from the click, because `shouldAdvanceTime`
+      // also moves the fake clock while the click and the queries run.
+      const clickedAt = Date.now()
+      await user.click(await screen.findByTestId('copy-note-link-button'))
+      await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Copied'))
+
+      await act(() => vi.advanceTimersByTimeAsync(Math.max(0, 1900 - (Date.now() - clickedAt))))
+      expect(screen.getByTestId('copy-note-link-status')).toBeInTheDocument()
+
+      await act(() => vi.advanceTimersByTimeAsync(200))
+      await waitFor(() => expect(screen.getByRole('status')).toBeEmptyDOMElement())
+    })
+
+    // A copy that silently does nothing is worse than no button: the user walks away believing
+    // they have the link. And "try again" would be false advice — these failures are permanent.
+    it('Scenario: the clipboard refuses — hands over the link itself instead of doing nothing', async () => {
+      stubClipboard(vi.fn().mockRejectedValue(new Error('denied')))
+      renderAtNoteRoute()
+      const button = await screen.findByTestId('copy-note-link-button')
+
+      await userEvent.click(button)
+
+      const alert = await screen.findByRole('alert')
+      expect(alert).toHaveTextContent(`${window.location.origin}${NOTE_ROUTE}`)
+      expect(screen.getByTestId('copy-note-link-status')).toBeEmptyDOMElement()
+    })
+
+    it('Scenario: a blank new note offers no link to copy', async () => {
+      server.use(
+        http.get('/api/notes/:noteId', () =>
+          HttpResponse.json({ noteId: 'note-1', title: '', content: '', date: null, tags: [] })),
+      )
+      renderNoteView({ initialTitle: '', route: NOTE_ROUTE })
+      await screen.findByLabelText('Note content')
+
+      expect(screen.queryByTestId('copy-note-link-button')).not.toBeInTheDocument()
     })
   })
 })

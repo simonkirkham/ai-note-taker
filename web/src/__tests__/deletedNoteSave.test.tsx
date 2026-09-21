@@ -1,6 +1,7 @@
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { useState } from 'react'
+import { MemoryRouter } from 'react-router'
 import { keys } from '../api/queryKeys'
 import App from '../App'
 import { AuthProvider } from '../auth/AuthContext'
@@ -59,8 +60,12 @@ function deletedResponse() {
 function Harness({ onNotFound }: { onNotFound?: () => void } = {}) {
   const [open, setOpen] = useState(true)
   return (
+    // The rescue banner stays OUTSIDE the router, exactly as in App.tsx — that is the whole
+    // point of BUG-59 (it must survive the navigation home). CHANGE-46: NoteView reads the
+    // note's address off the router to build its copyable link, so only it is wrapped.
     <ToastProvider>
       <DeletedNoteRescue />
+      <MemoryRouter initialEntries={['/w/ws-1/notes/note-1']}>
       {open && (
         <NoteView
           noteId="note-1"
@@ -72,6 +77,7 @@ function Harness({ onNotFound }: { onNotFound?: () => void } = {}) {
           onNotFound={onNotFound}
         />
       )}
+      </MemoryRouter>
     </ToastProvider>
   )
 }

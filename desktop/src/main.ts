@@ -221,10 +221,24 @@ function logDecision(kind: 'request' | 'check', permission: string, allow: boole
   else console.warn(line)
 }
 
+// CHANGE-46 — the public web address of this app. In the desktop window
+// window.location.origin is http://localhost:5180, which resolves on this machine only and
+// while the app is running, so a note link copied there would be useless to anyone. The shell
+// hands the renderer the public origin instead; PROD_ORIGIN above stays the single definition
+// (a sandboxed preload cannot import it, so it comes over IPC like everything else).
+function registerPublicOrigin(): void {
+  ipcMain.handle('app:publicOrigin', (event) => (fromBundle(event) ? PROD_ORIGIN : null))
+}
+
+// Every IPC channel answers the app's own pages only — the window also visits Google's
+// sign-in, which gets the same preload.
+function fromBundle(event: Electron.IpcMainInvokeEvent): boolean {
+  return isBundleOrigin(event.senderFrame?.url, BUNDLE_ORIGINS)
+}
+
 // 53-A — the update notice's two main-process calls. net.fetch uses Chromium's network stack,
 // so it honours the system proxy the same way the window does.
 function registerUpdateNotice(): void {
-  const fromBundle = (event: Electron.IpcMainInvokeEvent) => isBundleOrigin(event.senderFrame?.url, BUNDLE_ORIGINS)
   ipcMain.handle('updates:history', (event) => (fromBundle(event) ? fetchHistory((url, init) => net.fetch(url, init)) : null))
   ipcMain.handle('updates:copy', (event) => {
     if (!fromBundle(event)) return false
@@ -238,7 +252,6 @@ function registerUpdateNotice(): void {
 let autoUpdate: ReturnType<typeof createAutoUpdate> | null = null
 
 function registerAutoUpdate(): void {
-  const fromBundle = (event: Electron.IpcMainInvokeEvent) => isBundleOrigin(event.senderFrame?.url, BUNDLE_ORIGINS)
   const attemptFile = path.join(app.getPath('userData'), 'update-attempt.txt')
   // electron-updater logs every hourly check to the console by default; keep only what matters.
   // Errors reach our own warning through the 'error' event. The installer's launch failure is
@@ -305,6 +318,7 @@ void app.whenReady().then(async () => {
     resourcesPath: process.resourcesPath,
     getWindow: () => mainWindow,
   })
+  registerPublicOrigin()
   registerUpdateNotice()
   registerAutoUpdate()
   logBuildSha()
