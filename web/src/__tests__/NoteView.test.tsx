@@ -1452,11 +1452,13 @@ describe('NoteView', () => {
       stubClipboard(vi.fn().mockResolvedValue(undefined))
       renderAtNoteRoute()
       const button = await screen.findByTestId('copy-note-link-button')
-      expect(screen.queryByTestId('copy-note-link-status')).not.toBeInTheDocument()
+      // Queried by ROLE, not test id: `role="status"` is what makes the confirmation reach a
+      // screen reader at all, and a test id would still find the span without it.
+      expect(await screen.findByRole('status')).toBeEmptyDOMElement()
 
       await userEvent.click(button)
 
-      expect(await screen.findByTestId('copy-note-link-status')).toHaveTextContent('Copied')
+      await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Copied'))
       // The button keeps its own name: a control announcing itself as "Copied" says nothing
       // about what pressing it does.
       expect(button).toHaveTextContent('Copy link')
@@ -1473,13 +1475,13 @@ describe('NoteView', () => {
       // also moves the fake clock while the click and the queries run.
       const clickedAt = Date.now()
       await user.click(await screen.findByTestId('copy-note-link-button'))
-      await screen.findByTestId('copy-note-link-status')
+      await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Copied'))
 
       await act(() => vi.advanceTimersByTimeAsync(Math.max(0, 1900 - (Date.now() - clickedAt))))
       expect(screen.getByTestId('copy-note-link-status')).toBeInTheDocument()
 
       await act(() => vi.advanceTimersByTimeAsync(200))
-      await waitFor(() => expect(screen.queryByTestId('copy-note-link-status')).not.toBeInTheDocument())
+      await waitFor(() => expect(screen.getByRole('status')).toBeEmptyDOMElement())
     })
 
     // A copy that silently does nothing is worse than no button: the user walks away believing
@@ -1493,7 +1495,7 @@ describe('NoteView', () => {
 
       const alert = await screen.findByRole('alert')
       expect(alert).toHaveTextContent(`${window.location.origin}${NOTE_ROUTE}`)
-      expect(screen.queryByTestId('copy-note-link-status')).not.toBeInTheDocument()
+      expect(screen.getByTestId('copy-note-link-status')).toBeEmptyDOMElement()
     })
 
     it('Scenario: a blank new note offers no link to copy', async () => {

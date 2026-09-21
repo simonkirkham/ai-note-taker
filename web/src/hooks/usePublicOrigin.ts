@@ -22,7 +22,9 @@ export function usePublicOrigin(): string {
     void bridge.app
       .getPublicOrigin()
       .then((publicOrigin) => {
-        if (!cancelled && publicOrigin) setOrigin(publicOrigin);
+        // Trailing slash stripped: PROD_ORIGIN carries none today, but one would produce
+        // https://site//w/… and the path is always appended.
+        if (!cancelled && publicOrigin) setOrigin(publicOrigin.replace(/\/$/, ""));
       })
       .catch(() => {
         /* shell refused or is too old — the local origin is all there is */

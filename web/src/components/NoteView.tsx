@@ -882,15 +882,17 @@ export default function NoteView({
               >
                 Copy link
               </button>
-              {linkCopied && (
-                <span
-                  data-testid="copy-note-link-status"
-                  role="status"
-                  className={styles.copyLinkStatus}
-                >
-                  Copied
-                </span>
-              )}
+              {/* Always rendered, empty until copied: a live region has to be in the
+                  accessibility tree BEFORE its content changes or the announcement is
+                  commonly dropped. Reserving its width also stops Delete — a destructive
+                  control 12px away — jumping sideways under the cursor for two seconds. */}
+              <span
+                data-testid="copy-note-link-status"
+                role="status"
+                className={styles.copyLinkStatus}
+              >
+                {linkCopied ? "Copied" : ""}
+              </span>
             </>
           )}
           {hasContent && (

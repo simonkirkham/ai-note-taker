@@ -163,8 +163,10 @@
   outline-offset: 2px;
 }
 
-/* Sits beside the button rather than replacing its label, so the control keeps its name. */
+/* Sits beside the button rather than replacing its label, so the control keeps its name.
+   Always present (empty until copied) and width-reserved, so nothing shifts when it fills. */
 .copyLinkStatus {
+  min-width: 4rem;
   font-size: 0.8125rem;
   color: var(--color-text-muted);
 }
