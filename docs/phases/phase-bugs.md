@@ -31,6 +31,7 @@ Ordered by severity, then by id.
 | BUG-80 | A topic you add from the agenda strip can land in an invisible checklist at the very top of the note — the header lists it, but you cannot find it in the note to edit it in place. | Open | BUG-76 |
 | BUG-82 | After a recording with speaker separation, the note can end up never analysed with nothing said on screen and nothing recorded as an error — the same silent outcome BUG-77 is about, on the half BUG-77's fix cannot reach. | Open | BUG-77 |
 | BUG-83 | A change can be blocked by a red check that has nothing to do with it: the test that searching keeps your open notes in view failed once in a full run and passed 5 of 5 on its own. Fast-follow after 51-C merges; cause still unknown. | Open | — |
+| BUG-89 | **A note you have just recorded into can be missing from your notes list for at least half a minute, even though the app has confirmed the note is saved and up to date.** Seen once in the release check on 2026-09-21; every other note was listed. | Open | — |
 
 Further bugs will be appended as they are identified.
 
@@ -127,6 +128,28 @@ Worth keeping for two reasons. The failure was the same shape as the bug — som
 **Retracted from the original write-up:** "a read that never gates at all" as the leading explanation, and the reading of the earlier note-case evidence as a read-your-writes failure. That case was a different defect entirely — see [BUG-81].
 
 ---
+
+## BUG-89 — A just-recorded note is missing from the notes list while the app reports itself up to date
+
+**Severity:** High — the user is told their note is saved and current, and it is not on the list. Nothing on screen distinguishes this from the note having been lost. Raised 2026-09-21 from deploy [#784](https://github.com/simonkirkham/ai-note-taker/actions/runs/35602905435), which failed the release gate on `RecordingTabJourney.RecordingSurvivesASwitchToAnotherNote`.
+
+**What was seen.** The journey created a note titled `Rec A …`, recorded into it, switched to another note, then looked for the card. It was absent for the full 30 s deadline while **six** other notes rendered. Straight from the failure message:
+
+| Fact | Value |
+| --- | --- |
+| Write token the reads were gated on | `note#379f03cc-…@5` (all four writes `@2`–`@5` seen) |
+| Card reads issued | 4, all `200`, all reported **gated-fresh** (`gated-stale=0`, `gated-unanswered=0`, `ungated=0`) |
+| Cards rendered | 6, every one from the tag journeys; no `Rec A` |
+| Deadline | 30 000 ms, then the journey gave up |
+
+**Why it is filed separately from [BUG-79].** The E2E helper prints `TI-42/BUG-79` as a fixed label on any card-not-visible timeout, so the name in the message is not a diagnosis. BUG-79's confirmed mechanism is a *stalled* projector — a poisoned batch that blocks the shard, which would make the reads report **stale**. Here every read reported itself caught up past the note's own last write and still did not carry the card, which BUG-79 does not explain. Same symptom, probably not the same cause; merge the two only if the evidence says so.
+
+**First place to look:** whether the card fold ran for that note at all, or wrote under a different key/workspace — the projector's position advancing past a token means every projection for that stream was written, so a card that is absent while the gate says fresh points at the fold's own output, not at lag.
+
+**Frequency:** once. `scripts/flake-watch.sh 770 RecordingTabJourney` shows **14 clean deploys** (#770–#783) and this single hit at #784 — so it is rare, and it is not a pre-existing steady flake in this journey.
+
+**Not caused by the change that was deploying.** #784 carried [CHANGE-46] (a copy-link button in the note header, a hook reading the app's public address, and a desktop clipboard permission). It touches no read model, no recording path, no navigation, and no card list.
+
 
 ## BUG-81 — Clicking Save on a new note can delete it
 
