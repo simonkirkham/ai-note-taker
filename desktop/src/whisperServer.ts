@@ -41,6 +41,30 @@ export const SERVER_START_TIMEOUT_MS = 60_000
 // sits in front of every recording, and a slow check is a slow Record button.
 export const HEALTH_TIMEOUT_MS = 2_000
 
+// How long any single start-up poll may take. The start loop was written to poll every 250 ms; a
+// probe bounded only by the whole start budget would let ONE hung poll eat all 60 s and defeat it.
+const PING_TIMEOUT_MS = 5_000
+
+// BUG-88 (review) — should a warm engine be thrown away and replaced? Pure, so the rule is stated
+// once and tested headlessly. The `ready` term is the one that matters: an engine still LOADING has
+// a live process and answers nothing yet, which is indistinguishable from a hang by probe alone.
+// Killing it there would destroy a perfectly good engine mid-load — the second recording of an app
+// session is the realistic case — so a not-yet-ready engine is left alone and the session's own
+// load deadline governs it.
+// BUG-88 (review) — a recovery can land AFTER the user stopped and started again, which is exactly
+// what happened on 2026-09-21. Letting it drop "whatever the shared engine is now" would kill the
+// new recording's healthy engine and leak the one it just started. Only the engine the caller meant
+// to replace may be dropped from the shared slot; any other instance is simply killed on its own.
+export function shouldDiscardShared(current: unknown, target: unknown): boolean {
+  return current === target
+}
+
+export function shouldReplaceWarmServer(state: { running: boolean; ready: boolean; answers: boolean }): boolean {
+  if (!state.running) return false // nothing to replace; the caller spawns
+  if (!state.ready) return false // still loading, not silent
+  return !state.answers
+}
+
 // Does the thing on this port ANSWER? Not "is the process alive" — that is what `running` asks, and
 // on 2026-09-21 a hung engine answered that yes for hours while serving nothing. Any HTTP response
 // counts, including a 404: whisper-server's thread pool is what dies first (abandoned /inference
@@ -52,7 +76,12 @@ export async function probeAlive(port: number, timeoutMs: number = HEALTH_TIMEOU
       method: 'GET',
       signal: AbortSignal.timeout(timeoutMs),
     })
-    return res.status > 0
+    // Release the connection rather than leaving the body unread: start() can poll this up to
+    // ~240 times, and an undrained body holds its socket until GC gets to it.
+    await res.body?.cancel().catch(() => {})
+    // Reaching here at all IS the answer — any status, including a 404, proves the HTTP server
+    // still had a free thread to dispatch with, which is the property under test.
+    return true
   } catch {
     return false
   }
@@ -182,9 +211,11 @@ export class WhisperServer {
     throw new Error(`whisper-server did not become ready within ${SERVER_START_TIMEOUT_MS / 1000}s`)
   }
 
-  // BUG-88: the reuse gate. `running` cannot answer this — see probeAlive.
+  // BUG-88: does the HTTP server answer? Deliberately says nothing about readiness — conflating
+  // "still loading" with "silent" is what made the first version of this kill healthy engines.
+  // Callers decide WHEN to ask; shouldReplaceWarmServer states the rule.
   async isResponsive(timeoutMs: number = HEALTH_TIMEOUT_MS): Promise<boolean> {
-    if (!this.proc || !this.isReady) return false
+    if (!this.proc) return false
     return probeAlive(this.port, timeoutMs)
   }
 
@@ -192,7 +223,7 @@ export class WhisperServer {
     // Any response (even 404/405) means the HTTP server is up and the model finished loading.
     // Shares probeAlive so start-up and reuse cannot drift into two different ideas of "answering".
     // A generous deadline here: during start the model is still loading, which is the slow part.
-    return probeAlive(this.port, SERVER_START_TIMEOUT_MS)
+    return probeAlive(this.port, PING_TIMEOUT_MS)
   }
 
   // Transcribe one PCM window; return segments with absolute-to-the-window ms offset by baseMs.

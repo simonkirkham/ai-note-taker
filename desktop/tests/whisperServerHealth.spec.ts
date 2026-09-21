@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { createServer, type Server } from 'node:http'
-import { probeAlive } from '../src/whisperServer'
+import { probeAlive, shouldReplaceWarmServer, shouldDiscardShared } from '../src/whisperServer'
 
 // BUG-88 — on 2026-09-21 the engine was still running, still holding its port, and still answering
 // nothing more than two hours after a meeting. `running` only asks whether the process exists, so
@@ -53,4 +53,36 @@ test('BUG-88: a port with nothing listening is judged dead', async () => {
   srv.close()
   await new Promise((r) => setTimeout(r, 100))
   expect(await probeAlive(port, 2000)).toBe(false)
+})
+
+test('BUG-88: a warm engine that is still LOADING is never thrown away', () => {
+  // The first version of this check asked isResponsive() of any live process. An engine mid-model-
+  // load has a live process and answers nothing yet, so it answered "dead" — and a second
+  // recording started during that load would have killed a perfectly healthy engine and leaked it.
+  expect(shouldReplaceWarmServer({ running: true, ready: false, answers: false })).toBe(false)
+})
+
+test('BUG-88: a ready engine that answers nothing is replaced', () => {
+  expect(shouldReplaceWarmServer({ running: true, ready: true, answers: false })).toBe(true)
+})
+
+test('BUG-88: a ready engine that answers is left alone', () => {
+  expect(shouldReplaceWarmServer({ running: true, ready: true, answers: true })).toBe(false)
+})
+
+test('BUG-88: a dead process is not "replaced" — the caller spawns instead', () => {
+  expect(shouldReplaceWarmServer({ running: false, ready: false, answers: false })).toBe(false)
+})
+
+test('BUG-88: a recovery landing after a restart does not drop the NEW engine', () => {
+  // The 2026-09-21 sequence: hang, user stops, user starts again, the old recording's recovery
+  // finally lands. It must not clear the shared slot that now holds the new recording's engine.
+  const oldEngine = {}
+  const newEngine = {}
+  expect(shouldDiscardShared(newEngine, oldEngine)).toBe(false)
+})
+
+test('BUG-88: a recovery for the engine still in the shared slot does drop it', () => {
+  const engine = {}
+  expect(shouldDiscardShared(engine, engine)).toBe(true)
 })

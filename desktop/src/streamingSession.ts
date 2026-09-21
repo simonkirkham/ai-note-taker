@@ -18,6 +18,12 @@ const FAIL_THRESHOLD = 3 // consecutive post-ready /inference failures before we
 // it; an engine that hangs a third time is not going to be fixed by a fourth attempt, and the
 // machine is in the middle of a meeting. Past this the user is told, once, as before.
 const MAX_RECOVERIES = 2
+
+// BUG-88 (review) — a recovery that never returns is the bug again, one layer up: the session
+// would sit with `recovering` latched, reporting nothing, for the rest of the meeting. The thing
+// being recovered FROM is a hang, so a hanging recovery is a realistic input, not a hypothetical.
+// Sits above WhisperServer's own 60s start budget so a legitimately slow model load is not cut off.
+const RECOVER_TIMEOUT_MS = 90_000
 // BUG-56 — how long the server may stay un-ready before the live view is declared dead. Must sit
 // BELOW WhisperServer's start deadline: once start() gives up it kills the child and nulls proc, so
 // a longer deadline can only ever observe a dead process and is unreachable by construction. The
@@ -60,6 +66,10 @@ export type StreamingSessionOptions = {
   // available" — the session then tells the user, exactly as it did before recovery existed.
   onRecover?: () => Promise<WhisperServer | null>
   maxRecoveries?: number
+  recoverTimeoutMs?: number
+  // Test seam: the step cadence. Production never sets it. Lets the specs exercise the failure
+  // ACCOUNTING (a count of consecutive failures) without paying its wall-clock cadence.
+  stepMs?: number
   minSessionForStopReportMs?: number
   maxSendWindowMs?: number
   // BUG-65: per-step cost, for the on-device diagnostic log.
@@ -98,7 +108,7 @@ export class StreamingSession {
   start(): void {
     if (this.timer) return
     this.startedAt = Date.now()
-    this.timer = setInterval(() => void this.step(), STEP_MS)
+    this.timer = setInterval(() => void this.step(), this.opts?.stepMs ?? STEP_MS)
     // BUG-56: armed on its own one-shot timer rather than checked inside step(), so the deadline is
     // independent of the step cadence and of whether any step has run yet.
     this.readyTimer = setTimeout(() => this.reportLiveViewDead(), this.opts?.readyTimeoutMs ?? READY_TIMEOUT_MS)
@@ -233,13 +243,30 @@ export class StreamingSession {
   private async recoverOrGiveUp(cause: Error): Promise<void> {
     const recover = this.opts?.onRecover
     const budget = this.opts?.maxRecoveries ?? MAX_RECOVERIES
+    // BUG-88 (review) — replacing an engine only helps when it has stopped ANSWERING. transcribe()
+    // also throws on a 500 and on a malformed body, which fail in milliseconds: three of those
+    // reach the threshold in seconds and would trigger a model reload mid-meeting that cannot
+    // possibly help, because the replacement returns the same 500. Ask the engine directly. An
+    // engine that still answers a bare GET is erroring or slow, not jammed on its inference mutex.
+    if (!this.disposed && recover && (await this.stillAnswers())) {
+      this.reportTerminal(new Error(LIVE_ENGINE_UNRESPONSIVE, { cause }))
+      return
+    }
+    if (this.disposed) return
     if (recover && this.recoveries < budget) {
       this.recovering = true
       this.recoveries++
       try {
         let replacement: WhisperServer | null = null
         try {
-          replacement = await recover()
+          // Bounded: see RECOVER_TIMEOUT_MS. A supplier that never settles must not be able to
+          // park the session silently — that is the defect this whole slice exists to remove.
+          replacement = await Promise.race([
+            recover(),
+            new Promise<null>((resolve) =>
+              setTimeout(() => resolve(null), this.opts?.recoverTimeoutMs ?? RECOVER_TIMEOUT_MS),
+            ),
+          ])
         } catch {
           replacement = null // a failed respawn is "no replacement", not a crash
         }
@@ -247,6 +274,11 @@ export class StreamingSession {
         if (replacement) {
           this.server = replacement
           this.failures = 0
+          // BUG-88 (review): ticks held off DURING a restart are not the engine failing to keep
+          // pace, but they land in the same `dropped` field that check-local-transcription-log.sh
+          // reads to judge BUG-65/BUG-67. Left alone, a successful recovery is filed as evidence
+          // of the very problem it just fixed.
+          this.droppedSinceLog = 0
           // sawReady deliberately NOT reset. It records that this recording once had a working
           // engine, and the !running branch stays silent without it — so clearing it here would
           // make a replacement that dies immediately fail silently for the rest of the meeting,
@@ -256,7 +288,12 @@ export class StreamingSession {
           // skipped silently by the !ready guard for the rest of the recording — the BUG-56 hole,
           // reopened one layer up.
           if (this.readyTimer) clearTimeout(this.readyTimer)
-          this.readyTimer = setTimeout(() => this.reportLiveViewDead(), this.opts?.readyTimeoutMs ?? READY_TIMEOUT_MS)
+          // Only while the session is actually still stepping: stop() nulls the timer, and arming
+          // a fresh 45s deadline on a stopped session would fire a banner at someone who has
+          // already finished recording.
+          this.readyTimer = this.timer
+            ? setTimeout(() => this.reportLiveViewDead(), this.opts?.readyTimeoutMs ?? READY_TIMEOUT_MS)
+            : null
           return
         }
       } finally {
@@ -271,6 +308,17 @@ export class StreamingSession {
     this.reportTerminal(new Error(LIVE_ENGINE_UNRESPONSIVE, { cause }))
   }
 
+  // Does the current engine still answer at all? Never throws and never blocks the caller for
+  // long: a server object without the probe (older stubs) is treated as NOT answering, which
+  // preserves the replace-it behaviour rather than silently disabling recovery.
+  private async stillAnswers(): Promise<boolean> {
+    try {
+      return (await this.server.isResponsive?.()) === true
+    } catch {
+      return false
+    }
+  }
+
   // BUG-88 — one exit for every terminal condition. Stepping STOPS here: the renderer keeps this
   // session alive while it awaits the stop-time speaker-separation pass (7m23s on 2026-09-21), so a
   // session that keeps re-transcribing a window it can never finish is burning cores the user is
@@ -281,6 +329,8 @@ export class StreamingSession {
     this.terminalReported = true
     if (this.timer) clearInterval(this.timer)
     this.timer = null
+    if (this.readyTimer) clearTimeout(this.readyTimer)
+    this.readyTimer = null
     this.onError(err)
   }
 

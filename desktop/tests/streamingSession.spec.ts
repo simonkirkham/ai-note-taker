@@ -396,6 +396,10 @@ test('a clamped step does not mark the withheld tail as consumed', async () => {
 // BUG-67 idle guard then halts the session by itself, and the spec passes without the fix ever
 // running. Three of these were written that way first and passed green on unfixed code.
 
+// The specs assert the failure ACCOUNTING (a count of consecutive failures), which is independent
+// of how fast the steps come. Running it at production cadence cost ~81s of CI for no extra proof.
+const FAST_STEP = 150
+
 // Feed PCM the way a live recording does, until stopped.
 function feedAudio(session: StreamingSession): () => void {
   const t = setInterval(() => session.pushPcm(pcm), 200)
@@ -442,11 +446,11 @@ test('BUG-88: a hung engine is replaced mid-recording and the live transcript re
     (t) => live.push(t),
     (e) => errors.push(e),
     undefined,
-    { readyTimeoutMs: 60_000, onRecover: async () => fresh },
+    { readyTimeoutMs: 60_000, stepMs: FAST_STEP, onRecover: async () => fresh },
   )
   session.start()
   const stop = feedAudio(session)
-  await waitMs(12_000)
+  await waitMs(2500)
   stop()
   session.dispose()
 
@@ -462,13 +466,14 @@ test('BUG-88: the hung engine stops receiving requests once it has been replaced
   const fresh = liveServer('ok')
   const session = new StreamingSession(dead, () => {}, () => {}, undefined, {
     readyTimeoutMs: 60_000,
+    stepMs: FAST_STEP,
     onRecover: async () => fresh,
   })
   session.start()
   const stop = feedAudio(session)
-  await waitMs(9000)
+  await waitMs(2000)
   const afterRecovery = dead.calls
-  await waitMs(5000)
+  await waitMs(1500)
   stop()
   session.dispose()
 
@@ -482,11 +487,12 @@ test('BUG-88: when no replacement can be started the user is told, once', async 
   const errors: Error[] = []
   const session = new StreamingSession(deadServer(), () => {}, (e) => errors.push(e), undefined, {
     readyTimeoutMs: 60_000,
+    stepMs: FAST_STEP,
     onRecover: async () => null,
   })
   session.start()
   const stop = feedAudio(session)
-  await waitMs(12_000)
+  await waitMs(2500)
   stop()
   session.dispose()
 
@@ -499,6 +505,7 @@ test('BUG-88: the session gives up after repeated hangs rather than restarting f
   const errors: Error[] = []
   const session = new StreamingSession(deadServer(), () => {}, (e) => errors.push(e), undefined, {
     readyTimeoutMs: 60_000,
+    stepMs: FAST_STEP,
     maxRecoveries: 2,
     onRecover: async () => {
       spawned++
@@ -507,7 +514,7 @@ test('BUG-88: the session gives up after repeated hangs rather than restarting f
   })
   session.start()
   const stop = feedAudio(session)
-  await waitMs(25_000)
+  await waitMs(5000)
   stop()
   session.dispose()
 
@@ -522,18 +529,68 @@ test('BUG-88: once the live view is declared dead the session stops re-transcrib
   const dead = deadServer()
   const session = new StreamingSession(dead, () => {}, () => {}, undefined, {
     readyTimeoutMs: 60_000,
+    stepMs: FAST_STEP,
     onRecover: async () => null,
   })
   session.start()
   const stop = feedAudio(session)
-  await waitMs(12_000)
+  await waitMs(2500)
   const atGiveUp = dead.calls
   // The renderer keeps this session alive while it awaits the stop-time speaker-separation pass —
   // 7m23s on 2026-09-21 — so a session that keeps stepping competes for cores with the very pass
   // the user is waiting on. Once there is nothing useful left to do, it must stop doing it.
-  await waitMs(6000)
+  await waitMs(1500)
   stop()
   session.dispose()
 
   expect(dead.calls).toBe(atGiveUp)
 })
+
+test('BUG-88: an engine that errors fast but still answers is NOT replaced', async () => {
+  // transcribe() throws on a 500 and on a bad body as well as on the 20s hang this slice is
+  // about, and those fail in milliseconds. Restarting on those costs a model load mid-meeting and
+  // cannot help — the replacement returns the same 500. Only a jammed engine is worth replacing.
+  let spawned = 0
+  const errors: Error[] = []
+  const erroring = deadServer()
+  ;(erroring as unknown as { isResponsive: () => Promise<boolean> }).isResponsive = async () => true
+  const session = new StreamingSession(erroring, () => {}, (e) => errors.push(e), undefined, {
+    readyTimeoutMs: 60_000,
+    stepMs: FAST_STEP,
+    onRecover: async () => {
+      spawned++
+      return liveServer('x')
+    },
+  })
+  session.start()
+  const stop = feedAudio(session)
+  await waitMs(2500)
+  stop()
+  session.dispose()
+
+  expect(spawned).toBe(0)
+  expect(errors.length).toBe(1)
+  expect(errors[0].message).toMatch(/stopped responding/i)
+})
+
+test('BUG-88: a recovery that never returns still ends in a message, not a silent stall', async () => {
+  // The thing being recovered FROM is a hang, so a supplier that never settles is a realistic
+  // input. Without a deadline the session sits with recovery latched, reporting nothing, for the
+  // rest of the meeting — the original bug reproduced one layer up, and self-concealing.
+  const errors: Error[] = []
+  const session = new StreamingSession(deadServer(), () => {}, (e) => errors.push(e), undefined, {
+    readyTimeoutMs: 60_000,
+    stepMs: FAST_STEP,
+    recoverTimeoutMs: 600,
+    onRecover: () => new Promise<never>(() => {}), // never settles
+  })
+  session.start()
+  const stop = feedAudio(session)
+  await waitMs(3000)
+  stop()
+  session.dispose()
+
+  expect(errors.length).toBe(1)
+  expect(errors[0].message).toMatch(/stopped responding/i)
+})
+
