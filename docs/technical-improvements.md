@@ -20,6 +20,7 @@ Ordered by id. Status is `Open` or `In Progress`.
 
 | Item | Summary | Status | Depends on |
 |------|---------|--------|------------|
+| TI-104 | **Running the desktop tests in a fresh checkout reports 7 failures that are not real**, which reads as "someone broke the app" and costs the next person a diagnosis. The specs that serve the bundled frontend 404 because nothing has built it yet; `npm test` does not build first. Make the test run build what it needs, or skip those specs with a message saying what to run. Found 2026-09-21 during [BUG-88]. | Open | — |
 | TI-3 | **Web-app state sits further from where it is used than it needs to, so screens are harder to change safely.** The performance half shipped; keeping state close is now a standing convention. | In Progress | — |
 | TI-7 | **A broken or circular import in the web app is caught only when the build runs, not by the linter.** Every other rule in this item has shipped. | In Progress | — |
 | TI-17 | **A new feature backed by a new read model shows nothing in production until someone remembers a manual backfill.** | Open | — |

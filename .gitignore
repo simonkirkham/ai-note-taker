@@ -58,3 +58,6 @@ __pycache__/
 
 # actionlint binary cached by scripts/lint-workflows.sh (pinned, checksummed, re-fetchable)
 .tools/
+
+# Playwright run artefacts (desktop specs run from the repo root too)
+test-results/
