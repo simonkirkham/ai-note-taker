@@ -23,6 +23,7 @@ Ordered by severity, then by id.
 | BUG-85 | The live transcript can silently stop part-way through a meeting while the recording timer keeps running. It has now happened twice, costing 54 minutes of one meeting and 3.5 hours of another. You are now told within two minutes, and told which of three things went wrong; stopping it happening at all is still to do. | In Progress | — |
 | [BUG-86](#bug-86--on-device-speaker-labels-put-the-other-sides-words-under-me-too) | **On a call played through speakers, the on-device "who said what" labels are wrong: nearly every line the other side says appears twice, once as "Them" and once as "Me", and your own words are buried inside those repeats.** Makes the labelled transcript unreadable for any call not taken on headphones. | Open | — |
 | [BUG-87](#bug-87--finalising-transcript-takes-almost-as-long-as-the-meeting) | **After you stop an on-device recording, "Finalising transcript…" runs for almost as long as the meeting itself — 3 m 22 s for a 3 m 46 s test, so roughly 55 minutes after a one-hour meeting — before labels or analysis appear.** | Open | — |
+| [BUG-88](#bug-88--the-on-device-transcription-engine-can-hang-for-good-mid-meeting) | **The live transcript can stop dead part-way through a meeting and never come back — and every later recording in the same app session gets no live transcript either, until you quit and reopen the app.** Happened twice: 2026-08-19 and 2026-09-21, both about 7 minutes into a recording, both from a perfectly healthy engine. The only way out is to notice, stop, and start again in the cloud — which is what the user did on 2026-09-21, losing about a minute of the meeting at the changeover. | Open | BUG-85, BUG-87 |
 | BUG-70 | Clicking "+ New Note" while recording and then choosing to keep recording still leaves a blank, untitled note behind on your home list. | Open — held behind 51-C | BUG-54, 51-C |
 | BUG-73 | Signing out while an on-device transcript is still finishing can park you for up to an hour with no way to leave — a real problem on a shared machine. | Open | BUG-55 |
 | BUG-75 | Reopening a note while its on-device transcript is still finishing shows no transcript, and nothing appears until you navigate again or reload. | Open | BUG-72 |
@@ -446,3 +447,46 @@ A web source claiming 8× for the same switch (a large model with KleidiAI) did 
 1. Run the two passes in parallel (each is capped at half the cores, so together they would use the machine rather than wait).
 2. Label from the live transcript instead of re-transcribing: the live pass already knows when words were said; tag each by which source was louder at that moment. Cost near zero, and it would also give live labels ([CHANGE-44]).
 3. Keep `small.en` only for the Them side, where quality matters most.
+
+## BUG-88 — The on-device transcription engine can hang for good mid-meeting
+
+**Severity:** High — most of a meeting's live transcript is lost, and the app stays broken for every later recording until it is restarted. **Status:** Open. Found 2026-09-21 from the "PE Operations" note (`ac18a027…`, OGI workspace); the same signature is in the log for 2026-08-19.
+
+**Symptom:** the live transcript freezes mid-sentence while the recording timer keeps running. About a minute later the banner says the on-device engine stopped responding. Nothing recovers it — not waiting, not stopping and starting the recording. The stop-time pass still produces a transcript of whatever audio was captured, so the loss is bounded by when the user gives up and stops.
+
+**Measured, 2026-09-21 (`local-transcription.log`, and the live process, read at 12:0x):**
+
+| Time (UTC) | What happened |
+| --- | --- |
+| 09:16:30 | Recording starts. `whisper-server` spawns, 6 threads, `base.en`, `--audio-ctx 768` |
+| 09:16:37 → 09:24:22 | Healthy throughout. Inference ~1.26 s per step, rtf 0.14–0.47, no dropped steps in the final minute |
+| ~09:24:22 | One `/inference` never returns. The step before it took 1.26 s for a 9 s window |
+| 09:24:42 | First `step FAILED … elapsed=20015ms` — on a **3 s** window, the smallest kind |
+| 09:25:24 | Third consecutive failure → `live streaming failed: the on-device engine stopped responding`. 62 s after the freeze |
+| ~09:26:27 | Recording stopped. PCM stops arriving (`clamped` stops growing at 93 576 ms) |
+| 09:26:27 → 09:33:50 | 7 m 23 s of "Finalising transcript…" ([BUG-87]) while the dead live session keeps firing a 20 s timeout every 21 s against the hung engine |
+| 09:33:50 | Speaker-separation pass completes, session disposed, log ends |
+
+**The engine was still hung more than two hours later, and this was measured rather than inferred.** `whisper-server.exe` pid 13236, started 09:16:30, was still alive and still listening on 127.0.0.1:55592. A plain `GET /` — not even `/inference` — timed out after 20.1 s. Two CPU samples 5 s apart moved 0.03 s: it is **blocked, not busy**. It had burned 1 991 s of CPU and then stopped.
+
+**Diagnosis:**
+
+1. **It is a hang, not slowness.** Both occurrences begin from a healthy step (~1.2 s inference, no backlog, no drops) and the first failure is on a *small* window. A machine that had fallen behind would show rising `infer`/`dropped` first; neither does.
+2. **Even the readiness endpoint hangs.** `whisper-server` serves requests from a bounded httplib thread pool and serialises `/inference` behind one mutex. Once ~11 abandoned requests are parked on that mutex the pool is exhausted, so the listener accepts connections and dispatches nothing — which is what `GET /` timing out demonstrates. *(The first hung request's cause inside whisper is not established; the propagation to a total lock-out is.)*
+3. **`AbortSignal.timeout` abandons the client fetch but not the server's work** (`whisperServer.ts:182`), so each 20 s retry adds another permanently-parked request. The retry loop is what turns one stuck request into a dead server.
+4. **Nothing can ever recover.** `WhisperServer.running` is `proc !== null` and `ready` latches true on first success, so a hung-but-alive server reads as healthy forever. `StreamingSession` reports terminal once (`terminalReported`) and then keeps stepping with no restart path — there is no kill-and-respawn anywhere in `desktop/src/`.
+5. **It poisons the whole app session.** `ensureServer` (`localTranscriptionIpc.ts:66`) returns `sharedServer` whenever `running` — so the next recording is handed the same hung process, with `ready` already true. It starts stepping immediately, times out, and shows the same banner after ~60 s with an empty live transcript. Only quitting the app clears it.
+6. **The BUG-67 idle guard is defeated exactly when it matters.** `if (this.byteLen === this.lastStepByteLen) return` cannot fire while the [BUG-65] clamp is engaged, because `lastStepByteLen` is deliberately set to the *clamped* edge (`streamingSession.ts:158`). During a wedge the clamp is always engaged, so the session spun for 7 m 23 s after Stop, competing for cores with the speaker-separation pass the user was waiting on — the precise scenario the guard was written to prevent.
+
+**Prior occurrence, 2026-08-19** (same log): healthy to 10:38:43 (infer 1.16 s, rtf 0.31, no drops), first 20 s timeout at 10:39:03, then 34 consecutive failures across 11.5 minutes, never recovering. Both hangs began 6–8 minutes into a recording.
+
+**What it cost on 2026-09-21:** the user noticed the frozen transcript, stopped the local recording and restarted the meeting in the cloud, so the meeting itself was not lost. The cost was the changeover: the on-device transcript ends mid-sentence at "…a bit more over um you know different" and the cloud transcript resumes on a different topic, so roughly a minute of the meeting is missing, plus the 7 m 23 s wait for the on-device pass to finish and the user's attention mid-meeting. **The same hang in a meeting nobody is watching costs the remainder of the meeting** — there is no recovery that does not require a person to intervene.
+
+**Not the cause:** the machine falling behind (rtf was 0.14 at the last healthy step); the model still loading (`READY_TIMEOUT_MS` had long passed); the process dying (it is still alive now). Being the emulated x64 build on an ARM laptop ([BUG-87]) makes every step ~2× more expensive but does not explain a sudden total stall from a healthy state.
+
+**Fix directions (hypotheses, in the order they remove user pain):**
+1. **Restart the engine instead of reporting and giving up.** On the terminal-failure path, kill `sharedServer`, null it, and spawn a fresh one — the model reload costs seconds against a currently-unbounded loss. This alone converts "the rest of the meeting is gone" into "a few seconds are gone".
+2. **Health-check before reuse.** `ensureServer` should ping `/` with a short deadline rather than trusting `proc !== null`, so a hung server is never handed to the next recording.
+3. **Stop the retry loop poisoning the pool.** After the first timeout, stop re-POSTing to a server that has not answered; a hung engine needs a restart, not another queued request.
+4. **Make the idle guard hold under the clamp**, so a dead session cannot spin through the stop-time pass.
+5. Investigate the first hung request itself — a decoder repetition loop is plausible (`--audio-ctx 768` is documented to induce them, and the comment in `whisperServer.ts` already flags the risk) but is **not** established by this evidence.
