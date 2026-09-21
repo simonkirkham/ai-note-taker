@@ -71,6 +71,7 @@ Ordered by id. Status is `Open` or `In Progress`.
 | TI-100 | **The merge check once reported an older release as the latest one, so a release still running could in principle be missed and a change merged on top of it.** | Open | — |
 | TI-101 | **A web change can be missing from the desktop app for good, with no update ever offered, if its release failed and the next successful release changed only the server.** | Open | TI-95 |
 | TI-102 | **The machine check says a browser is available for visual work when that browser cannot start at all, so an agent either wastes a round discovering it or goes back to guessing at CSS.** | Open | — |
+| TI-103 | **Finished work can sit unreleased for days with nobody told.** A change that is built, pushed and passing every check still needs a review before it can go live, and nothing reports one that never started — this was found only because the human asked what was outstanding. | Open | — |
 
 > **Dependency upgrade audit (2026-06-11):** [report](dependency-audits/dependency-upgrade-audit-2026-06.md). The high and medium items are done; the low-urgency ones (T5 lint tooling, T6 Tiptap 3.26, T8 CDK 2.258, T9 Playwright 1.60, T10 xUnit v3) wait in the report until picked up.
 
@@ -1209,6 +1210,29 @@ It stays In Progress until a real desktop save is seen producing a `Transcript h
 **Fix direction.** Diff from the commit already published (`build-sha.txt` on the `desktop-latest` release) to `HEAD`, and build when that range touches `web/` or `desktop/`; build when the marker is missing.
 
 ---
+
+## TI-103. Nothing reports a finished change that no review ever started on
+
+**Cost paid:** three days. PR #487 was pushed on 2026-09-18 with all seven checks green and never reviewed, so it could not merge. It was found on 2026-09-21 because the human asked what was left to resume — not by any check.
+
+**Why it is invisible.** The review is started by the session that opens the change, right after it pushes. If that session ends first — a crash, a session limit, a window closed — the review is never started, and from then on nothing is watching:
+
+| Signal | What it says about PR #487 during those three days |
+|---|---|
+| The checks on the change | All green — reads as healthy |
+| The main release | Green — reads as healthy |
+| The list of sessions in flight | Nothing running, which is indistinguishable from nothing left to do |
+| The branch and its worktree | Present, which is also what a change still being written looks like |
+
+Every individual signal was green. The missing fact — *this is finished and waiting on a step nobody started* — is a property of the combination, which nothing computes.
+
+**Fix direction (cheapest first).**
+
+1. A read-only script that lists open changes of ours with every check passing, no review, and no session working on them. One command, run at the start of a session or when asked what is outstanding.
+2. Fold the same check into `scripts/sessions.sh`, which already flags a workspace nothing is working on — the two questions have the same shape and the same answer surface.
+3. Longer term, start the review from the push rather than from the session, so ending the session cannot skip it.
+
+**Related:** the same class as [TI-81](#ti-81-orphaned-deploy-run) — an artefact left behind by a session that ended, with no owner to notice. See [bug-85-an-assumed-threshold-cuts-both-ways](learnings/bug-85-an-assumed-threshold-cuts-both-ways.md).
 
 ## TI-102. The browser check tests for a file, not for a browser that runs
 
