@@ -417,6 +417,8 @@ Reproduced against a real editor: adding `Renewals` to that body yields `- [ ] \
 
 **Cause:** the microphone hears the speakers. 48-C labels by source — mic = Me, system audio = Them — and assumes the mic carries only the user. With speakers on, the mic stream also carries the other side, so the Me pass transcribes it a second time. The split itself ran: the Windows process list at 13:49:48 UTC showed `whisper-cli.exe … ggml-small.en.bin … --vad -vm ggml-silero-v5.1.2.bin`, the per-source pass.
 
+**No audio survives the on-device half.** One recording key exists per note, and the cloud session's 47-minute wav now holds it; the on-device 10 minutes was never uploaded (by design — on-device mode does not send audio). So the on-device stretch cannot be re-transcribed to a better quality later, and the 8–10 minute gap has no audio at all. The transcription-draft store was empty when checked, so nothing was stranded there either.
+
 **Not the cause:** the browser's echo cancellation. It only removes audio the same page plays, so it cannot remove a YouTube tab or a Teams window.
 
 **Cause confirmed 2026-09-18:** the user re-ran the same test on headphones (note `5c874d7d…`). Labels came out clean: every `Them:` line is the video, every `Me:` line is the user, with no duplicates. So the split works; only the speaker-to-mic echo defeats it.
@@ -481,6 +483,7 @@ A web source claiming 8× for the same switch (a large model with KleidiAI) did 
 | ~09:26:27 | Recording stopped. PCM stops arriving (`clamped` stops growing at 93 576 ms) |
 | 09:26:27 → 09:33:50 | 7 m 23 s of "Finalising transcript…" ([BUG-87]) while the dead live session keeps firing a 20 s timeout every 21 s against the hung engine |
 | 09:33:50 | Speaker-separation pass completes, session disposed, log ends |
+| ~09:35 | Meeting restarted in the cloud — which is the only reason the hour was not lost |
 
 **The engine was still hung more than two hours later, and this was measured rather than inferred.** `whisper-server.exe` pid 13236, started 09:16:30, was still alive and still listening on 127.0.0.1:55592. A plain `GET /` — not even `/inference` — timed out after 20.1 s. Two CPU samples 5 s apart moved 0.03 s: it is **blocked, not busy**. It had burned 1 991 s of CPU and then stopped. **Windows then refused to terminate it** — both `Stop-Process -Force` and `taskkill /F` returned *Access is denied* to the owning user, which points at a stuck kernel-level wait rather than a spin in whisper's own code, and is consistent with the zero CPU. A hung engine therefore may not be clearable even by killing it; relaunching the app is what restores service, because a fresh run builds a new server on a new port.
 
@@ -495,7 +498,7 @@ A web source claiming 8× for the same switch (a large model with KleidiAI) did 
 
 **Prior occurrence, 2026-08-19** (same log): healthy to 10:38:43 (infer 1.16 s, rtf 0.31, no drops), first 20 s timeout at 10:39:03, then 34 consecutive failures across 11.5 minutes, never recovering. Both hangs began 6–8 minutes into a recording.
 
-**What it cost on 2026-09-21:** the user noticed the frozen transcript, stopped the local recording and restarted the meeting in the cloud, so the meeting itself was not lost. The cost was the changeover: the on-device transcript ends mid-sentence at "…a bit more over um you know different" and the cloud transcript resumes on a different topic, so roughly a minute of the meeting is missing, plus the 7 m 23 s wait for the on-device pass to finish and the user's attention mid-meeting. **The same hang in a meeting nobody is watching costs the remainder of the meeting** — there is no recovery that does not require a person to intervene.
+**What it cost on 2026-09-21:** the user noticed the frozen transcript, stopped the local recording and restarted the meeting in the cloud, so the meeting itself was not lost. The cost was the changeover: the on-device transcript ends mid-sentence at "…a bit more over um you know different" and the cloud transcript resumes on a different topic, and the gap between them is **about 8–10 minutes**, not the ~1 minute first estimated. Measured: the retained cloud audio is 16 kHz mono, 90 816 000 bytes = **47 m 18 s**, and it reached S3 at 10:23:46, so the cloud recording began around 09:34–09:36 against an on-device stop at 09:26:27. The transcripts corroborate it — the two halves are on entirely different topics either side of the join. On top of that, the 7 m 23 s wait for the on-device pass to finish and the user's attention mid-meeting. **The same hang in a meeting nobody is watching costs the remainder of the meeting** — there is no recovery that does not require a person to intervene.
 
 **Not the cause:** the machine falling behind (rtf was 0.14 at the last healthy step); the model still loading (`READY_TIMEOUT_MS` had long passed); the process dying (it is still alive now). Being the emulated x64 build on an ARM laptop ([BUG-87]) makes every step ~2× more expensive but does not explain a sudden total stall from a healthy state.
 
