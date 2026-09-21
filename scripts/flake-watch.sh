@@ -14,6 +14,20 @@ PATTERN="${2:-TagsJourney}"
 
 cd "$(git rev-parse --show-toplevel)" || exit 1
 
+# The pattern is matched as "<JourneyClass>.<Method>", so a PARTIAL class name matches nothing
+# and every run reports "clean" — a verdict indistinguishable from a genuinely clean history.
+# That happened on 2026-09-21: `flake-watch.sh 770 RecordingTab` reported 15/15 clean while
+# deploy #784 was red on RecordingTabJourney (the missing "Journey" is the whole bug). Compare
+# the pattern against the journey classes that actually exist and refuse a name that matches none.
+known=$(grep -rhoE 'class [A-Za-z0-9_]+' tests/Browser.E2E/Journeys 2>/dev/null | sed 's/^class //' | sort -u)
+if [ -n "$known" ] && ! printf '%s\n' "$known" | grep -qE "^($PATTERN)$"; then
+  printf 'REFUSED: no E2E journey class matches "%s".\n' "$PATTERN" >&2
+  printf 'The filter is matched as <Class>.<Method>, so a partial class name would report every run clean.\n' >&2
+  best=$(printf '%s\n' "$known" | grep -iE "$PATTERN" | head -3 | tr '\n' ' ')
+  [ -n "$best" ] && printf 'Did you mean: %s\n' "$best" >&2
+  exit 2
+fi
+
 clean=0; dirty=0
 printf '%-8s %-12s %-9s %s\n' DEPLOY RUN ATTEMPTS VERDICT
 printf '%s\n' "-------- ------------ --------- -------------------------------"
