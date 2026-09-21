@@ -40,11 +40,19 @@ function discardServer(): void {
 // Only let go of the engine the caller MEANT to replace. A recovery that lands after the user has
 // stopped and started again would otherwise kill the new recording's healthy engine, and that
 // stop-then-restart is exactly what the user did on 2026-09-21 — not a theoretical ordering.
-function discardIfCurrent(server: WhisperServer): void {
+export function discardIfCurrent(server: WhisperServer): void {
   if (shouldDiscardShared(sharedServer, server)) discardServer()
   else server.kill()
 }
 export { discardServer as killWhisperServer }
+
+// Test seams: the shared slot is module state, so the discard rule is assertable without Electron.
+export function __setSharedServerForTest(s: WhisperServer | null): void {
+  sharedServer = s
+}
+export function __getSharedServerForTest(): WhisperServer | null {
+  return sharedServer
+}
 
 type Deps = {
   userDataDir: string
@@ -100,7 +108,10 @@ export function registerLocalTranscription(deps: Deps): void {
         ready: warm.ready,
         // Only ask a READY engine: probing one that is still loading answers "no" for a reason
         // that is not a fault, and acting on it would kill a healthy engine mid-load.
-        answers: warm.ready ? await warm.isResponsive() : true,
+        // Honest data: an engine that has not been asked has not answered. shouldReplaceWarmServer
+        // short-circuits on !ready, so this never decides anything — but a field that lies to make
+        // a caller's ordering work is one refactor away from being read by something else.
+        answers: warm.ready ? await warm.isResponsive() : false,
       })
       if (replace) {
         console.error('[desktop] warm whisper-server is not answering; replacing it')
@@ -238,6 +249,11 @@ export function registerLocalTranscription(deps: Deps): void {
         console.error('[desktop] whisper-server replacement failed to start:', (err as Error).message)
         appendLog(deps.userDataDir, `live engine replacement FAILED: ${(err as Error).message}`)
         if (sharedServer === fresh) sharedServer = null
+        // A DIFFERENT recording may have adopted this engine while it was loading (ensureServer
+        // correctly declines to replace a loading engine). That recording's session never saw it
+        // become ready, so it stays silent — the BUG-56 symptom. Leave the failure where the next
+        // start will replay it.
+        pendingStartFailure = 'the local engine failed to start'
         return null
       }
     }

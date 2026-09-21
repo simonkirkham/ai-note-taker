@@ -24,6 +24,23 @@ const MAX_RECOVERIES = 2
 // being recovered FROM is a hang, so a hanging recovery is a realistic input, not a hypothetical.
 // Sits above WhisperServer's own 60s start budget so a legitimately slow model load is not cut off.
 const RECOVER_TIMEOUT_MS = 90_000
+
+// BUG-88 (review round 2) — WHICH failures mean "jammed". transcribe() rejects for three different
+// reasons and only one of them is this bug: an /inference that never came back (AbortSignal.timeout
+// → a DOMException named TimeoutError). A 500 throws an Error, a malformed body a SyntaxError; both
+// fail in milliseconds and a replacement engine would return exactly the same thing, so restarting
+// on those costs a model load mid-meeting and buys nothing.
+//
+// This replaced an earlier gate that asked the engine whether it still answered `GET /`. That gate
+// was self-defeating: this file's own theory is that the server goes silent BECAUSE abandoned
+// requests accumulate on its serialising mutex — so at the moment the threshold trips, with only
+// FAIL_THRESHOLD requests parked, `/` almost certainly still answers and the gate would have
+// declined to replace a genuinely jamming engine. It would have made the headline fix inert in the
+// exact case it exists for, and logged nothing to say so.
+function isHangFailure(err: unknown): boolean {
+  const name = (err as { name?: string } | null)?.name
+  return name === 'TimeoutError' || name === 'AbortError'
+}
 // BUG-56 — how long the server may stay un-ready before the live view is declared dead. Must sit
 // BELOW WhisperServer's start deadline: once start() gives up it kills the child and nulls proc, so
 // a longer deadline can only ever observe a dead process and is unreachable by construction. The
@@ -95,6 +112,7 @@ export class StreamingSession {
   private scanIdx = 0
   private scanIdxByte = 0
   private recoveries = 0 // engines replaced so far this recording (BUG-88)
+  private hangFailures = 0 // consecutive failures that were TIMEOUTS specifically
   private recovering = false // a replacement is being started; hold steps off meanwhile
 
   constructor(
@@ -189,6 +207,7 @@ export class StreamingSession {
       const segs = await this.server.transcribe(window, this.state.finalizedMs)
       if (this.disposed) return
       this.failures = 0
+      this.hangFailures = 0
       const { state, display } = reduceStream(this.state, segs, nowMs, this.cfg)
       this.state = state
       this.onLive(display)
@@ -207,6 +226,9 @@ export class StreamingSession {
       // of failures against a ready server is terminal — report it once so the renderer's banner fires.
       if (this.disposed) return
       this.failures++
+      // Only an unbroken run of timeouts is a jam. Anything else resets it, so a 500 in the middle
+      // of a run cannot be laundered into a restart.
+      this.hangFailures = isHangFailure(err) ? this.hangFailures + 1 : 0
       // BUG-65: a FAILED step must still leave a trace. A run of 20s /inference timeouts is the most
       // likely shape of "very slow", and reporting only on success would leave the diagnostic log
       // silent for exactly that case — the hole this instrumentation exists to close.
@@ -243,17 +265,17 @@ export class StreamingSession {
   private async recoverOrGiveUp(cause: Error): Promise<void> {
     const recover = this.opts?.onRecover
     const budget = this.opts?.maxRecoveries ?? MAX_RECOVERIES
-    // BUG-88 (review) — replacing an engine only helps when it has stopped ANSWERING. transcribe()
-    // also throws on a 500 and on a malformed body, which fail in milliseconds: three of those
-    // reach the threshold in seconds and would trigger a model reload mid-meeting that cannot
-    // possibly help, because the replacement returns the same 500. Ask the engine directly. An
-    // engine that still answers a bare GET is erroring or slow, not jammed on its inference mutex.
-    if (!this.disposed && recover && (await this.stillAnswers())) {
+    // Replacing an engine only helps when the failures are HANGS — see isHangFailure. Decided from
+    // the failures we already have, with no extra request to an engine we have just concluded is
+    // jamming, and no await before `recovering` latches.
+    if (recover && this.hangFailures < FAIL_THRESHOLD) {
       this.reportTerminal(new Error(LIVE_ENGINE_UNRESPONSIVE, { cause }))
       return
     }
-    if (this.disposed) return
     if (recover && this.recoveries < budget) {
+      // Set synchronously, before ANY await: the step timer is unguarded the moment step()'s
+      // finally clears `busy`, so a gap here lets further requests reach the jammed engine and lets
+      // this method re-enter once per step, spending the whole recovery budget in one window.
       this.recovering = true
       this.recoveries++
       try {
@@ -261,12 +283,17 @@ export class StreamingSession {
         try {
           // Bounded: see RECOVER_TIMEOUT_MS. A supplier that never settles must not be able to
           // park the session silently — that is the defect this whole slice exists to remove.
-          replacement = await Promise.race([
-            recover(),
-            new Promise<null>((resolve) =>
-              setTimeout(() => resolve(null), this.opts?.recoverTimeoutMs ?? RECOVER_TIMEOUT_MS),
-            ),
-          ])
+          let expiry: ReturnType<typeof setTimeout> | undefined
+          try {
+            replacement = await Promise.race([
+              recover(),
+              new Promise<null>((resolve) => {
+                expiry = setTimeout(() => resolve(null), this.opts?.recoverTimeoutMs ?? RECOVER_TIMEOUT_MS)
+              }),
+            ])
+          } finally {
+            if (expiry) clearTimeout(expiry) // the losing side would otherwise hold a 90s timer
+          }
         } catch {
           replacement = null // a failed respawn is "no replacement", not a crash
         }
@@ -306,17 +333,6 @@ export class StreamingSession {
     // operation was aborted due to a timeout" or "/inference 500" means nothing to the user.
     // The original rides along as `cause` so the main process can still log it.
     this.reportTerminal(new Error(LIVE_ENGINE_UNRESPONSIVE, { cause }))
-  }
-
-  // Does the current engine still answer at all? Never throws and never blocks the caller for
-  // long: a server object without the probe (older stubs) is treated as NOT answering, which
-  // preserves the replace-it behaviour rather than silently disabling recovery.
-  private async stillAnswers(): Promise<boolean> {
-    try {
-      return (await this.server.isResponsive?.()) === true
-    } catch {
-      return false
-    }
   }
 
   // BUG-88 — one exit for every terminal condition. Stepping STOPS here: the renderer keeps this

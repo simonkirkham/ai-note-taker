@@ -414,7 +414,25 @@ function deadServer(): WhisperServer & { calls: number } {
     calls: 0,
     transcribe() {
       s.calls++
-      return Promise.reject(new Error('The operation was aborted due to timeout'))
+      // Same shape a real aborted /inference produces; whisperServerHealth.spec.ts pins that name
+      // against a real socket, so these stubs cannot drift from the thing they stand in for.
+      return Promise.reject(new DOMException('The operation was aborted due to timeout', 'TimeoutError'))
+    },
+    kill: () => {},
+  }
+  return s as unknown as WhisperServer & { calls: number }
+}
+
+// An engine that is ERRORING rather than jammed: it fails fast, the way a 500 or a malformed body
+// does. A replacement would return exactly the same thing.
+function erroringServer(): WhisperServer & { calls: number } {
+  const s = {
+    running: true,
+    ready: true,
+    calls: 0,
+    transcribe() {
+      s.calls++
+      return Promise.reject(new Error('whisper-server /inference 500'))
     },
     kill: () => {},
   }
@@ -546,15 +564,14 @@ test('BUG-88: once the live view is declared dead the session stops re-transcrib
   expect(dead.calls).toBe(atGiveUp)
 })
 
-test('BUG-88: an engine that errors fast but still answers is NOT replaced', async () => {
-  // transcribe() throws on a 500 and on a bad body as well as on the 20s hang this slice is
-  // about, and those fail in milliseconds. Restarting on those costs a model load mid-meeting and
-  // cannot help — the replacement returns the same 500. Only a jammed engine is worth replacing.
+test('BUG-88: an engine returning errors is NOT replaced — only a hang is', async () => {
+  // A replacement engine returns the same 500, so restarting costs a model load mid-meeting and
+  // buys nothing. The earlier version of this gate asked the engine whether it still answered
+  // `GET /`; that was self-defeating, because the jam it looks for is caused by requests piling up
+  // AFTER the decision point, so `/` still answers then and a real hang would go unreplaced.
   let spawned = 0
   const errors: Error[] = []
-  const erroring = deadServer()
-  ;(erroring as unknown as { isResponsive: () => Promise<boolean> }).isResponsive = async () => true
-  const session = new StreamingSession(erroring, () => {}, (e) => errors.push(e), undefined, {
+  const session = new StreamingSession(erroringServer(), () => {}, (e) => errors.push(e), undefined, {
     readyTimeoutMs: 60_000,
     stepMs: FAST_STEP,
     onRecover: async () => {
@@ -571,6 +588,70 @@ test('BUG-88: an engine that errors fast but still answers is NOT replaced', asy
   expect(spawned).toBe(0)
   expect(errors.length).toBe(1)
   expect(errors[0].message).toMatch(/stopped responding/i)
+})
+
+test('BUG-88: an error in the middle of a run of hangs cannot be laundered into a restart', async () => {
+  // Mixed causes are not a jam. Without the reset, two timeouts plus a 500 plus a timeout would
+  // reach the threshold and force a pointless model reload.
+  let spawned = 0
+  let n = 0
+  const mixed = {
+    running: true,
+    ready: true,
+    transcribe() {
+      n++
+      return Promise.reject(
+        n % 3 === 0
+          ? new Error('whisper-server /inference 500')
+          : new DOMException('aborted', 'TimeoutError'),
+      )
+    },
+    kill: () => {},
+  } as unknown as WhisperServer
+  const session = new StreamingSession(mixed, () => {}, () => {}, undefined, {
+    readyTimeoutMs: 60_000,
+    stepMs: FAST_STEP,
+    onRecover: async () => {
+      spawned++
+      return liveServer('x')
+    },
+  })
+  session.start()
+  const stop = feedAudio(session)
+  await waitMs(2500)
+  stop()
+  session.dispose()
+
+  expect(spawned).toBe(0)
+})
+
+test('BUG-88: a replacement arriving after the recording ended is never adopted', async () => {
+  // Stop-then-start inside the recovery window is exactly what the user did on 2026-09-21.
+  //
+  // HONEST LABEL: this passes even with the `disposed` guard inside recoverOrGiveUp removed, which
+  // was checked by injection. It holds structurally — dispose() stops the step timer, so nothing
+  // runs whatever the recovery resolves to. So what it really guards is the TEARDOWN, not the
+  // guard: it would redden if disposal ever stopped clearing the timer. Kept and relabelled rather
+  // than presented as coverage of a branch it does not reach.
+  const fresh = liveServer('too late')
+  const live: string[] = []
+  const session = new StreamingSession(deadServer(), (x) => live.push(x), () => {}, undefined, {
+    readyTimeoutMs: 60_000,
+    stepMs: FAST_STEP,
+    onRecover: async () => {
+      await waitMs(500) // a real respawn is a model load, not instant
+      return fresh
+    },
+  })
+  session.start()
+  const stop = feedAudio(session)
+  await waitMs(900) // inside the recovery
+  session.dispose()
+  stop()
+  await waitMs(1200) // the replacement lands here, after the session is gone
+
+  expect(fresh.calls).toBe(0)
+  expect(live).toEqual([])
 })
 
 test('BUG-88: a recovery that never returns still ends in a message, not a silent stall', async () => {

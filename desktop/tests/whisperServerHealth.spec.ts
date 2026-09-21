@@ -1,6 +1,12 @@
 import { test, expect } from '@playwright/test'
 import { createServer, type Server } from 'node:http'
 import { probeAlive, shouldReplaceWarmServer, shouldDiscardShared } from '../src/whisperServer'
+import {
+  discardIfCurrent,
+  __setSharedServerForTest,
+  __getSharedServerForTest,
+} from '../src/localTranscriptionIpc'
+import type { WhisperServer } from '../src/whisperServer'
 
 // BUG-88 — on 2026-09-21 the engine was still running, still holding its port, and still answering
 // nothing more than two hours after a meeting. `running` only asks whether the process exists, so
@@ -85,4 +91,75 @@ test('BUG-88: a recovery landing after a restart does not drop the NEW engine', 
 test('BUG-88: a recovery for the engine still in the shared slot does drop it', () => {
   const engine = {}
   expect(shouldDiscardShared(engine, engine)).toBe(true)
+})
+
+test('BUG-88: a real /inference timeout rejects with name "TimeoutError"', async () => {
+  // POSITIVE CONTROL for the recovery discriminator. streamingSession decides "jammed, replace the
+  // engine" from the error NAME, so if this name is not what a genuinely hung request produces, the
+  // headline fix silently never fires. Proven against a real socket that accepts and never answers
+  // — the actual 2026-09-21 state — not against an assumption about what fetch throws.
+  const srv = await listen(() => {
+    /* never responds */
+  })
+  try {
+    let caught: unknown
+    try {
+      await fetch(`http://127.0.0.1:${srv.port}/inference`, {
+        method: 'POST',
+        signal: AbortSignal.timeout(300),
+      })
+    } catch (err) {
+      caught = err
+    }
+    expect((caught as { name?: string })?.name).toBe('TimeoutError')
+  } finally {
+    srv.close()
+  }
+})
+
+test('BUG-88: a 500 from the engine does NOT look like a hang', async () => {
+  // The other side of the same control: an erroring engine must be distinguishable, or finding 3
+  // comes back and every 500 costs a model reload mid-meeting.
+  const srv = await listen((res) => {
+    const r = res as unknown as { statusCode: number; end: (b?: string) => void }
+    r.statusCode = 500
+    r.end('nope')
+  })
+  try {
+    const res = await fetch(`http://127.0.0.1:${srv.port}/inference`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(2000),
+    })
+    expect(res.ok).toBe(false)
+    const thrown = new Error(`whisper-server /inference ${res.status}`)
+    expect(thrown.name).not.toBe('TimeoutError')
+  } finally {
+    srv.close()
+  }
+})
+
+function fakeEngine(): WhisperServer & { killed: number } {
+  const e = { killed: 0, kill() { e.killed++ } }
+  return e as unknown as WhisperServer & { killed: number }
+}
+
+test('BUG-88: replacing the engine in the shared slot clears the slot', () => {
+  const current = fakeEngine()
+  __setSharedServerForTest(current)
+  discardIfCurrent(current)
+  expect(current.killed).toBe(1)
+  expect(__getSharedServerForTest()).toBeNull()
+})
+
+test('BUG-88: a late recovery kills its OWN engine and leaves the new one in place', () => {
+  // The orphan half. Without the else-branch the stale engine would be left running with a model
+  // resident and nothing that ever kills it, because only the shared slot is torn down on quit.
+  const current = fakeEngine()
+  const stale = fakeEngine()
+  __setSharedServerForTest(current)
+  discardIfCurrent(stale)
+  expect(stale.killed).toBe(1)
+  expect(current.killed).toBe(0)
+  expect(__getSharedServerForTest()).toBe(current)
+  __setSharedServerForTest(null)
 })
