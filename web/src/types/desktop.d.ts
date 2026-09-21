@@ -32,6 +32,12 @@ export interface DesktopBridge {
     onLive(cb: (text: string) => void): () => void;
     onError(cb: (message: string) => void): () => void;
   };
+  // CHANGE-46 — the public web address of the app (https://…), for a copyable note link. The
+  // desktop window's own origin is http://localhost:5180 and is useless to anyone else.
+  // Absent in a shell built before the copy-link button existed; null off the bundle origin.
+  app?: {
+    getPublicOrigin(): Promise<string | null>;
+  };
   // 53-A — absent in a shell built before the update notice existed.
   updates?: {
     // The published update history, or null when it could not be fetched or read.

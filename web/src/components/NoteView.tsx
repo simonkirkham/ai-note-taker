@@ -15,6 +15,7 @@ import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useCreateNoteFromNextOccurrence, useLinkNoteToCalendar, useUnlinkNoteFromCalendar } from "../hooks/useMeetingMutations";
 import { useNoteDetail } from "../hooks/useNoteDetail";
 import { useAnalyseNote, useEditContent, useRenameNoteDetail, useSetNoteDate } from "../hooks/useNoteDetailMutations";
+import { usePublicOrigin } from "../hooks/usePublicOrigin";
 import { useTagNote, useUntagNote } from "../hooks/useTagMutations";
 import { useTags } from "../hooks/useTags";
 import type { useTranscription } from "../hooks/useTranscription";
@@ -169,9 +170,12 @@ export default function NoteView({
   const [editorReseedKey, setEditorReseedKey] = useState(0);
   const { showError } = useToast();
   // CHANGE-46: the link is built from the ROUTER's path, not window.location.href — the note's
-  // address without whatever query or hash happens to be on the URL, and the one form that is
-  // identical in the browser and in the desktop window (which has no address bar to read).
+  // address without whatever query or hash happens to be on the URL. NoteView only ever mounts
+  // under the `notes/:noteId` route (App.tsx), so that path is always the note's own. The origin
+  // comes from the hook because the desktop window's own origin is a localhost nobody else can
+  // open.
   const { pathname } = useLocation();
+  const publicOrigin = usePublicOrigin();
   const [linkCopied, setLinkCopied] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const dateDefaultedFor = useRef<string | null>(null);
@@ -296,14 +300,17 @@ export default function NoteView({
   }, [linkCopied]);
 
   const handleCopyLink = async () => {
+    const link = `${publicOrigin}${pathname}`;
     try {
-      await navigator.clipboard.writeText(`${window.location.origin}${pathname}`);
+      await navigator.clipboard.writeText(link);
       setLinkCopied(true);
     } catch {
       // A button that silently does nothing is worse than no button here: the user walks away
-      // believing they have the link. Same reasoning as the deleted-note rescue banner's copy.
+      // believing they have the link. The failure is permanent, not transient (no clipboard
+      // permission, or no clipboard at all), so "try again" would be false advice — and in the
+      // desktop window there is no address bar to fall back to. Hand over the link itself.
       setLinkCopied(false);
-      showError("Couldn't copy the link. Please try again.");
+      showError(`Couldn't copy the link — here it is: ${link}`);
     }
   };
 
@@ -861,15 +868,30 @@ export default function NoteView({
             />
           )}
           {hasContent && (
-            <button
-              type="button"
-              data-testid="copy-note-link-button"
-              onClick={() => void handleCopyLink()}
-              className={styles.copyLinkButton}
-              aria-live="polite"
-            >
-              {linkCopied ? "Copied" : "Copy link"}
-            </button>
+            <>
+              {/* The label stays "Copy link" and the confirmation lives in its own status
+                  region. Swapping the button's text would change its accessible NAME — a
+                  control that announces itself as "Copied" tells a user tabbing to it nothing
+                  about what it does, and the name change is announced unreliably. Same split
+                  as the "No upcoming occurrences" status above. */}
+              <button
+                type="button"
+                data-testid="copy-note-link-button"
+                onClick={() => void handleCopyLink()}
+                className={styles.copyLinkButton}
+              >
+                Copy link
+              </button>
+              {linkCopied && (
+                <span
+                  data-testid="copy-note-link-status"
+                  role="status"
+                  className={styles.copyLinkStatus}
+                >
+                  Copied
+                </span>
+              )}
+            </>
           )}
           {hasContent && (
             <button

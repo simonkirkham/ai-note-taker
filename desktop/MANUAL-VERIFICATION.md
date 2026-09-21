@@ -258,13 +258,13 @@ Needs **two** publishes after 54-A merges: the first carries the self-updating c
 
 ## CHANGE-46 — Copy link on a note
 
-The desktop window has no address bar, so this is the only way to get a note's link there. The permission policy previously granted the renderer **no** clipboard access (`desktop/src/preload.ts` says so), so the specs prove only the decision, not that Electron consults it for a clipboard write — row 1 is what proves it. A denial prints a `[desktop] permission` warning in the terminal the app was started from.
+The desktop window has no address bar, so this is the only way to get a note's link there. Two things here cannot be proved by tests: Electron consulting the permission policy for a clipboard write (the renderer previously had **no** clipboard access at all), and the link carrying the public site rather than the window's own `http://localhost:5180`. A permission denial prints a `[desktop] permission` warning in the terminal the app was started from.
 
 | # | Check | ✓ |
 |---|---|---|
-| 1 | **Copy works:** Given a note open in the desktop app, When I press **Copy link**, Then the button reads "Copied" and pasting into any text field gives `https://…/w/<workspace>/notes/<id>`. | ☐ |
-| 2 | **The link opens the note:** When I paste that address into a browser signed in as me, Then the same note opens. | ☐ |
-| 3 | **No read access was granted:** Given the app is open, Then the console has no `clipboard-read` grant line (a denial line is the expected outcome if anything asks). | ☐ |
+| 1 | **Copy works, and copies a PUBLIC address:** Given a note open in the desktop app, When I press **Copy link**, Then "Copied" appears and pasting anywhere gives `https://note-taker-ai.com/w/<workspace>/notes/<id>` — starting `https://`, **not** `http://localhost:5180`. | ☐ |
+| 2 | **The link opens the note from elsewhere:** Given row 1's address, When I **close the desktop app** and paste it into a browser signed in as me, Then the same note opens. (Closing the app matters — while it runs, a localhost link would appear to work.) | ☐ |
+| 3 | **No read access was granted:** Given the app is open, Then the console shows no granted `clipboard-read` line (a denial is the expected outcome if anything asks). | ☐ |
 
 ## Troubleshooting
 

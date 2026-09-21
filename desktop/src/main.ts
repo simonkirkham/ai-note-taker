@@ -221,6 +221,16 @@ function logDecision(kind: 'request' | 'check', permission: string, allow: boole
   else console.warn(line)
 }
 
+// CHANGE-46 — the public web address of this app. In the desktop window
+// window.location.origin is http://localhost:5180, which resolves on this machine only and
+// while the app is running, so a note link copied there would be useless to anyone. The shell
+// hands the renderer the public origin instead; PROD_ORIGIN above stays the single definition
+// (a sandboxed preload cannot import it, so it comes over IPC like everything else).
+function registerPublicOrigin(): void {
+  ipcMain.handle('app:publicOrigin', (event) =>
+    isBundleOrigin(event.senderFrame?.url, BUNDLE_ORIGINS) ? PROD_ORIGIN : null)
+}
+
 // 53-A — the update notice's two main-process calls. net.fetch uses Chromium's network stack,
 // so it honours the system proxy the same way the window does.
 function registerUpdateNotice(): void {
@@ -305,6 +315,7 @@ void app.whenReady().then(async () => {
     resourcesPath: process.resourcesPath,
     getWindow: () => mainWindow,
   })
+  registerPublicOrigin()
   registerUpdateNotice()
   registerAutoUpdate()
   logBuildSha()

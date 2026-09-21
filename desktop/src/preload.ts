@@ -10,6 +10,11 @@ export type LocalStatus = { modelReady: boolean; downloading: boolean; progress:
 contextBridge.exposeInMainWorld('desktop', {
   isDesktop: true,
   platform: process.platform,
+  // CHANGE-46 — the app's public web address, so a note link copied from the desktop window is
+  // one that works off this machine. Owned by main.ts (PROD_ORIGIN); null off the bundle origin.
+  app: {
+    getPublicOrigin: (): Promise<string | null> => ipcRenderer.invoke('app:publicOrigin'),
+  },
   // 53-A — the update notice. The fetch and the clipboard write both live in the main process:
   // the history download has no CORS headers, and the permission policy does not grant the
   // renderer clipboard access.

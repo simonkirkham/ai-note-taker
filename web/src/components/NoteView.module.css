@@ -141,7 +141,6 @@
 .copyLinkButton {
   display: inline-flex;
   align-items: center;
-  gap: 0.375rem;
   background: none;
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius);
@@ -150,9 +149,6 @@
   font-size: 0.875rem;
   color: var(--color-text);
   cursor: pointer;
-  /* Holds the wider "Copy link" width so confirming the copy does not shuffle Delete sideways. */
-  min-width: 6.25rem;
-  justify-content: center;
   transition: border-color var(--transition), color var(--transition), background var(--transition);
 }
 
@@ -165,6 +161,12 @@
 .copyLinkButton:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
+}
+
+/* Sits beside the button rather than replacing its label, so the control keeps its name. */
+.copyLinkStatus {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
 }
 
 .deleteNoteButton {
