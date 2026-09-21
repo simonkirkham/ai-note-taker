@@ -146,6 +146,25 @@ Worth keeping for two reasons. The failure was the same shape as the bug — som
 
 **First place to look:** whether the card fold ran for that note at all, or wrote under a different key/workspace — the projector's position advancing past a token means every projection for that stream was written, so a card that is absent while the gate says fresh points at the fold's own output, not at lag.
 
+**Diagnosis pass 2026-09-21 (second session). Five candidates eliminated against the code, one correction to the write-up, two left standing.**
+
+First, a correction: the failure is at `RecordingTabJourney.cs:100`, which runs **before any recording starts** — it is a note that was created, titled and saved, full stop. The four writes `@2`–`@5` are that create-and-save, not a recording. Anything that reasons from "recorded into it" is reasoning about the wrong moment.
+
+| Eliminated | Why |
+| --- | --- |
+| A stalled projector | `StreamProjector.ProcessOneAsync` writes the position **only after** `RouteAsync` returns true, and `RouteAsync` returns false rather than advancing when a stream cannot be routed. A position past `@5` means the note's fold ran to completion |
+| A truncated or limited page | `NoteHandlers.GetNoteCards` applies no limit and no paging — it returns every card the filter admits |
+| A stale read | `DynamoDbNoteCardListStore.QueryAllAsync` sets `ConsistentRead = true` **and** loops `LastEvaluatedKey` to exhaustion, so it is neither eventually-consistent nor 1 MB-truncated |
+| A workspace mismatch | `CurrentWorkspace` reads the workspace from the **route**, and six other cards in the same response passed the same filter |
+| The date comparison being string-lexicographic | Looked wrong — a full ISO timestamp compared against a date-only bound would exclude today's notes. It is not: `effectiveDate` returns date-only on both branches (`dates.ts:20`), so both sides are `YYYY-MM-DD`. **Checked before reporting; it would have been a confident wrong answer** |
+
+**Still standing, ranked:**
+
+1. **The fold ran but wrote no card row.** `ApplyNoteEventsAsync` drives several projections for one note stream; the position advances once it returns. Anything that skips or swallows the card arm specifically leaves the gate honestly reporting fresh with no card. Nobody has looked inside the updater yet — this is where the evidence actually points.
+2. **A client-side date-window exclusion.** The home list shows only the **last 30 days** (`ListView.tsx:52`, `presetBounds`), and the upper bound is the **browser's local today** (`localDateISO(new Date())`) while the card's date comes from the server. Any disagreement between those two clocks hides that one card while every other card renders. It does not obviously fit a midday run, which is why it is second — but it is the only client-side path that can hide exactly one card.
+
+**The measurement that separates them, and it has not been taken.** Every remaining hypothesis turns on one unknown: **did the API response contain the card?** The failure message records that four reads returned `200` and gated fresh, but not what came back, so server-side and client-side are still indistinguishable. The journey must not read a listened response body — that is what hung the gate for 44 min — but on failure it *can* issue its own `fetch('/notes/cards')` from the page and fold the returned titles into the thrown message. That is a fresh request, not a listener, so it does not touch the deadlock, and one more red run would then settle it outright. **Do that before implementing any fix**; both remaining hypotheses are plausible and they have nothing in common.
+
 **Frequency:** once. `scripts/flake-watch.sh 770 RecordingTabJourney` shows **14 clean deploys** (#770–#783) and this single hit at #784 — so it is rare, and it is not a pre-existing steady flake in this journey.
 
 **Not caused by the change that was deploying.** #784 carried [CHANGE-46] (a copy-link button in the note header, a hook reading the app's public address, and a desktop clipboard permission). It touches no read model, no recording path, no navigation, and no card list.
