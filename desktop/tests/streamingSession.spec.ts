@@ -595,6 +595,7 @@ test('BUG-88: an error in the middle of a run of hangs cannot be laundered into 
   // reach the threshold and force a pointless model reload.
   let spawned = 0
   let n = 0
+  const errors: Error[] = []
   const mixed = {
     running: true,
     ready: true,
@@ -608,7 +609,7 @@ test('BUG-88: an error in the middle of a run of hangs cannot be laundered into 
     },
     kill: () => {},
   } as unknown as WhisperServer
-  const session = new StreamingSession(mixed, () => {}, () => {}, undefined, {
+  const session = new StreamingSession(mixed, () => {}, (e) => errors.push(e), undefined, {
     readyTimeoutMs: 60_000,
     stepMs: FAST_STEP,
     onRecover: async () => {
@@ -622,6 +623,10 @@ test('BUG-88: an error in the middle of a run of hangs cannot be laundered into 
   stop()
   session.dispose()
 
+  // Anchor: without this, `spawned === 0` also passes if the run never got far enough to decide
+  // anything. Three specs in this slice have already passed for the wrong reason; an assertion
+  // that the run REACHED its conclusion is what turns this into a statement about a decision.
+  expect(errors.length).toBe(1)
   expect(spawned).toBe(0)
 })
 

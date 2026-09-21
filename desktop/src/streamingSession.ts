@@ -28,6 +28,19 @@ const MAX_RECOVERIES = 2
 // The costs are asymmetric. Replacing when we did not need to costs one model load. NOT replacing
 // when we should have costs the rest of the meeting's live transcript — which is BUG-88 itself. So
 // give the timeout run its own threshold, and let "give up" sit further out.
+// 2x is the FLOOR, not a round number — do not lower it to make the banner arrive sooner. Work the
+// measured sequence through both counters: T,T,blip,T,T,T. The blip resets the timeout run at step
+// 3, so the run only completes at step 6. At 5 the session gives up one step BEFORE that, and at 4
+// sooner still — either value reinstates exactly the defect this split exists to remove.
+//
+// The cost of 6 falls only on an engine that is ERRORING, never on a hang (three consecutive
+// timeouts fire recovery first and never consult this). During those extra steps the live view is
+// already dead and the remedy on offer is unchanged, and the SAVED transcript is untouched either
+// way, because pushPcm keeps buffering regardless of the live view.
+//
+// Accepted edge: two blips still defeat recovery (T,blip,T,blip,T,T reaches six failures with the
+// run at two). That is the right place to stop — each further increment costs another 20s of dead
+// transcript in the timeout case, which is the case that matters.
 const GIVE_UP_THRESHOLD = FAIL_THRESHOLD * 2
 
 // BUG-88 (review) — a recovery that never returns is the bug again, one layer up: the session
