@@ -57,10 +57,24 @@
 | CHANGE-42 | **After a meeting, the app keeps pointing at that note behind the scenes for the rest of the day — and if you close or delete the note, it is pointing at something that no longer exists.** Nothing goes wrong today: the one thing that would act on it declines to when there is nothing to save. It is a trap for the next change rather than a live fault. | 🔲 **Open** — raised 2026-09-10, from the 51-C review. Deliberate as built: the binding has to outlive the recording so the transcript, the audio upload and the speaker-labelling all still reach the right note after Stop. Nothing releases it afterwards. See `boundNoteId` in `web/src/hooks/recordingSession.tsx`. | — |
 | CHANGE-44 | **During an on-device recording the live transcript shows one unlabelled stream — you only see who said what after you stop and wait for it to finish.** Wanted: "Me"/"Them" labels as the words appear. The two sources are already captured separately, so the live view could tag each line by which one it came from. Raised 2026-09-18 by the user; see [BUG-87] fix direction 2, which would give both. | 🔲 **Open** | — |
 | CHANGE-45 | **While an on-device recording runs, the live transcript is one unbroken wall of text — no line or paragraph breaks — so you cannot skim back to what was just said.** The engine returns the running text as a single string (`useTranscription.ts` `onLive`), so nothing inserts breaks; it already knows where each pause falls. Raised 2026-09-18 by the user, who rates it a bigger problem than the speaker labels. | 🔲 **Open** | — |
+| CHANGE-46 | **You cannot hand someone a link to a note.** The web app has one in the address bar if you know to look; the desktop app has no address bar at all, so the link is unreachable. A **Copy link** button in the note header puts the note's web address on the clipboard and confirms it. | 🔲 **Open** | — |
 
 Open: CHANGE-39 (low priority). CHANGE-41 shipped 2026-08-13 (deploy #771). CHANGE-33 shipped 2026-08-09 (deploy #745). CHANGE-30/31/32/34 all shipped 2026-08-07 (deploys #725/#726/#723/#727) — their CI had been cancelled mid-flight by the 2026-08-06 GitHub Actions outage and was re-triggered by closing and reopening each PR (`gh run cancel`/`rerun` both refused: the stranded runs reported `queued` to a query, `completed` to a cancel and `running` to a rerun).
 
 New tweaks are appended as a one-line shipped record below once Done. The full spec/Value/Approach for each lived in this doc during the slice and remains in git history; the durable *why* (where any) is in the learnings archive. CHANGE-1 to CHANGE-4 were moved here from the former "Phase 13 — UI Polish II" once it was clear they were minor tweaks rather than a distinct phase.
+
+
+## CHANGE-46
+
+**What the user gets:** a **Copy link** button next to Delete in the note header. One click copies the note's address (`https://…/w/{workspace}/notes/{id}`), and the button reads **Copied** for two seconds so the click is visibly confirmed. Anyone signed in who opens that address lands on the note — deep links already work.
+
+**Why it is needed:** the desktop app is a chromeless Electron window with no address bar, so today there is no way to get the link at all on the surface the user actually works in.
+
+**Scope:**
+- `web/src/components/NoteView.tsx` — button in `noteHeaderRight`, `navigator.clipboard.writeText(origin + pathname)`; on refusal, the existing error toast tells the user to copy it manually rather than failing silently (the `DeletedNoteRescue` pattern).
+- `desktop/src/permissionPolicy.ts` — `clipboard-sanitized-write` added to `ALLOWED_PERMISSIONS`. Today the policy grants the renderer no clipboard access at all (`desktop/src/preload.ts` says so), so a renderer copy is denied in the desktop app; the origin + main-frame gates are unchanged, so only the bundle origin gets it. This also un-breaks the existing "Copy text" button on the deleted-note rescue banner, which has the same denial.
+
+**Not in scope:** no share/permission model — the link is only useful to the note's owner, exactly as the address bar is today. No backend, no event, no projection, no CDK change; deploy-time neutral.
 
 ---
 
