@@ -138,6 +138,29 @@ test('the check handler denies any other origin, including an empty one', () => 
   expect(chk({ permission: 'media', requestingOrigin: '', mediaType: 'audio' }).allow).toBe(false)
 })
 
+// CHANGE-46 — the in-app "Copy link" button. The renderer had NO clipboard access at all
+// (desktop/src/preload.ts routes the update command's copy through the main process for exactly
+// this reason), so navigator.clipboard.writeText was denied in the desktop window and the button
+// would have failed on the one surface with no address bar to fall back to. WRITE only: reading
+// the clipboard stays denied below, and Chromium still requires focus + user activation.
+test('a sanitized clipboard write from the bundle origin is granted (the Copy link button)', () => {
+  expect(req({ permission: 'clipboard-sanitized-write', requestingUrl: APP_URL }).allow).toBe(true)
+  expect(chk({ permission: 'clipboard-sanitized-write', requestingOrigin: 'http://localhost:5180/' }).allow).toBe(true)
+})
+
+test('a clipboard write from any other origin, or a sub-frame, is still denied', () => {
+  expect(req({ permission: 'clipboard-sanitized-write', requestingUrl: 'https://evil.example/' }).allow).toBe(false)
+  expect(chk({ permission: 'clipboard-sanitized-write', requestingOrigin: 'https://evil.example' }).allow).toBe(false)
+  expect(req({ permission: 'clipboard-sanitized-write', requestingUrl: APP_URL, isMainFrame: false }).allow).toBe(false)
+})
+
+// Granting the write must not drag the read in with it: clipboard-read would let the page see
+// whatever the user last copied anywhere on their machine.
+test('reading the clipboard stays denied even from the bundle origin', () => {
+  expect(req({ permission: 'clipboard-read', requestingUrl: APP_URL }).allow).toBe(false)
+  expect(chk({ permission: 'deprecated-sync-clipboard-read', requestingOrigin: 'http://localhost:5180/' }).allow).toBe(false)
+})
+
 test('the check handler denies unlisted permissions from the bundle origin', () => {
   for (const permission of ['geolocation', 'clipboard-read', 'midiSysex', 'serial', 'usb']) {
     expect(chk({ permission, requestingOrigin: 'http://localhost:5180' }).allow, `expected ${permission} to be denied`).toBe(false)

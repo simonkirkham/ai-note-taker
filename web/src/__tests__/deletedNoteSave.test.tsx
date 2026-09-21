@@ -1,6 +1,7 @@
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { useState } from 'react'
+import { MemoryRouter } from 'react-router'
 import { keys } from '../api/queryKeys'
 import App from '../App'
 import { AuthProvider } from '../auth/AuthContext'
@@ -59,7 +60,9 @@ function deletedResponse() {
 function Harness({ onNotFound }: { onNotFound?: () => void } = {}) {
   const [open, setOpen] = useState(true)
   return (
-    <ToastProvider>
+    // CHANGE-46: NoteView reads the note's address off the router to build its copyable link, so
+    // this harness carries the Router it always has in App.tsx (where it IS a route element).
+    <ToastProvider><MemoryRouter initialEntries={['/w/ws-1/notes/note-1']}>
       <DeletedNoteRescue />
       {open && (
         <NoteView
@@ -72,7 +75,7 @@ function Harness({ onNotFound }: { onNotFound?: () => void } = {}) {
           onNotFound={onNotFound}
         />
       )}
-    </ToastProvider>
+    </MemoryRouter></ToastProvider>
   )
 }
 

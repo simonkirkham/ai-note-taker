@@ -51,7 +51,14 @@ export type PermissionCheckQuery = {
 //                     'display-capture', so listing it here never affects a check.
 //   notifications   — Notification.requestPermission() for meeting reminders (already shipped;
 //                     omitting it here would newly break it).
-const ALLOWED_PERMISSIONS = new Set(['media', 'display-capture', 'notifications'])
+//   clipboard-sanitized-write
+//                   — navigator.clipboard.writeText, for CHANGE-46's "Copy link" button on a
+//                     note (and the deleted-note rescue banner's "Copy text", which had the
+//                     same denial). WRITE only, and sanitized: 'clipboard-read' and
+//                     'deprecated-sync-clipboard-read' stay off the list, so the page still
+//                     cannot see what the user last copied elsewhere. Chromium additionally
+//                     requires focus and user activation before it even asks.
+const ALLOWED_PERMISSIONS = new Set(['media', 'display-capture', 'notifications', 'clipboard-sanitized-write'])
 
 export function decidePermissionRequest(
   query: PermissionRequestQuery,

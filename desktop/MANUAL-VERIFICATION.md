@@ -256,6 +256,16 @@ Needs **two** publishes after 54-A merges: the first carries the self-updating c
 | 4 | **Restart now:** Given the ready notice on a later publish, When I press Restart now, Then the app closes and reopens by itself on the newer build. | ☐ |
 | 5 | **Not while recording:** Given the ready notice, When I start a recording, Then **Restart now** disappears until the recording has stopped and finished saving. | ☐ |
 
+## CHANGE-46 — Copy link on a note
+
+The desktop window has no address bar, so this is the only way to get a note's link there. The permission policy previously granted the renderer **no** clipboard access (`desktop/src/preload.ts` says so), so the specs prove only the decision, not that Electron consults it for a clipboard write — row 1 is what proves it. A denial prints a `[desktop] permission` warning in the terminal the app was started from.
+
+| # | Check | ✓ |
+|---|---|---|
+| 1 | **Copy works:** Given a note open in the desktop app, When I press **Copy link**, Then the button reads "Copied" and pasting into any text field gives `https://…/w/<workspace>/notes/<id>`. | ☐ |
+| 2 | **The link opens the note:** When I paste that address into a browser signed in as me, Then the same note opens. | ☐ |
+| 3 | **No read access was granted:** Given the app is open, Then the console has no `clipboard-read` grant line (a denial line is the expected outcome if anything asks). | ☐ |
+
 ## Troubleshooting
 
 - **`Error 400: redirect_uri_mismatch` immediately after adding `http://localhost:5180`** — the value is correct (`redirect_uri = window.location.origin = http://localhost:5180`: no trailing slash, `localhost` not `127.0.0.1`, port `5180`, `http` not `https`). The cause is **Google propagation lag** — a freshly added+saved redirect URI is not live immediately; it can take **~5 min to a few hours**. Confirm the running app's `window.location.origin` (DevTools console) reads exactly `http://localhost:5180`, then wait and retry. **No code change.** Hit and confirmed 2026-06-22: config was right on the first attempt; the URI simply had not propagated.

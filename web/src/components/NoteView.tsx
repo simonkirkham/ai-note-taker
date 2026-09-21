@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
 import { useEffect, useRef, useState } from "react";
+import { useLocation } from "react-router";
 import { ApiError } from "../api/client";
 import { contentHash } from "../api/contentHash";
 import { type CalendarMeeting } from "../api/meetings";
@@ -36,6 +37,10 @@ import RecordControl from "./RecordControl";
 import ShortcutsPanel from "./ShortcutsPanel";
 import { useToast } from "./toastContext";
 import TranscriptTab, { type RecordingDownloadStatus, type DiarizationDisplayStatus } from "./TranscriptTab";
+
+// CHANGE-46: how long the copy-link button reads "Copied" before going back to its label.
+// Exported so the spec advances exactly this long instead of guessing at it.
+export const COPIED_LABEL_MS = 2000;
 
 type NoteTab = "quick" | "transcript" | "final";
 
@@ -163,6 +168,11 @@ export default function NoteView({
   // Bumped to remount the (uncontrolled) editor onto freshly-refetched content after a stale conflict.
   const [editorReseedKey, setEditorReseedKey] = useState(0);
   const { showError } = useToast();
+  // CHANGE-46: the link is built from the ROUTER's path, not window.location.href — the note's
+  // address without whatever query or hash happens to be on the URL, and the one form that is
+  // identical in the browser and in the desktop window (which has no address bar to read).
+  const { pathname } = useLocation();
+  const [linkCopied, setLinkCopied] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const dateDefaultedFor = useRef<string | null>(null);
   // BUG-18: content otherwise persists only via the editor's onBlur. Removing an
@@ -273,6 +283,27 @@ export default function NoteView({
       window.open(url, "_blank", "noopener");
     } catch {
       showError("Could not download the recording. Please try again.");
+    }
+  };
+
+  // Clears itself so the button does not sit on "Copied" for the rest of the note's life,
+  // claiming a copy the user made minutes ago. setState in the timer callback, never in the
+  // effect body (react-hooks/set-state-in-effect is a hard CI gate).
+  useEffect(() => {
+    if (!linkCopied) return;
+    const timer = setTimeout(() => setLinkCopied(false), COPIED_LABEL_MS);
+    return () => clearTimeout(timer);
+  }, [linkCopied]);
+
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}${pathname}`);
+      setLinkCopied(true);
+    } catch {
+      // A button that silently does nothing is worse than no button here: the user walks away
+      // believing they have the link. Same reasoning as the deleted-note rescue banner's copy.
+      setLinkCopied(false);
+      showError("Couldn't copy the link. Please try again.");
     }
   };
 
@@ -828,6 +859,17 @@ export default function NoteView({
               workspaces={otherWorkspaces}
               onMove={onMoveToWorkspace}
             />
+          )}
+          {hasContent && (
+            <button
+              type="button"
+              data-testid="copy-note-link-button"
+              onClick={() => void handleCopyLink()}
+              className={styles.copyLinkButton}
+              aria-live="polite"
+            >
+              {linkCopied ? "Copied" : "Copy link"}
+            </button>
           )}
           {hasContent && (
             <button
