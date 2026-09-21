@@ -133,7 +133,7 @@ Drop the `level` filter and add `| filter message like /note <id>/` to see one r
 | `muted=True` | A captured track was muted at the moment of the save. Reversible, unlike `sourceEnded` |
 | `silent=True` | Every captured sample stayed below the transmitted-audio floor for two solid minutes. The app was sending zero-filled buffers, so there was nothing for the service to transcribe |
 | `silentFor` | Seconds since the last sample above that floor, counted from the start of the recording if there never was one |
-| `loudest` | The loudest sample since the last words, in dBFS as transmitted. About −30 to −10 = people speaking; about −60 to −50 = a live microphone in a quiet room; `-100` = digital silence or no audio at all |
+| `loudest` | The loudest sample since the last words, in dBFS as transmitted. About −30 to −10 = people speaking; about −60 to −50 = a live microphone in a quiet room; `-100` = digital silence or no audio at all. On an `end=stopped` line `-100` is normal, not a fault: the window restarts with the last words, which usually arrive after the audio has stopped |
 | `speech` | Seconds since the last words with audio at speech level (−40 dBFS or louder). With `sinceLastText` it gives the share of the stall that was speech. **10 s or more with no words = transcription stalled while people spoke. Under 10 s = a quiet room.** Both this and `loudest` carry their unit in the value (`speech=12.4s`), so match them in the message text rather than filtering them as numbers |
 | `sourceEnded`, `muted`, `silent`, `silentFor` all `-` | A build from before [BUG-85] slice 1. `user_agent` says which |
 | `loudest=- speech=-` | A build from before the loudness measurement. Absent, never zero |
