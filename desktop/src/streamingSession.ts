@@ -13,6 +13,11 @@ const STEP_MS = 1500
 const BYTES_PER_MS = 32 // 16 kHz * 16-bit mono → 32 bytes/ms
 const MIN_NEW_MS = 500 // don't run inference until at least this much new audio has arrived
 const FAIL_THRESHOLD = 3 // consecutive post-ready /inference failures before we call it terminal
+// BUG-88 — how many times we will replace a hung engine within one recording. A restart costs a
+// model load (seconds) against an otherwise unbounded loss, so the first couple are clearly worth
+// it; an engine that hangs a third time is not going to be fixed by a fourth attempt, and the
+// machine is in the middle of a meeting. Past this the user is told, once, as before.
+const MAX_RECOVERIES = 2
 // BUG-56 — how long the server may stay un-ready before the live view is declared dead. Must sit
 // BELOW WhisperServer's start deadline: once start() gives up it kills the child and nulls proc, so
 // a longer deadline can only ever observe a dead process and is unreachable by construction. The
@@ -50,6 +55,11 @@ export type LiveStepStat = {
 
 export type StreamingSessionOptions = {
   readyTimeoutMs?: number
+  // BUG-88: ask the owner for a REPLACEMENT engine when the current one stops answering. The owner
+  // holds the shared server, so only it can kill and respawn. Returning null means "no replacement
+  // available" — the session then tells the user, exactly as it did before recovery existed.
+  onRecover?: () => Promise<WhisperServer | null>
+  maxRecoveries?: number
   minSessionForStopReportMs?: number
   maxSendWindowMs?: number
   // BUG-65: per-step cost, for the on-device diagnostic log.
@@ -74,9 +84,11 @@ export class StreamingSession {
   // only grows, so advancing this makes each slice O(window) instead of O(whole recording so far).
   private scanIdx = 0
   private scanIdxByte = 0
+  private recoveries = 0 // engines replaced so far this recording (BUG-88)
+  private recovering = false // a replacement is being started; hold steps off meanwhile
 
   constructor(
-    private readonly server: WhisperServer,
+    private server: WhisperServer,
     private readonly onLive: (text: string) => void,
     private readonly onError: (err: Error) => void,
     private readonly cfg?: StreamConfig,
@@ -101,7 +113,7 @@ export class StreamingSession {
   private async step(): Promise<void> {
     // BUG-65: a step skipped because the previous inference is still running is the signal that the
     // engine cannot keep pace — count it, so the log distinguishes "slow" from "falling behind".
-    if (this.busy) {
+    if (this.busy || this.recovering) {
       this.droppedSinceLog++
       return
     }
@@ -111,11 +123,10 @@ export class StreamingSession {
       // renderer's banner fires (a start-time failure is surfaced by the IPC layer instead). If it was
       // never ready, this is the IPC layer's start-failure case → stay quiet here.
       if (this.sawReady && !this.terminalReported) {
-        this.terminalReported = true
         // Same wording as the stop-path branch below: one condition must not produce two different
         // banners depending on which timer happened to notice, and the user-facing text must not
         // name an internal binary.
-        this.onError(new Error(LIVE_ENGINE_STOPPED))
+        this.reportTerminal(new Error(LIVE_ENGINE_STOPPED))
       }
       return
     }
@@ -199,15 +210,74 @@ export class StreamingSession {
       })
       this.droppedSinceLog = 0
       if (this.failures >= FAIL_THRESHOLD && !this.terminalReported) {
-        this.terminalReported = true
-        // Never forward the raw transport error: it reaches the banner verbatim, where "The
-        // operation was aborted due to a timeout" or "/inference 500" means nothing to the user.
-        // The original rides along as `cause` so the main process can still log it.
-        this.onError(new Error(LIVE_ENGINE_UNRESPONSIVE, { cause: err }))
+        // BUG-88: a sustained run of failures against a READY server means the engine has stopped
+        // answering, and on 2026-09-21 that state never resolved on its own — the process was still
+        // hung two hours later, refusing even a bare GET. Reporting it and carrying on cost 8-10
+        // minutes of a meeting, so replace the engine instead. The recorded audio is untouched by
+        // this (pushPcm keeps buffering, and the stop-time pass reads the whole thing), and the new
+        // engine resumes from the same finalizedMs, so the loss is bounded by the dead window.
+        // Crucially this also STOPS sending to the old engine: every abandoned request piles onto
+        // whisper-server's serialised queue, which is what turned one stuck window into a server
+        // that could not answer anything at all.
+        this.busy = false
+        void this.recoverOrGiveUp(err as Error)
+        return
       }
     } finally {
       this.busy = false
     }
+  }
+
+  // BUG-88 — swap in a fresh engine, or tell the user once and stop. Never throws: this runs
+  // detached from step(), so an unhandled rejection here would surface as a crash rather than a
+  // failed recording.
+  private async recoverOrGiveUp(cause: Error): Promise<void> {
+    const recover = this.opts?.onRecover
+    const budget = this.opts?.maxRecoveries ?? MAX_RECOVERIES
+    if (recover && this.recoveries < budget) {
+      this.recovering = true
+      this.recoveries++
+      let replacement: WhisperServer | null = null
+      try {
+        replacement = await recover()
+      } catch {
+        replacement = null // a failed respawn is "no replacement", not a crash
+      }
+      if (this.disposed) {
+        this.recovering = false
+        return
+      }
+      if (replacement) {
+        this.server = replacement
+        this.failures = 0
+        this.sawReady = false
+        // Re-arm the load deadline: a replacement that never finishes loading would otherwise be
+        // skipped silently by the !ready guard for the rest of the recording — the BUG-56 hole,
+        // reopened one layer up.
+        if (this.readyTimer) clearTimeout(this.readyTimer)
+        this.readyTimer = setTimeout(() => this.reportLiveViewDead(), this.opts?.readyTimeoutMs ?? READY_TIMEOUT_MS)
+        this.recovering = false
+        return
+      }
+      this.recovering = false
+    }
+    // Never forward the raw transport error: it reaches the banner verbatim, where "The
+    // operation was aborted due to a timeout" or "/inference 500" means nothing to the user.
+    // The original rides along as `cause` so the main process can still log it.
+    this.reportTerminal(new Error(LIVE_ENGINE_UNRESPONSIVE, { cause }))
+  }
+
+  // BUG-88 — one exit for every terminal condition. Stepping STOPS here: the renderer keeps this
+  // session alive while it awaits the stop-time speaker-separation pass (7m23s on 2026-09-21), so a
+  // session that keeps re-transcribing a window it can never finish is burning cores the user is
+  // waiting on. Audio keeps buffering regardless — pushPcm does not depend on the timer — so the
+  // stop-time pass still covers the whole recording.
+  private reportTerminal(err: Error): void {
+    if (this.terminalReported) return
+    this.terminalReported = true
+    if (this.timer) clearInterval(this.timer)
+    this.timer = null
+    this.onError(err)
   }
 
   // A step's stats never reach the caller raw: onStep is supplied by the IPC layer and runs inside
@@ -258,16 +328,14 @@ export class StreamingSession {
     // accurate "failed to start" banner; overwriting it here would tell the user the wrong thing.
     if (!this.server.running) {
       if (!this.sawReady) return
-      this.terminalReported = true
-      this.onError(new Error(LIVE_ENGINE_STOPPED))
+      this.reportTerminal(new Error(LIVE_ENGINE_STOPPED))
       return
     }
     // Alive but still loading. On the stop path, only complain if the recording ran long enough
     // that a live transcript was a reasonable expectation.
     const grace = this.opts?.minSessionForStopReportMs ?? MIN_SESSION_FOR_STOP_REPORT_MS
     if (fromStop && Date.now() - this.startedAt < grace) return
-    this.terminalReported = true
-    this.onError(new Error(LIVE_ENGINE_NEVER_LOADED))
+    this.reportTerminal(new Error(LIVE_ENGINE_NEVER_LOADED))
   }
 
   stop(): void {

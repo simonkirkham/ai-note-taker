@@ -27,9 +27,21 @@ import type { LocalStatus } from './preload'
 // BUG-53: the resident whisper-server (loaded with the live model) is shared across recordings and
 // only torn down on app-quit. main.ts calls this from before-quit alongside killActiveWhisper.
 let sharedServer: WhisperServer | null = null
-export function killWhisperServer(): void {
-  sharedServer?.kill()
+
+// BUG-88 — let go of the shared engine. The kill is best-effort on purpose: on 2026-09-21 Windows
+// refused to terminate the hung process at all ("Access is denied" to both Stop-Process -Force and
+// taskkill /F), so recovery must not depend on the corpse actually dying. A replacement binds a
+// fresh port, so an unkillable one is merely leaked until the app quits, not a blocker.
+function discardServer(): void {
+  try {
+    sharedServer?.kill()
+  } catch {
+    /* an engine we cannot kill is still an engine we can stop using */
+  }
   sharedServer = null
+}
+export function killWhisperServer(): void {
+  discardServer()
 }
 
 type Deps = {
@@ -59,10 +71,20 @@ export function registerLocalTranscription(deps: Deps): void {
   // more specific than the generic start failure, so it must not be overwritten by one.
   let sessionReported = false
 
-  const ensureServer = (binPath: string, liveModelPath: string): WhisperServer => {
+  const ensureServer = async (binPath: string, liveModelPath: string): Promise<WhisperServer> => {
     // A warm server is reused as-is, so both arguments are IGNORED on that path. No caller varies
     // them today, but silently reusing a server built from a different binary is the exact shape
     // that produced BUG-56 — say so loudly if it ever starts happening.
+    if (sharedServer?.running) {
+      // BUG-88: `running` only says the process exists. On 2026-09-21 a hung engine satisfied that
+      // for over two hours while answering nothing, and it is reused across recordings — so every
+      // later recording in that app session would have started against a corpse and produced no
+      // live transcript at all. Ask whether it ANSWERS before trusting it.
+      if (!(await sharedServer.isResponsive())) {
+        console.error('[desktop] warm whisper-server is not answering; replacing it')
+        discardServer()
+      }
+    }
     if (sharedServer?.running) {
       if (!sharedServer.matches(binPath, liveModelPath)) {
         // Log BOTH sides — knowing only what was wanted can't tell you what you actually got, which
@@ -116,7 +138,9 @@ export function registerLocalTranscription(deps: Deps): void {
   ipcMain.on('local:prepare', prepare)
   ipcMain.handle('local:status', () => status)
 
-  ipcMain.handle('local:start', () => {
+  // BUG-88: async now — a warm engine is health-checked before it is trusted (milliseconds when it
+  // is healthy). `handle` already returns a promise to the renderer, so this is invisible there.
+  ipcMain.handle('local:start', async () => {
     const binPath = whisperBinPath(deps.resourcesPath)
     // BUG-56: the resident live path needs whisper-server, NOT the CLI — a distinct binary from
     // the same bundle. Passing binPath here was the whole defect: whisper-cli exits on --host.
@@ -162,8 +186,30 @@ export function registerLocalTranscription(deps: Deps): void {
     // server reports running === false, so the session stays quiet, keeps buffering PCM for the
     // stop-time pass, and sharedServer stays null so the next recording retries cleanly.
     const server = serverPresent
-      ? ensureServer(serverBinPath, modelPath)
+      ? await ensureServer(serverBinPath, modelPath)
       : new WhisperServer(serverBinPath, modelPath, pickThreads(cpus().length))
+    // BUG-88: the session cannot respawn the engine itself — this module owns the shared one — so it
+    // asks. Replacing a hung engine mid-recording turns "the rest of the meeting is lost" into "a
+    // window is lost"; the buffered audio is untouched either way, so the stop-time pass is never
+    // affected by a hang. Awaits the model load deliberately: the session holds its steps while this
+    // runs, and handing back a not-yet-loaded engine would just restart the failure accounting.
+    const restartEngine = async (): Promise<WhisperServer | null> => {
+      if (!serverPresent) return null
+      discardServer()
+      const fresh = new WhisperServer(serverBinPath, modelPath, pickThreads(cpus().length))
+      sharedServer = fresh
+      try {
+        await fresh.start()
+        console.error('[desktop] whisper-server was not answering; a replacement is now live')
+        appendLog(deps.userDataDir, 'live engine replaced after it stopped answering')
+        return fresh
+      } catch (err) {
+        console.error('[desktop] whisper-server replacement failed to start:', (err as Error).message)
+        appendLog(deps.userDataDir, `live engine replacement FAILED: ${(err as Error).message}`)
+        if (sharedServer === fresh) sharedServer = null
+        return null
+      }
+    }
     streaming = new StreamingSession(
       server,
       (text) => send('local:live', text),
@@ -182,7 +228,10 @@ export function registerLocalTranscription(deps: Deps): void {
         send('local:error', err.message)
       },
       undefined,
-      { onStep: (s) => appendLog(deps.userDataDir, formatStep(s)) },
+      {
+        onStep: (s) => appendLog(deps.userDataDir, formatStep(s)),
+        onRecover: restartEngine,
+      },
     )
     // BUG-65: one header line per recording, so a log handed over by a user carries the machine's
     // core count and the tuning constants in force — the context needed to read the step lines.

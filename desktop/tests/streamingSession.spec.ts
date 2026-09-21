@@ -385,3 +385,155 @@ test('a clamped step does not mark the withheld tail as consumed', async () => {
   // ...and then goes idle, rather than spinning on the tail forever.
   expect(sent.length).toBe(drained)
 })
+
+// BUG-88 — the engine can stop answering from a perfectly healthy state and never recover. On
+// 2026-09-21 it hung 7m52s into a meeting, was still hung two hours later, and the recording lost
+// 8-10 minutes because the only remedy was for a human to notice and restart in the cloud. These
+// specs pin the behaviour that makes a hang cost seconds instead of the rest of the meeting:
+// replace the engine rather than report and keep hammering it.
+//
+// Every one of these feeds audio CONTINUOUSLY. Pushing one buffer and waiting is not a meeting: the
+// BUG-67 idle guard then halts the session by itself, and the spec passes without the fix ever
+// running. Three of these were written that way first and passed green on unfixed code.
+
+// Feed PCM the way a live recording does, until stopped.
+function feedAudio(session: StreamingSession): () => void {
+  const t = setInterval(() => session.pushPcm(pcm), 200)
+  return () => clearInterval(t)
+}
+
+// A server whose /inference never succeeds, counting how many requests it was sent.
+function deadServer(): WhisperServer & { calls: number } {
+  const s = {
+    running: true,
+    ready: true,
+    calls: 0,
+    transcribe() {
+      s.calls++
+      return Promise.reject(new Error('The operation was aborted due to timeout'))
+    },
+    kill: () => {},
+  }
+  return s as unknown as WhisperServer & { calls: number }
+}
+
+// A server that answers normally, so a recovered session visibly produces text again.
+function liveServer(text: string): WhisperServer & { calls: number } {
+  const s = {
+    running: true,
+    ready: true,
+    calls: 0,
+    transcribe(_pcm: Buffer, baseMs: number) {
+      s.calls++
+      return Promise.resolve([{ startMs: baseMs, endMs: baseMs + 400, text }])
+    },
+    kill: () => {},
+  }
+  return s as unknown as WhisperServer & { calls: number }
+}
+
+test('BUG-88: a hung engine is replaced mid-recording and the live transcript resumes', async () => {
+  const dead = deadServer()
+  const fresh = liveServer('back again')
+  const live: string[] = []
+  const errors: Error[] = []
+  const session = new StreamingSession(
+    dead,
+    (t) => live.push(t),
+    (e) => errors.push(e),
+    undefined,
+    { readyTimeoutMs: 60_000, onRecover: async () => fresh },
+  )
+  session.start()
+  const stop = feedAudio(session)
+  await waitMs(12_000)
+  stop()
+  session.dispose()
+
+  // The whole point: words appear again without anyone intervening.
+  expect(fresh.calls).toBeGreaterThan(0)
+  expect(live.join(' ')).toMatch(/back again/)
+  // And a recovery the user never had to act on is not an error they need to read.
+  expect(errors).toEqual([])
+})
+
+test('BUG-88: the hung engine stops receiving requests once it has been replaced', async () => {
+  const dead = deadServer()
+  const fresh = liveServer('ok')
+  const session = new StreamingSession(dead, () => {}, () => {}, undefined, {
+    readyTimeoutMs: 60_000,
+    onRecover: async () => fresh,
+  })
+  session.start()
+  const stop = feedAudio(session)
+  await waitMs(9000)
+  const afterRecovery = dead.calls
+  await waitMs(5000)
+  stop()
+  session.dispose()
+
+  // Every extra request to a jammed engine is what made today's hang permanent: whisper-server
+  // serialises inference, so abandoned requests pile up until even a trivial GET stops answering.
+  expect(dead.calls).toBe(afterRecovery)
+  expect(fresh.calls).toBeGreaterThan(0)
+})
+
+test('BUG-88: when no replacement can be started the user is told, once', async () => {
+  const errors: Error[] = []
+  const session = new StreamingSession(deadServer(), () => {}, (e) => errors.push(e), undefined, {
+    readyTimeoutMs: 60_000,
+    onRecover: async () => null,
+  })
+  session.start()
+  const stop = feedAudio(session)
+  await waitMs(12_000)
+  stop()
+  session.dispose()
+
+  expect(errors.length).toBe(1)
+  expect(errors[0].message).toMatch(/stopped responding/i)
+})
+
+test('BUG-88: the session gives up after repeated hangs rather than restarting for ever', async () => {
+  let spawned = 0
+  const errors: Error[] = []
+  const session = new StreamingSession(deadServer(), () => {}, (e) => errors.push(e), undefined, {
+    readyTimeoutMs: 60_000,
+    maxRecoveries: 2,
+    onRecover: async () => {
+      spawned++
+      return deadServer()
+    },
+  })
+  session.start()
+  const stop = feedAudio(session)
+  await waitMs(25_000)
+  stop()
+  session.dispose()
+
+  // Restarting an engine costs seconds of CPU and a model load; an engine that hangs three times
+  // is not going to be fixed by a fourth attempt, and the machine is being used for a meeting.
+  expect(spawned).toBe(2)
+  expect(errors.length).toBe(1)
+  expect(errors[0].message).toMatch(/stopped responding/i)
+})
+
+test('BUG-88: once the live view is declared dead the session stops re-transcribing', async () => {
+  const dead = deadServer()
+  const session = new StreamingSession(dead, () => {}, () => {}, undefined, {
+    readyTimeoutMs: 60_000,
+    onRecover: async () => null,
+  })
+  session.start()
+  const stop = feedAudio(session)
+  await waitMs(12_000)
+  const atGiveUp = dead.calls
+  // The renderer keeps this session alive while it awaits the stop-time speaker-separation pass —
+  // 7m23s on 2026-09-21 — so a session that keeps stepping competes for cores with the very pass
+  // the user is waiting on. Once there is nothing useful left to do, it must stop doing it.
+  await waitMs(6000)
+  stop()
+  session.dispose()
+
+  expect(dead.calls).toBe(atGiveUp)
+})

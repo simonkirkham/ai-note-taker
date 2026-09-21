@@ -35,6 +35,29 @@ const INFERENCE_TIMEOUT_MS = 20_000
 // process — which is exactly how the first attempt at that deadline shipped as dead code.
 export const SERVER_START_TIMEOUT_MS = 60_000
 
+// BUG-88 — how long a WARM server gets to answer a bare GET before we treat it as dead. A healthy
+// resident server answers instantly (the model is already loaded and nothing is in flight at
+// recording start), so this only has to outlast a scheduling hiccup. It is deliberately short: it
+// sits in front of every recording, and a slow check is a slow Record button.
+export const HEALTH_TIMEOUT_MS = 2_000
+
+// Does the thing on this port ANSWER? Not "is the process alive" — that is what `running` asks, and
+// on 2026-09-21 a hung engine answered that yes for hours while serving nothing. Any HTTP response
+// counts, including a 404: whisper-server's thread pool is what dies first (abandoned /inference
+// requests park on its serialising mutex until nothing can be dispatched), so a reply of any kind
+// proves the pool still has a free thread.
+export async function probeAlive(port: number, timeoutMs: number = HEALTH_TIMEOUT_MS): Promise<boolean> {
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(timeoutMs),
+    })
+    return res.status > 0
+  } catch {
+    return false
+  }
+}
+
 // BUG-65 — whisper always encodes a PADDED 30-SECOND mel, so a 3s window costs almost what 30s
 // does. `--audio-ctx` shortens that encoder context and is the biggest available lever on live
 // latency. 768 ≈ 15s of capacity.
@@ -159,14 +182,17 @@ export class WhisperServer {
     throw new Error(`whisper-server did not become ready within ${SERVER_START_TIMEOUT_MS / 1000}s`)
   }
 
+  // BUG-88: the reuse gate. `running` cannot answer this — see probeAlive.
+  async isResponsive(timeoutMs: number = HEALTH_TIMEOUT_MS): Promise<boolean> {
+    if (!this.proc || !this.isReady) return false
+    return probeAlive(this.port, timeoutMs)
+  }
+
   private async ping(): Promise<boolean> {
-    try {
-      // Any response (even 404/405) means the HTTP server is up and the model finished loading.
-      const res = await fetch(`http://127.0.0.1:${this.port}/`, { method: 'GET' })
-      return res.status > 0
-    } catch {
-      return false
-    }
+    // Any response (even 404/405) means the HTTP server is up and the model finished loading.
+    // Shares probeAlive so start-up and reuse cannot drift into two different ideas of "answering".
+    // A generous deadline here: during start the model is still loading, which is the slow part.
+    return probeAlive(this.port, SERVER_START_TIMEOUT_MS)
   }
 
   // Transcribe one PCM window; return segments with absolute-to-the-window ms offset by baseMs.
