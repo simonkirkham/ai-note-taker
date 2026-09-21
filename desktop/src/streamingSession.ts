@@ -219,7 +219,6 @@ export class StreamingSession {
         // Crucially this also STOPS sending to the old engine: every abandoned request piles onto
         // whisper-server's serialised queue, which is what turned one stuck window into a server
         // that could not answer anything at all.
-        this.busy = false
         void this.recoverOrGiveUp(err as Error)
         return
       }
@@ -237,29 +236,34 @@ export class StreamingSession {
     if (recover && this.recoveries < budget) {
       this.recovering = true
       this.recoveries++
-      let replacement: WhisperServer | null = null
       try {
-        replacement = await recover()
-      } catch {
-        replacement = null // a failed respawn is "no replacement", not a crash
-      }
-      if (this.disposed) {
+        let replacement: WhisperServer | null = null
+        try {
+          replacement = await recover()
+        } catch {
+          replacement = null // a failed respawn is "no replacement", not a crash
+        }
+        if (this.disposed) return
+        if (replacement) {
+          this.server = replacement
+          this.failures = 0
+          // sawReady deliberately NOT reset. It records that this recording once had a working
+          // engine, and the !running branch stays silent without it — so clearing it here would
+          // make a replacement that dies immediately fail silently for the rest of the meeting,
+          // which is the very shape of bug this slice exists to remove.
+          //
+          // Re-arm the load deadline: a replacement that never finishes loading would otherwise be
+          // skipped silently by the !ready guard for the rest of the recording — the BUG-56 hole,
+          // reopened one layer up.
+          if (this.readyTimer) clearTimeout(this.readyTimer)
+          this.readyTimer = setTimeout(() => this.reportLiveViewDead(), this.opts?.readyTimeoutMs ?? READY_TIMEOUT_MS)
+          return
+        }
+      } finally {
+        // One exit. Leaving this latched on any path would freeze the session for good — a silent
+        // stall dressed as a recovery.
         this.recovering = false
-        return
       }
-      if (replacement) {
-        this.server = replacement
-        this.failures = 0
-        this.sawReady = false
-        // Re-arm the load deadline: a replacement that never finishes loading would otherwise be
-        // skipped silently by the !ready guard for the rest of the recording — the BUG-56 hole,
-        // reopened one layer up.
-        if (this.readyTimer) clearTimeout(this.readyTimer)
-        this.readyTimer = setTimeout(() => this.reportLiveViewDead(), this.opts?.readyTimeoutMs ?? READY_TIMEOUT_MS)
-        this.recovering = false
-        return
-      }
-      this.recovering = false
     }
     // Never forward the raw transport error: it reaches the banner verbatim, where "The
     // operation was aborted due to a timeout" or "/inference 500" means nothing to the user.
