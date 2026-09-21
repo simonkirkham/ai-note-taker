@@ -141,7 +141,7 @@ Drop the `level` filter and add `| filter message like /note <id>/` to see one r
 Metrics (`NoteTaker/Domain`, `Service=note-taker`), on the dashboard widget "Transcript coverage (min) vs stalls":
 
 - `TranscriptCoverageRatio`: covered ÷ duration, on the final save of a recording of 5 min or more. Below 0.8 means an incomplete transcript **or** a recording left running after the meeting ended — check whether the text ends mid-sentence.
-- `TranscriptStalled`: count of stall reports.
+- `TranscriptStalled`: count of stall reports. It counts quiet meetings as well as failures — `speech=` on the matching log line separates the two.
 
 **A `silent=True` or `sourceEnded=True` line always logs at Warning**, whatever the end reason — the 2026-09-17 recording reported `inProgress` for three and a half hours while producing nothing ([BUG-85]). The user is told on screen within two minutes of the same evidence, so a line here usually has a matching report from the person in the meeting.
 

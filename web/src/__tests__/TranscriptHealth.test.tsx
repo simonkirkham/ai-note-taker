@@ -854,7 +854,7 @@ describe('a recording whose transcript has stopped growing', () => {
     }
   })
 
-  it('goes back to no-words the moment real sound returns', async () => {
+  it('goes back to no-words once real sound returns for long enough', async () => {
     const view = await startCloudRecording()
     at(10)
     await emitResult(view, 'Hello', 9)

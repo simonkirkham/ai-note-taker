@@ -104,7 +104,14 @@ it('says only quiet background sound is arriving, without claiming a fault, in a
 
   expect(region()).toHaveTextContent(/only quiet background sound/i)
   expect(region()).not.toHaveTextContent(/nothing is coming back/i)
-  expect(region()).not.toHaveTextContent(/stop and start/i)
+  expect(region()).not.toHaveTextContent(/has stopped/i)
+  // Review round 3: the restart must still be REACHABLE here. The speech threshold that picked
+  // this line is an assumed level, so a far-field microphone or a soft-spoken room can land here
+  // while people really are talking — and the transcript really has stopped. Saying only "nothing
+  // needs doing" in that case is the 3.5-hour loss this bug exists to prevent. The clause is
+  // conditional, so the genuinely quiet room the hardware test captured is still told to relax.
+  expect(region()).toHaveTextContent(/nothing needs doing if the meeting is quiet/i)
+  expect(region()).toHaveTextContent(/if people are speaking[^.]*stop and start recording again/i)
   expect(screen.getByTestId('transcription-stall-duration')).toHaveTextContent(
     /no words have been transcribed for 2 minutes/i,
   )

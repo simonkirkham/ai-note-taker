@@ -22,6 +22,13 @@ import styles from "./RecordControl.module.css";
 // minimum and the line appears anyway. Restarting then splits a perfectly good transcript in two.
 // The condition costs one clause and makes the reader the judge. Drop it only once the threshold
 // has been measured against a real stall record.
+//
+// Review round 3: the SAME uncertainty runs the other way, and `quiet` carries the expensive side
+// of it. A far-field microphone, heavy noise suppression or a soft-spoken room can sit under the
+// assumed threshold while people really are talking — and the transcript really has stopped. So
+// `quiet` keeps a route to the restart, on the same "if people are speaking" condition. A wrongly
+// restarted recording costs a seam in the transcript; a stall nobody is offered a remedy for costs
+// the rest of the meeting, which is what happened for 3.5 hours on 2026-09-17.
 const STALL_REASONS: Record<TranscriptionStallKind, string> = {
   sourceEnded: "The audio source ended — the microphone or shared audio was disconnected.",
   noSound: "No sound is being picked up from the microphone or shared audio.",
@@ -32,7 +39,7 @@ const STALL_REASONS: Record<TranscriptionStallKind, string> = {
 const STALL_ADVICE: Record<TranscriptionStallKind, string> = {
   sourceEnded: "Stop and start recording again to keep a transcript of the rest.",
   noSound: "Check the microphone or shared audio, then stop and start recording again.",
-  quiet: "Nothing needs doing if the meeting is quiet. If people are speaking, check the right microphone is selected.",
+  quiet: "Nothing needs doing if the meeting is quiet. If people are speaking, check the right microphone is selected, then stop and start recording again.",
   noWords: "If people are speaking and nothing is appearing, stop and start recording again.",
 };
 

@@ -248,11 +248,11 @@ Worth keeping for two reasons. The failure was the same shape as the bug — som
 | **A device switch does not stop transcription on this machine** | Words kept arriving after the switch — the last transcribed line is the user asking "can you hear me" on the new device |
 | Words stopped at 2:00 | `covered` froze at 120.5 s; the notice appeared on real hardware at 4:15, classified `noWords` ("sound is arriving") |
 | `silent=False`, `sourceEnded=False`, `muted=False` throughout | The source stayed live. **Nobody spoke from 2:00 to 5:00** (confirmed by the user), so the stop at 2:00 is correct behaviour and this is **not a reproduction** |
-| The notice fired on a quiet room | The known false positive: the wording is conditional ("if the meeting is not simply quiet"). The loudness slice removes it: the same case now reads "only quiet background sound", with no restart advice, and is a spec |
+| The notice fired on a quiet room | The known false positive: the wording is conditional ("if the meeting is not simply quiet"). The loudness slice removes it: the same case now reads "only quiet background sound", and the restart is offered only if people are in fact speaking. Both are specs |
 
 **The gap this exposed.** The silence floor (−90 dBFS) catches only a dead source. A quiet room reads as "sound", exactly like speech, so the record could not separate "the meeting went quiet" from "speech arrived and the service returned nothing". That is the same blind spot as the 3.5-hour occurrence.
 
-**Loudness slice (in review, 2026-09-18).** Every health record now says how loud the audio was since the last words, over the same stretch the stall is measured on.
+**Loudness slice (2026-09-18).** Every health record now says how loud the audio was since the last words, over the same stretch the stall is measured on.
 
 | Added | What it settles |
 |---|---|
