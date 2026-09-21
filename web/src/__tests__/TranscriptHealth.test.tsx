@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import type { TranscriptHealth } from '../api/transcription'
-import { LOUDNESS_FLOOR_DBFS, TranscriptHealthTracker } from '../hooks/transcriptHealth'
+import { LOUDNESS_FLOOR_DBFS, MIN_SPEECH_SECONDS, TranscriptHealthTracker } from '../hooks/transcriptHealth'
 import { CHECKPOINT_INTERVAL_MS, useTranscription } from '../hooks/useTranscription'
 import { server } from '../test/setup'
 
@@ -1000,6 +1000,24 @@ describe('telling a quiet room from a transcription stall', () => {
     at(60)
     await speak(15)
     at(150)
+    await sendAudio(5, ROOM_TONE)
+
+    at(200)
+    tickSecond()
+
+    expect(view.result.current.stall).toEqual({ kind: 'noWords', stalledForSeconds: 190 })
+  })
+
+  // Review round 2 must-fix: the boundary itself. The runbook states the rule as "10 s or more of
+  // speech with no words is a transcription stall, under 10 s is a quiet room", and the nearest
+  // other spec steps straight past it from 5 s to 15 s. Exactly the minimum is the stall side.
+  it('calls exactly the speech minimum a transcription stall, not a quiet room', async () => {
+    const view = await startCloudRecording()
+    at(10)
+    await emitResult(view, 'Hello', 9)
+    at(60)
+    await speak(MIN_SPEECH_SECONDS)
+    at(130)
     await sendAudio(5, ROOM_TONE)
 
     at(200)

@@ -28,9 +28,9 @@ function encodedDbfs(frame: Float32Array): number {
   return 20 * Math.log10(peak / 32767)
 }
 
-function trackerAfter(frames: Float32Array[]): TranscriptHealthTracker {
+function trackerAfter(frames: Float32Array[], rate = RATE): TranscriptHealthTracker {
   const tracker = new TranscriptHealthTracker()
-  tracker.recordingStarted('cloud', RATE, T0)
+  tracker.recordingStarted('cloud', rate, T0)
   for (const frame of frames) tracker.audioLevel(peakOf(frame), frame.length, T0 + 1000)
   return tracker
 }
@@ -89,5 +89,15 @@ describe('the level at which captured audio counts as speech', () => {
     const frames = Array.from({ length: 250 }, (_, i) => constant(i < 125 ? 0.2 : 0.003, 128))
 
     expect(trackerAfter(frames).snapshot('inProgress', T0 + 2000).speechSeconds).toBe(1)
+  })
+
+  // Review round 2 must-fix: the browser is asked for 16 kHz but does not have to honour it, and
+  // the tracker is told the rate the capture actually runs at. Counting samples against a fixed
+  // rate instead would report three times the speech on a 48 kHz capture — turning a quiet room
+  // into "transcription stalled", the exact reading this slice exists to get right.
+  it('counts the same audio as the same seconds whatever rate the browser captures at', () => {
+    const oneSecondAt48k = Array.from({ length: 48000 / 1600 }, () => constant(0.2, 1600))
+
+    expect(trackerAfter(oneSecondAt48k, 48000).snapshot('inProgress', T0 + 2000).speechSeconds).toBe(1)
   })
 })

@@ -81,7 +81,10 @@ it('says speech is arriving but nothing is coming back when the loudness says pe
 
   expect(region()).toHaveTextContent(/speech is being picked up/i)
   expect(region()).toHaveTextContent(/nothing is coming back from transcription/i)
-  expect(region()).toHaveTextContent(/stop and start recording again/i)
+  // Review round 2: the restart stays CONDITIONAL. The speech threshold behind this line is an
+  // assumed level, so a quiet meeting can still reach it over a long stall — and a flat instruction
+  // would then split a working transcript in two.
+  expect(region()).toHaveTextContent(/if people are speaking[^.]*stop and start recording again/i)
   expect(screen.getByTestId('transcription-stall-duration')).toHaveTextContent(
     /no words have been transcribed for 2 minutes/i,
   )

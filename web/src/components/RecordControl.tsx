@@ -14,6 +14,14 @@ import styles from "./RecordControl.module.css";
 // Review round 1: none of these asserts that transcription HAS STOPPED. A meeting can be quiet, and
 // telling someone to restart a recording that is working would make a good recording worse. The
 // duration states the fact; the advice leaves the judgement with the person in the room.
+//
+// Review round 2: that hedge stays on `noWords` too, which is the one line that does name a fault.
+// The speech threshold it fires on is an assumed level, not one measured on this user's
+// microphones, and the speech it counts accumulates over the WHOLE stalled stretch — so the longer
+// a genuinely quiet meeting runs, the more certainly a cough, a door or a chair adds up to the
+// minimum and the line appears anyway. Restarting then splits a perfectly good transcript in two.
+// The condition costs one clause and makes the reader the judge. Drop it only once the threshold
+// has been measured against a real stall record.
 const STALL_REASONS: Record<TranscriptionStallKind, string> = {
   sourceEnded: "The audio source ended — the microphone or shared audio was disconnected.",
   noSound: "No sound is being picked up from the microphone or shared audio.",
@@ -25,7 +33,7 @@ const STALL_ADVICE: Record<TranscriptionStallKind, string> = {
   sourceEnded: "Stop and start recording again to keep a transcript of the rest.",
   noSound: "Check the microphone or shared audio, then stop and start recording again.",
   quiet: "Nothing needs doing if the meeting is quiet. If people are speaking, check the right microphone is selected.",
-  noWords: "Stop and start recording again to keep a transcript of the rest.",
+  noWords: "If people are speaking and nothing is appearing, stop and start recording again.",
 };
 
 function plural(n: number, unit: string): string {
