@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import type { TranscriptHealth } from '../api/transcription'
-import { TranscriptHealthTracker } from '../hooks/transcriptHealth'
+import { LOUDNESS_FLOOR_DBFS, MIN_SPEECH_SECONDS, TranscriptHealthTracker } from '../hooks/transcriptHealth'
 import { CHECKPOINT_INTERVAL_MS, useTranscription } from '../hooks/useTranscription'
 import { server } from '../test/setup'
 
@@ -259,6 +259,16 @@ async function sendAudio(frames: number, amplitude = 0.2) {
   await waitFor(() => expect(audioChunksConsumed).toBe(target))
 }
 
+// Speech-level audio for `seconds` of captured time, in 100 ms frames. The notice claims speech is
+// arriving only past a minimum stretch of it, so a spec about that case sends a real stretch.
+async function speak(seconds: number, amplitude = 0.2) {
+  await sendAudio(seconds * 10, amplitude)
+}
+
+// About -50 dBFS: a live microphone in a room where nobody is speaking. Well above the silence floor
+// (so it is not "no sound"), well below the speech threshold.
+const ROOM_TONE = 0.003
+
 function namedError(name: string, message: string): Error {
   const error = new Error(message)
   error.name = name
@@ -292,6 +302,9 @@ describe('a stopped recording', () => {
       sourceMuted: false,
       audioSilent: false,
       secondsSilent: 10,
+      // The window restarted with the last words at 30 s and no audio has arrived since.
+      loudestDbfs: LOUDNESS_FLOOR_DBFS,
+      speechSeconds: 0,
     })
   })
 })
@@ -536,8 +549,8 @@ describe('a stalled recording', () => {
 // BUG-85 slice 1 — twice now the live transcript has stopped part-way through a meeting while the
 // timer kept running, costing 54 minutes of one meeting and 3.5 hours of another, with nothing on
 // screen to say so. The recording now knows the transcript has stopped growing, and knows which of
-// three things is behind it: the audio source died, no sound is reaching it, or sound is arriving
-// and nothing comes back. Counting buffers pushed could never tell those apart — a dead track
+// four things is behind it: the audio source died, no sound is reaching it, only quiet room sound
+// is arriving, or speech is arriving and nothing comes back. Counting buffers pushed could never tell those apart — a dead track
 // delivers zero-filled buffers at exactly the normal rate.
 describe('a recording whose transcript has stopped growing', () => {
   it('says nothing while text is still arriving, and nothing in the first two minutes without it', async () => {
@@ -612,7 +625,7 @@ describe('a recording whose transcript has stopped growing', () => {
     systemVideoTrack.end()
     // The microphone carries on — stopping a screen share does not stop the room.
     at(145)
-    await sendAudio(3)
+    await speak(15)
 
     at(150)
     tickSecond()
@@ -655,7 +668,7 @@ describe('a recording whose transcript has stopped growing', () => {
 
     micTrack.readyState = 'live'
     at(160)
-    await sendAudio(3)
+    await speak(15)
     tickSecond()
 
     expect(view.result.current.stall).toEqual({ kind: 'noWords', stalledForSeconds: 150 })
@@ -724,7 +737,7 @@ describe('a recording whose transcript has stopped growing', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     breakTrackState(micTrack, 'muted')
     at(145)
-    await sendAudio(3)
+    await speak(15)
 
     at(150)
     tickSecond()
@@ -825,7 +838,7 @@ describe('a recording whose transcript has stopped growing', () => {
     at(10)
     await emitResult(view, 'Hello', 9)
     at(100)
-    await sendAudio(3)
+    await speak(15)
     at(101)
     await sendAudio(3, 0)
 
@@ -841,7 +854,7 @@ describe('a recording whose transcript has stopped growing', () => {
     }
   })
 
-  it('goes back to no-words the moment real sound returns', async () => {
+  it('goes back to no-words once real sound returns for long enough', async () => {
     const view = await startCloudRecording()
     at(10)
     await emitResult(view, 'Hello', 9)
@@ -852,7 +865,7 @@ describe('a recording whose transcript has stopped growing', () => {
     expect(view.result.current.stall!.kind).toBe('noSound')
 
     at(410)
-    await sendAudio(3)
+    await speak(15)
     tickSecond()
 
     expect(view.result.current.stall!.kind).toBe('noWords')
@@ -897,7 +910,7 @@ describe('a recording whose transcript has stopped growing', () => {
     at(10)
     await emitResult(view, 'Hello', 9)
     at(190)
-    await sendAudio(5)
+    await speak(15)
 
     at(200)
     tickSecond()
@@ -968,9 +981,186 @@ describe('a recording whose transcript has stopped growing', () => {
 
     micTrack.setMuted(false)
     at(160)
-    await sendAudio(5)
+    await speak(15)
     tickSecond()
 
     expect(view.result.current.stall).toEqual({ kind: 'noWords', stalledForSeconds: 150 })
+  })
+})
+
+// BUG-85 — when a transcript stops, the record has to say whether people were still speaking. The
+// silence floor catches only a dead source, so a quiet room used to read as "sound is arriving, but
+// nothing is coming back from transcription" — the claim of a fault. On 2026-09-18 the notice fired
+// exactly that way on real hardware, in a room where nobody spoke from 2:00 to 5:00.
+describe('telling a quiet room from a transcription stall', () => {
+  it('calls speech-level audio with no words a transcription stall', async () => {
+    const view = await startCloudRecording()
+    at(10)
+    await emitResult(view, 'Hello', 9)
+    at(60)
+    await speak(15)
+    at(150)
+    await sendAudio(5, ROOM_TONE)
+
+    at(200)
+    tickSecond()
+
+    expect(view.result.current.stall).toEqual({ kind: 'noWords', stalledForSeconds: 190 })
+  })
+
+  // Review round 2 must-fix: the boundary itself. The runbook states the rule as "10 s or more of
+  // speech with no words is a transcription stall, under 10 s is a quiet room", and the nearest
+  // other spec steps straight past it from 5 s to 15 s. Exactly the minimum is the stall side.
+  it('calls exactly the speech minimum a transcription stall, not a quiet room', async () => {
+    const view = await startCloudRecording()
+    at(10)
+    await emitResult(view, 'Hello', 9)
+    at(60)
+    await speak(MIN_SPEECH_SECONDS)
+    at(130)
+    await sendAudio(5, ROOM_TONE)
+
+    at(200)
+    tickSecond()
+
+    expect(view.result.current.stall).toEqual({ kind: 'noWords', stalledForSeconds: 190 })
+  })
+
+  // The 2026-09-18 hardware test, replayed: words until 2:00, then a live microphone in a silent
+  // room. The notice appeared at 4:15 claiming a transcription fault. It must say quiet room.
+  it('calls room-level audio with no words a quiet room — the 2026-09-18 hardware test', async () => {
+    const view = await startCloudRecording()
+    at(60)
+    await speak(20)
+    at(120)
+    await emitResult(view, 'can you hear me', 119)
+    // A realistic stretch of room tone — far more than the speech minimum, so counting it as speech
+    // would flip this to a stall.
+    for (const second of [130, 180, 240]) {
+      at(second)
+      await sendAudio(100, ROOM_TONE)
+    }
+
+    at(255)
+    tickSecond()
+
+    expect(view.result.current.stall).toEqual({ kind: 'quiet', stalledForSeconds: 135 })
+  })
+
+  it('still calls it a quiet room when one short remark breaks the silence', async () => {
+    const view = await startCloudRecording()
+    at(10)
+    await emitResult(view, 'Hello', 9)
+    at(40)
+    await sendAudio(100, ROOM_TONE)
+    at(80)
+    await speak(3)
+    at(120)
+    await sendAudio(100, ROOM_TONE)
+
+    at(200)
+    tickSecond()
+
+    expect(view.result.current.stall).toEqual({ kind: 'quiet', stalledForSeconds: 190 })
+  })
+
+  // The loudness window restarts at the same instant the stall does — the last words — so the two
+  // can never describe different stretches of the meeting.
+  it('does not count speech the last words already covered', async () => {
+    const view = await startCloudRecording()
+    at(5)
+    await speak(30)
+    at(40)
+    await emitResult(view, 'everything said so far', 39)
+    at(60)
+    await sendAudio(20, ROOM_TONE)
+
+    at(170)
+    tickSecond()
+    expect(view.result.current.stall).toEqual({ kind: 'quiet', stalledForSeconds: 130 })
+
+    tick()
+    await waitFor(() => expect(drafts).toHaveLength(1))
+    expect(drafts[0].health!.speechSeconds).toBe(0)
+    expect(drafts[0].health!.loudestDbfs).toBeCloseTo(-50.5, 1)
+  })
+
+  // Speech seconds only grow within an episode, so the reading settles one way as evidence arrives.
+  it('settles from quiet room to transcription stall as speech accumulates, and never back', async () => {
+    const view = await startCloudRecording()
+    at(10)
+    await emitResult(view, 'Hello', 9)
+    at(20)
+    await sendAudio(20, ROOM_TONE)
+
+    at(130)
+    tickSecond()
+    expect(view.result.current.stall!.kind).toBe('quiet')
+
+    at(140)
+    await speak(5)
+    tickSecond()
+    expect(view.result.current.stall!.kind).toBe('quiet')
+
+    at(150)
+    await speak(10)
+    tickSecond()
+    expect(view.result.current.stall!.kind).toBe('noWords')
+
+    for (const second of [200, 400, 4000]) {
+      at(second)
+      await sendAudio(5, ROOM_TONE)
+      tickSecond()
+      expect(view.result.current.stall!.kind).toBe('noWords')
+    }
+  })
+
+  it('carries the loudness of the stalled stretch to the server', async () => {
+    const view = await startCloudRecording()
+    at(10)
+    await emitResult(view, 'Hello', 9)
+    at(60)
+    await speak(12)
+    at(150)
+    await sendAudio(5, ROOM_TONE)
+
+    at(200)
+    tick()
+
+    await waitFor(() => expect(drafts).toHaveLength(1))
+    expect(drafts[0].health).toMatchObject({ endReason: 'stalled', loudestDbfs: -14, speechSeconds: 12 })
+  })
+
+  // The notice and the record read the same window, so at any instant they agree.
+  it('reports the same speech in the record as the notice classified on', async () => {
+    const view = await startCloudRecording()
+    at(10)
+    await emitResult(view, 'Hello', 9)
+    at(60)
+    await speak(4)
+    at(150)
+    await sendAudio(5, ROOM_TONE)
+
+    at(200)
+    tickSecond()
+    tick()
+
+    await waitFor(() => expect(drafts).toHaveLength(1))
+    expect(view.result.current.stall!.kind).toBe('quiet')
+    expect(drafts[0].health!.speechSeconds).toBe(4)
+  })
+
+  // Silence is still its own, stronger case: a quiet room is sound, zero-filled buffers are not.
+  it('still calls zero-filled buffers no sound, not a quiet room', async () => {
+    const view = await startCloudRecording()
+    at(10)
+    await emitResult(view, 'Hello', 9)
+    at(20)
+    await sendAudio(20, 0)
+
+    at(200)
+    tickSecond()
+
+    expect(view.result.current.stall).toEqual({ kind: 'noSound', stalledForSeconds: 190 })
   })
 })

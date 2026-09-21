@@ -8,22 +8,39 @@ import styles from "./RecordControl.module.css";
 
 // BUG-85: what to say when the live transcript has stopped growing part-way through a meeting. It
 // happened twice, costing 54 minutes of one meeting and 3.5 hours of another, with nothing on
-// screen to say so. Each line names the cause in ordinary words — the three are genuinely different
-// problems and only one of them is about the microphone.
+// screen to say so. Each line names the cause in ordinary words — the four are genuinely different
+// situations, and a quiet room is not a fault at all, so it never advises a restart.
 //
 // Review round 1: none of these asserts that transcription HAS STOPPED. A meeting can be quiet, and
 // telling someone to restart a recording that is working would make a good recording worse. The
 // duration states the fact; the advice leaves the judgement with the person in the room.
+//
+// Review round 2: that hedge stays on `noWords` too, which is the one line that does name a fault.
+// The speech threshold it fires on is an assumed level, not one measured on this user's
+// microphones, and the speech it counts accumulates over the WHOLE stalled stretch — so the longer
+// a genuinely quiet meeting runs, the more certainly a cough, a door or a chair adds up to the
+// minimum and the line appears anyway. Restarting then splits a perfectly good transcript in two.
+// The condition costs one clause and makes the reader the judge. Drop it only once the threshold
+// has been measured against a real stall record.
+//
+// Review round 3: the SAME uncertainty runs the other way, and `quiet` carries the expensive side
+// of it. A far-field microphone, heavy noise suppression or a soft-spoken room can sit under the
+// assumed threshold while people really are talking — and the transcript really has stopped. So
+// `quiet` keeps a route to the restart, on the same "if people are speaking" condition. A wrongly
+// restarted recording costs a seam in the transcript; a stall nobody is offered a remedy for costs
+// the rest of the meeting, which is what happened for 3.5 hours on 2026-09-17.
 const STALL_REASONS: Record<TranscriptionStallKind, string> = {
   sourceEnded: "The audio source ended — the microphone or shared audio was disconnected.",
   noSound: "No sound is being picked up from the microphone or shared audio.",
-  noWords: "Sound is arriving, but nothing is coming back from transcription.",
+  quiet: "Only quiet background sound is being picked up — nobody seems to be speaking.",
+  noWords: "Speech is being picked up, but nothing is coming back from transcription.",
 };
 
 const STALL_ADVICE: Record<TranscriptionStallKind, string> = {
   sourceEnded: "Stop and start recording again to keep a transcript of the rest.",
   noSound: "Check the microphone or shared audio, then stop and start recording again.",
-  noWords: "If the meeting is not simply quiet, stop and start recording again.",
+  quiet: "Nothing needs doing if the meeting is quiet. If people are speaking, check the right microphone is selected, then stop and start recording again.",
+  noWords: "If people are speaking and nothing is appearing, stop and start recording again.",
 };
 
 function plural(n: number, unit: string): string {

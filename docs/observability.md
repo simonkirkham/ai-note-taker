@@ -97,7 +97,7 @@ To trace a request:
 ### The health line (TI-99 builds)
 
 ```
-Transcript health {complete|draft} note <id>: end=<reason> covered=<s>s of <s>s ratio=<0-1> sinceLastText=<s>s audioSent=<s>s sinceLastAudio=<s>s streams=<n> engine=<cloud|local> sourceEnded=<True|False|-> muted=<True|False|-> silent=<True|False|-> silentFor=<s>s error=<name>: <message>
+Transcript health {complete|draft} note <id>: end=<reason> covered=<s>s of <s>s ratio=<0-1> sinceLastText=<s>s audioSent=<s>s sinceLastAudio=<s>s streams=<n> engine=<cloud|local> sourceEnded=<True|False|-> muted=<True|False|-> silent=<True|False|-> silentFor=<s>s loudest=<dB>dBFS speech=<s>s error=<name>: <message>
 ```
 
 Logs Insights, over the Command Lambda log group (`…CommandFunctionLogGroup…`):
@@ -126,23 +126,28 @@ Drop the `level` filter and add `| filter message like /note <id>/` to see one r
 | Field | Reads |
 |---|---|
 | `covered` vs the duration | How much audio the transcription service turned into text, by its own clock |
-| `sinceLastText` vs `sinceLastAudio` | Large text gap with small audio gap = audio flowing, no results: a dead stream **or** a silent room. Both large = audio stopped arriving |
+| `sinceLastText` vs `sinceLastAudio` | Large text gap with small audio gap = audio flowing, no results. `speech` says which: a stalled transcription or a quiet room. Both large = audio stopped arriving |
 | `streams` | Live streams opened during the recording. Always 1 today: nothing reopens a stream yet. Summed coverage is ready for when something does |
 | `engine=local` | On-device transcription; `covered` is `-` (not measured) |
 | `sourceEnded=True` | A captured track died mid-recording — microphone unplugged, screen share stopped, device taken by another app. Conclusive: it explains everything below it |
 | `muted=True` | A captured track was muted at the moment of the save. Reversible, unlike `sourceEnded` |
 | `silent=True` | Every captured sample stayed below the transmitted-audio floor for two solid minutes. The app was sending zero-filled buffers, so there was nothing for the service to transcribe |
 | `silentFor` | Seconds since the last sample above that floor, counted from the start of the recording if there never was one |
-| all four `-` | A build from before [BUG-85] slice 1. `user_agent` says which |
+| `loudest` | The loudest sample since the last words, in dBFS as transmitted. About −30 to −10 = people speaking; about −60 to −50 = a live microphone in a quiet room; `-100` = digital silence or no audio at all. On an `end=stopped` line `-100` is normal, not a fault: the window restarts with the last words, which usually arrive after the audio has stopped |
+| `speech` | Seconds since the last words with audio at speech level (−40 dBFS or louder). With `sinceLastText` it gives the share of the stall that was speech. **10 s or more with no words = transcription stalled while people spoke. Under 10 s = a quiet room.** Both this and `loudest` carry their unit in the value (`speech=12.4s`), so match them in the message text rather than filtering them as numbers |
+| `sourceEnded`, `muted`, `silent`, `silentFor` all `-` | A build from before [BUG-85] slice 1. `user_agent` says which |
+| `loudest=- speech=-` | A build from before the loudness measurement. Absent, never zero |
 
 Metrics (`NoteTaker/Domain`, `Service=note-taker`), on the dashboard widget "Transcript coverage (min) vs stalls":
 
 - `TranscriptCoverageRatio`: covered ÷ duration, on the final save of a recording of 5 min or more. Below 0.8 means an incomplete transcript **or** a recording left running after the meeting ended — check whether the text ends mid-sentence.
-- `TranscriptStalled`: count of stall reports.
+- `TranscriptStalled`: count of stall reports. It counts quiet meetings as well as failures — `speech=` on the matching log line separates the two.
 
 **A `silent=True` or `sourceEnded=True` line always logs at Warning**, whatever the end reason — the 2026-09-17 recording reported `inProgress` for three and a half hours while producing nothing ([BUG-85]). The user is told on screen within two minutes of the same evidence, so a line here usually has a matching report from the person in the meeting.
 
 **The silence threshold is the encoder's floor, not a loudness judgement.** Captured audio is quantised to 16-bit PCM, so anything under one quantisation step (1/32767, about −90 dBFS) leaves the machine as zeros. A dead or muted track delivers exact zeros; room tone from a live microphone sits around −60 dBFS, roughly a thousand times above the threshold.
+
+**The speech threshold (−40 dBFS) is a stated assumption, not yet a measurement on this app's microphones.** It sits between the usual ranges for this kind of capture: speech peaking −30 to −10 dBFS, room tone around −60 to −50 dBFS (the browser's noise suppression, on by default, pushes room tone lower). The on-screen notice uses the same rule: 10 s of speech-level audio since the last words before it says speech is arriving. The first real stall line settles whether the ranges hold.
 
 ### Fallback for builds without the health line
 

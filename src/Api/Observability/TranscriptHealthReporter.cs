@@ -18,6 +18,10 @@ public static class TranscriptHealthReporter
     private const double LowCoverageRatio = 0.8;
     private const int CoverageMinDurationSeconds = 300;
     private const string Absent = "-";
+    // BUG-85: dBFS runs from the loudest a 16-bit sample can be (0) down to the client's floor for
+    // digital silence (-100), which sits below anything the encoder can transmit (about -96).
+    private const double LoudestDbfsCeiling = 0;
+    private const double LoudestDbfsFloor = -100;
 
     private static readonly HashSet<string> EndReasons =
         ["stopped", "error", "streamEnded", "inProgress", "stalled"];
@@ -57,7 +61,7 @@ public static class TranscriptHealthReporter
             || health.Malformed.Count > 0;
 
         logger.Log(warn ? LogLevel.Warning : LogLevel.Information,
-            "Transcript health {Phase} note {NoteId}: end={EndReason} covered={CoveredSeconds}s of {DurationSeconds}s ratio={Ratio} sinceLastText={SecondsSinceLastText}s audioSent={AudioSecondsSent}s sinceLastAudio={SecondsSinceLastAudio}s streams={StreamCount} engine={Engine} sourceEnded={SourceEnded} muted={SourceMuted} silent={AudioSilent} silentFor={SecondsSilent}s error={ErrorName}: {ErrorMessage}{Malformed}",
+            "Transcript health {Phase} note {NoteId}: end={EndReason} covered={CoveredSeconds}s of {DurationSeconds}s ratio={Ratio} sinceLastText={SecondsSinceLastText}s audioSent={AudioSecondsSent}s sinceLastAudio={SecondsSinceLastAudio}s streams={StreamCount} engine={Engine} sourceEnded={SourceEnded} muted={SourceMuted} silent={AudioSilent} silentFor={SecondsSilent}s loudest={LoudestDbfs} speech={SpeechSeconds} error={ErrorName}: {ErrorMessage}{Malformed}",
             phase, noteId, endReason,
             OrAbsent(covered), duration, OrAbsent(ratio),
             OrAbsent(ClampRounded(health.SecondsSinceLastText, 0)),
@@ -69,6 +73,8 @@ public static class TranscriptHealthReporter
             OrAbsent(health.SourceMuted),
             OrAbsent(health.AudioSilent),
             OrAbsent(ClampRounded(health.SecondsSilent, 0)),
+            WithUnit(health.LoudestDbfs is { } db ? Math.Round(Math.Clamp(db, LoudestDbfsFloor, LoudestDbfsCeiling), 1) : null, "dBFS"),
+            WithUnit(ClampRounded(health.SpeechSeconds, 1), "s"),
             Sanitise(health.ErrorName) ?? Absent,
             Sanitise(health.ErrorMessage) ?? Absent,
             health.Malformed.Count > 0 ? $" malformed={string.Join(",", health.Malformed)}" : "");
@@ -89,6 +95,10 @@ public static class TranscriptHealthReporter
         value is { } v ? Math.Round(Clamp(v), decimals) : null;
 
     private static object OrAbsent<T>(T? value) where T : struct => value is { } v ? v : Absent;
+
+    // Absent reads as a bare "-", never "-dBFS": a unit on a missing value reads as a measurement.
+    private static string WithUnit(double? value, string unit) =>
+        value is { } v ? v.ToString(CultureInfo.InvariantCulture) + unit : Absent;
 
     // Control, line/paragraph-separator and bidi-override characters are dropped as well as the
     // length cut, so a hostile message cannot forge extra lines or disguise itself in a log view.
@@ -120,6 +130,10 @@ public static class TranscriptHealthReporter
         public bool? SourceMuted { get; private set; }
         public bool? AudioSilent { get; private set; }
         public double? SecondsSilent { get; private set; }
+        // BUG-85: how loud the audio was since the last words, so a quiet room and a transcription
+        // failure no longer look the same.
+        public double? LoudestDbfs { get; private set; }
+        public double? SpeechSeconds { get; private set; }
         public List<string> Malformed { get; } = [];
 
         public static HealthFields Parse(JsonElement json)
@@ -143,6 +157,8 @@ public static class TranscriptHealthReporter
             fields.SourceMuted = fields.Flag(json, "sourceMuted");
             fields.AudioSilent = fields.Flag(json, "audioSilent");
             fields.SecondsSilent = fields.Number(json, "secondsSilent");
+            fields.LoudestDbfs = fields.Number(json, "loudestDbfs");
+            fields.SpeechSeconds = fields.Number(json, "speechSeconds");
             return fields;
         }
 
