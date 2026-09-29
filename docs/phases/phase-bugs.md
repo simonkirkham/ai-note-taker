@@ -23,7 +23,7 @@ Ordered by severity, then by id.
 | BUG-85 | The live transcript can silently stop part-way through a meeting while the recording timer keeps running. It has now happened twice, costing 54 minutes of one meeting and 3.5 hours of another. You are now told within two minutes, and told which of four things went wrong — including whether the room was simply quiet rather than the transcription failing. Stopping it happening at all is still to do. | In Progress | — |
 | [BUG-86](#bug-86--on-device-speaker-labels-put-the-other-sides-words-under-me-too) | **On a call played through speakers, the on-device "who said what" labels are wrong: nearly every line the other side says appears twice, once as "Them" and once as "Me", and your own words are buried inside those repeats.** Makes the labelled transcript unreadable for any call not taken on headphones. | Open | — |
 | [BUG-87](#bug-87--finalising-transcript-takes-almost-as-long-as-the-meeting) | **After you stop an on-device recording, "Finalising transcript…" runs for almost as long as the meeting itself — 3 m 22 s for a 3 m 46 s test, so roughly 55 minutes after a one-hour meeting — before labels or analysis appear.** | Open | — |
-| [BUG-88](#bug-88--the-on-device-transcription-engine-can-hang-for-good-mid-meeting) | **The live transcript can stop dead part-way through a meeting and never come back — and every later recording in the same app session gets no live transcript either, until you quit and reopen the app.** Happened twice: 2026-08-19 and 2026-09-21, both about 7 minutes into a recording, both from a perfectly healthy engine. **The app now replaces the engine and carries on by itself**, so a hang costs a window rather than the rest of the meeting, and a later recording no longer inherits a dead one. Shipped PR #489, deploy #785, installer `695ee14`. **Stays open until it is watched recovering a real engine** — see the manual rows. | In Progress | BUG-85, BUG-87 |
+| [BUG-88](#bug-88--the-on-device-transcription-engine-can-hang-for-good-mid-meeting) | **The live transcript stopped dead about 7 minutes into every long local recording, and on 2026-09-28 it died for good 23 minutes in, after the app had replaced the engine twice.** Cause found and reproduced: the app never read the engine's own progress output, so after 249–250 transcription steps its output buffer filled and it froze. Fixed by not collecting that output at all; 1000 steps in a row now succeed on this machine. **Stays open until a real meeting of 30+ minutes runs with no engine replacement** — `scripts/check-local-transcription-log.sh` says PASS for BUG-88. | In Progress | BUG-85, BUG-87 |
 | BUG-70 | Clicking "+ New Note" while recording and then choosing to keep recording still leaves a blank, untitled note behind on your home list. | Open — held behind 51-C | BUG-54, 51-C |
 | BUG-73 | Signing out while an on-device transcript is still finishing can park you for up to an hour with no way to leave — a real problem on a shared machine. | Open | BUG-55 |
 | BUG-75 | Reopening a note while its on-device transcript is still finishing shows no transcript, and nothing appears until you navigate again or reload. | Open | BUG-72 |
@@ -527,7 +527,27 @@ A web source claiming 8× for the same switch (a large model with KleidiAI) did 
 
 ## BUG-88 — The on-device transcription engine can hang for good mid-meeting
 
-**Severity:** High — most of a meeting's live transcript is lost, and the app stays broken for every later recording until it is restarted. **Status:** Open. Found 2026-09-21 from the "PE Operations" note (`ac18a027…`, OGI workspace); the same signature is in the log for 2026-08-19.
+**Severity:** High — most of a meeting's live transcript is lost, and the app stays broken for every later recording until it is restarted. **Status:** In Progress — root cause found and fixed 2026-09-29; awaiting one real 30+ minute meeting that shows no engine replacement. Found 2026-09-21 from the "PE Operations" note (`ac18a027…`, OGI workspace); the same signature is in the log for 2026-08-19.
+
+### Root cause, found 2026-09-29
+
+**Every live engine froze after 249–250 transcription steps (about 7 minutes of recording), because the app never read the engine's own progress output.** The engine prints a few hundred bytes per step. The app connected that output to a pipe and never read it. After ~250 steps the pipe was full, the engine blocked forever mid-write, and it was holding the lock every later step waits on.
+
+| Evidence | Result |
+| --- | --- |
+| Steps answered per engine lifetime, from `local-transcription.log` (read by the checker, `--all`) | 2026-08-19: **249**. 2026-09-21: **249**. 2026-09-28: **250, 250, 250** — the fix of 2026-09-21 replaced the engine twice, then the third also stopped at 250 and the 2-replacement cap gave up, 23 minutes in |
+| Step speed right up to each hang | Flat, 1.2–1.4 s — no slowdown, so not load |
+| Reproducer, installed binary + live model, the app's own request code, output piped and **unread** (`desktop/scripts/whisper-server-soak.mjs --stdio unread`) | **250 answered, request #251 timed out at 20 s** |
+| Same, output piped and **read** (`--stdio drain`) | **320 of 320** answered |
+| Same, output **not piped** — the shipped fix (`--stdio ignore`), 2026-09-29, installed `695ee14` binary + `ggml-base.en.bin` | **1000 of 1000** answered in 24 min (~1.4 s each), no slowdown |
+
+**Fix (PR #491):** the engine is started with its output discarded rather than piped (`whisperServer.ts` `start()`). No other code read that output. The 2026-09-21 recovery stays as a safety net.
+
+**Spec:** `desktop/tests/whisperServerOutput.spec.ts` starts a fake engine that writes 64 KB per request with a blocking write, and requires 40 requests in a row to answer. Seen red with the fix removed: *"request #4 never answered after 3 successes"*.
+
+**Checkable from the log:** `scripts/check-local-transcription-log.sh` now has a BUG-88 verdict per recording — the most steps one engine answered, every engine replacement (mid-recording or at recording start), and the step count each engine reached before it stopped. PASS needs one engine to answer 1200+ steps (about 30 minutes) with no replacement; 300–1199 reads "past the old wall" but INCONCLUSIVE. The app now also logs `live engine started` and `live engine replaced at recording start`, so an engine reused across recordings is counted across them.
+
+**Earlier theories this retires:** the decoder-repetition-loop guess and "root trigger unknown" below. Windows refusing to kill the process may fit too — a process blocked writing to a full pipe waits in the kernel — but that is a guess, not checked.
 
 **Symptom:** the live transcript freezes mid-sentence while the recording timer keeps running. About a minute later the banner says the on-device engine stopped responding. Nothing recovers it — not waiting, not stopping and starting the recording. The stop-time pass still produces a transcript of whatever audio was captured, so the loss is bounded by when the user gives up and stops.
 
@@ -578,7 +598,7 @@ A web source claiming 8× for the same switch (a large model with KleidiAI) did 
 
 **Not observed working end to end.** The specs reproduce a socket that accepts and never answers, and a positive control pins that a genuinely timed-out request really does carry the name the recovery keys on. But the packaged app has never been watched recovering. [MANUAL-VERIFICATION.md](../../desktop/MANUAL-VERIFICATION.md) rows 1–5 **and 4b** are the gate; 4b exists because suspending the process only reproduces total silence, which is the end state, not the partial jam the fix is actually for. **Do not mark this Done on a green deploy alone.**
 
-The kill is best-effort on purpose: Windows refused to terminate the hung process at all, so a replacement binds a fresh port and an unkillable one is leaked until app quit rather than blocking recovery. **The root trigger — why the first request wedged — remains unknown**; this makes the hang survivable, it does not prevent it. `live engine replaced after it stopped answering` is written to `local-transcription.log`, so a recurrence is now countable.
+The kill is best-effort on purpose: Windows refused to terminate the hung process at all, so a replacement binds a fresh port and an unkillable one is leaked until app quit rather than blocking recovery. *(Superseded 2026-09-29: the root trigger is the unread output pipe — see "Root cause" above.)* `live engine replaced after it stopped answering` is written to `local-transcription.log`, so a recurrence is now countable.
 
 **Fix directions (hypotheses, in the order they remove user pain):**
 1. **Restart the engine instead of reporting and giving up.** On the terminal-failure path, kill `sharedServer`, null it, and spawn a fresh one — the model reload costs seconds against a currently-unbounded loss. This alone converts "the rest of the meeting is gone" into "a few seconds are gone".

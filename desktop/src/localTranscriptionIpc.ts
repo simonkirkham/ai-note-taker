@@ -115,6 +115,7 @@ export function registerLocalTranscription(deps: Deps): void {
       })
       if (replace) {
         console.error('[desktop] warm whisper-server is not answering; replacing it')
+        appendLog(deps.userDataDir, 'live engine replaced at recording start: the warm one was not answering')
         discardIfCurrent(warm)
       }
     }
@@ -135,6 +136,9 @@ export function registerLocalTranscription(deps: Deps): void {
       .start()
       .then(() => {
         pendingStartFailure = null // it came up — nothing left to replay
+        // BUG-88: marks where an engine's lifetime begins, so the log checker can count how many
+        // steps one engine answered — the number that exposed the ~250-request hang.
+        appendLog(deps.userDataDir, 'live engine started')
       })
       .catch((err: Error) => {
         console.error('[desktop] whisper-server failed to start; live transcript unavailable:', err.message)

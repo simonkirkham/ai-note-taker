@@ -178,7 +178,11 @@ export class WhisperServer {
     if (this.proc) return
     this.port = await freePort()
     const args = buildServerArgs({ modelPath: this.modelPath, port: this.port, threads: this.threads })
-    const proc = spawn(this.binPath, args)
+    // BUG-88 root cause: whisper-server prints a few hundred bytes per /inference. With the default
+    // piped stdio and nobody reading, the OS pipe filled after ~250 requests (~7 minutes of live
+    // transcript) and the engine blocked forever inside a write, holding the lock every other
+    // request waits on. Nothing here reads the output, so do not pipe it at all.
+    const proc = spawn(this.binPath, args, { stdio: 'ignore' })
     this.proc = proc
     let exited = false
     // BUG-56: a ChildProcess 'error' (ENOENT — the binary is absent from the bundle) has no default
