@@ -34,6 +34,10 @@ public sealed class AppPage
     // the Response event fires on a Playwright dispatcher thread, read on the test thread.
     private volatile string? latestNoteToken;
 
+    // BUG-89: the exact cards URL the app last requested (it carries the `/w/{wsId}/` prefix), so
+    // the failure-time direct fetch asks the same route the app asked rather than reconstructing it.
+    private volatile string? lastCardsUrl;
+
     // BUG-79: every write token seen, in order. See the capture site for why.
     private readonly System.Collections.Concurrent.ConcurrentQueue<string> writeTokenLog = new();
 
@@ -68,6 +72,7 @@ public sealed class AppPage
                 // what `Probe` is for, and both are surfaced so the two views can be compared.
                 var consistency = r.Headers.TryGetValue("x-consistency", out var c) ? c : "absent";
                 cardsRequestLog.Enqueue($"{r.Status} X-Consistency={consistency} {r.Url}");
+                lastCardsUrl = r.Url;
             }
             // Capture the latest note-write token so the re-gate can wait on it after a reload.
             if (r.Url.Contains("/notes", StringComparison.OrdinalIgnoreCase)
@@ -354,15 +359,77 @@ public sealed class AppPage
         }
 
         var recentRequests = cardsRequestLog.TakeLast(5).ToList();
+        // Snapshot the probe BEFORE the direct fetch: that fetch passes through the same cards route
+        // and would otherwise appear in the probe as one more of the app's own reads.
+        var probe = Probe.Describe();
+        var direct = await FetchCardsDirectlyAsync(title);
         return $"TI-42/BUG-79: card '{title}' not in cards list after {timeoutMs}ms. " +
+               $"{direct} | " +
                $"page.Url={url} | tokenAvailableToInject={latestNoteToken ?? "<none>"} | " +
                $"rendered cards({cardTitles.Count})=[{string.Join(" | ", cardTitles)}] | " +
                // BUG-79: the outbound token per read, and whether each read was ever answered.
                // `tokenAvailableToInject` above is what the test HELD, not what the request CARRIED
                // — reading it as proof the read was gated is the mistake this line exists to stop.
-               $"{Probe.Describe()} | " +
+               $"{probe} | " +
                $"write tokens seen=[{string.Join(" ", writeTokenLog.TakeLast(12))}] | " +
                $"last cards responses=[{string.Join(" ;; ", recentRequests)}]";
+    }
+
+    // BUG-89: did the SERVER return the card? The listener above never reads a response body (that
+    // hung the gate for 44 min, PR #291), so a failure could not tell "the API omitted the card" from
+    // "the page hid a card it received". This asks once more, from the page, with its OWN fetch — a
+    // fresh request this code owns, issued after the reload loop has stopped, so nothing aborts it.
+    // It is bounded twice (an in-page abort at 8 s, and a C# wait at 12 s) and every failure mode
+    // returns a string, so the diagnostic can never replace or hang the failure it is describing.
+    // The home list hides any card whose date falls outside the browser's local last-30-days window,
+    // so the target's date fields are printed beside the browser's own local today to compare.
+    private const string DirectCardsFetchScript = """
+        async ([url, title, gate]) => {
+          const pad = n => String(n).padStart(2, '0');
+          const local = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+          const now = new Date();
+          const lo = new Date(now); lo.setDate(lo.getDate() - 29);
+          const clock = `browserToday=${local(now)} windowLo=${local(lo)} tzOffsetMin=${now.getTimezoneOffset()} browserNow=${now.toISOString()}`;
+          const ctl = new AbortController();
+          const timer = setTimeout(() => ctl.abort(), 8000);
+          try {
+            const token = window.__E2E_AUTH_TOKEN;
+            const r = await fetch(url, {
+              headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(gate ? { 'If-Consistent-With': gate } : {}) },
+              cache: 'no-store',
+              signal: ctl.signal,
+            });
+            let body;
+            try { body = await r.json(); } catch { return `status=${r.status} body=<not json> ${clock}`; }
+            const cards = Array.isArray(body?.cards) ? body.cards : [];
+            const eff = c => c.date ? c.date : (c.createdAt ? local(new Date(c.createdAt)) : '<none>');
+            const describe = c => `title='${c.title}' date=${c.date ?? 'null'} createdAt=${c.createdAt} effective=${eff(c)} folderId=${c.folderId ?? 'null'}`;
+            const target = cards.find(c => c.title === title);
+            const titles = cards.map(c => c.title).slice(0, 25).join(' | ');
+            return `status=${r.status} x-consistency=${r.headers.get('x-consistency') ?? 'absent'} count=${cards.length} ` +
+              `target=${target ? 'PRESENT ' + describe(target) : 'ABSENT'} ${clock} titles=[${titles}]`;
+          } catch (e) {
+            return `fetch failed: ${e && e.name} ${e && e.message} ${clock}`;
+          } finally {
+            clearTimeout(timer);
+          }
+        }
+        """;
+
+    private async Task<string> FetchCardsDirectlyAsync(string title)
+    {
+        var url = lastCardsUrl;
+        if (string.IsNullOrEmpty(url)) return "BUG-89 direct fetch: skipped, the app never requested the cards list";
+        try
+        {
+            var result = await page.EvaluateAsync<string>(DirectCardsFetchScript, new object?[] { url, title, latestNoteToken })
+                .WaitAsync(TimeSpan.FromSeconds(12));
+            return $"BUG-89 direct fetch of {url}: {result}";
+        }
+        catch (Exception ex)
+        {
+            return $"BUG-89 direct fetch of {url}: could not run ({ex.GetType().Name}: {ex.Message})";
+        }
     }
 
     // BUG-38: hang-proof page-state diagnostic for a cold-start element-never-visible failure. Reads
