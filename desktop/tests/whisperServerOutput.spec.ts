@@ -61,16 +61,21 @@ test.describe('BUG-88: the live engine survives a long meeting', () => {
     let answered = 0
     try {
       for (let i = 0; i < REQUESTS; i++) {
-        const segs = await Promise.race([
-          server.transcribe(Buffer.alloc(3200), 0),
-          new Promise<never>((_, reject) =>
-            setTimeout(
-              () => reject(new Error(`request #${i + 1} never answered after ${answered} successes`)),
-              PER_REQUEST_DEADLINE_MS,
-            ),
-          ),
-        ])
-        expect(segs[0]?.text).toBe('hello')
+        let deadline: ReturnType<typeof setTimeout> | undefined
+        try {
+          const segs = await Promise.race([
+            server.transcribe(Buffer.alloc(3200), 0),
+            new Promise<never>((_, reject) => {
+              deadline = setTimeout(
+                () => reject(new Error(`request #${i + 1} never answered after ${answered} successes`)),
+                PER_REQUEST_DEADLINE_MS,
+              )
+            }),
+          ])
+          expect(segs[0]?.text).toBe('hello')
+        } finally {
+          clearTimeout(deadline)
+        }
         answered++
       }
     } finally {

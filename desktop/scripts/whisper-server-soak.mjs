@@ -79,11 +79,11 @@ const audio = wav(SECONDS)
 const port = await freePort()
 const args = ['-m', MODEL, '--host', '127.0.0.1', '--port', String(port), '-t', THREADS, '--audio-ctx', '768']
 const proc = spawn(BIN, args, STDIO === 'ignore' ? { stdio: 'ignore' } : {})
-let stderrTail = ''
+let outputTail = ''
 const bytes = { out: 0, err: 0 }
 const keep = (which) => (d) => {
   bytes[which] += d.length
-  stderrTail = (stderrTail + d.toString()).slice(-4000)
+  outputTail = (outputTail + d.toString()).slice(-4000)
 }
 if (STDIO === 'drain') {
   proc.stdout.on('data', keep('out'))
@@ -181,7 +181,7 @@ for (let i = 1; i <= REQUESTS; i++) {
     console.log(`FAILED at request #${i} after ${ok} successes (${Date.now() - t}ms): ${e.name}: ${e.message}`)
     const alive = await probe(3000)
     console.log(`GET / afterwards answers: ${alive}`)
-    console.log('--- server output tail ---\n' + stderrTail.split('\n').slice(-15).join('\n'))
+    console.log('--- server output tail ---\n' + outputTail.split('\n').slice(-15).join('\n'))
     proc.kill()
     process.exit(1)
   }

@@ -3,14 +3,15 @@
 # BUG-65 (is live transcription fast enough?), BUG-67 (does the engine stop when the audio does?)
 # and BUG-88 (does the live engine keep answering for a whole meeting, or stop and get replaced?).
 #
-# Both bugs are closable ONLY from this log — the symptom of one is a number and of the other is
+# All three are closable ONLY from this log — the symptom of one is a number and of the other is
 # CPU burn, so neither shows on screen. See desktop/MANUAL-VERIFICATION.md §BUG-65 / §BUG-67.
 #
 #   ./scripts/check-local-transcription-log.sh            # the most recent recording session
 #   ./scripts/check-local-transcription-log.sh --all      # every session in the log
 #   ./scripts/check-local-transcription-log.sh --path <f> # a log copied from another machine
 #
-# Exit 0 = all three PASS. Exit 1 = at least one FAIL or INCONCLUSIVE.
+# Exit 0 = BUG-65 and BUG-67 PASS and BUG-88 did not FAIL (a recording too short to judge BUG-88
+# is INCONCLUSIVE, which does not by itself fail the exit). Exit 1 otherwise.
 set -uo pipefail
 
 LOG=""
@@ -157,16 +158,19 @@ function report(   i, j, tmp, median, v65, v67, bad) {
   if (hang_replaced > 0 || start_replaced > 0 || live_failed > 0) {
     v88 = "FAIL — an engine stopped answering; the lifetimes above say whether it was the ~250-step wall again"
   } else if (engine_max <= 300) {
-    v88 = sprintf("INCONCLUSIVE — the longest engine run was %d steps; it needs more than 300 (a recording of ~8 minutes or more) to prove the old ~250 wall is gone", engine_max)
+    v88 = sprintf("INCONCLUSIVE — the longest engine run was %d steps; it needs more than 300 (a recording of ~8 minutes or more) even to get past the old ~250 wall", engine_max)
+  } else if (engine_max < 1200) {
+    v88 = sprintf("INCONCLUSIVE — past the old ~250 wall (%d steps, no replacement), but closing BUG-88 needs a 30-minute meeting: 1200+ steps", engine_max)
   } else {
-    v88 = sprintf("PASS — one engine answered %d steps without stopping, well past the old ~250 wall", engine_max)
+    v88 = sprintf("PASS — one engine answered %d steps (30+ minutes) without stopping or being replaced", engine_max)
   }
   printf "  VERDICT: %s\n", v88
 
-  if (v65 !~ /^PASS/ || v67 !~ /^PASS/ || v88 !~ /^PASS/) fail_any = 1
+  if (v65 !~ /^PASS/ || v67 !~ /^PASS/ || v88 ~ /^FAIL/) fail_any = 1
+  if (v88 !~ /^PASS/) bug88_open = 1
 }
 
-BEGIN { started = 0; session_no = 0; fail_any = 0; has_engine_lines = 0; engine_steps = 0; reset_session(); printf "LOG: %s\n", logfile }
+BEGIN { started = 0; session_no = 0; fail_any = 0; bug88_open = 0; has_engine_lines = 0; engine_steps = 0; pending_start_replaced = 0; reset_session(); printf "LOG: %s\n", logfile }
 
 / live engine started$/ {
   has_engine_lines = 1
@@ -174,10 +178,18 @@ BEGIN { started = 0; session_no = 0; fail_any = 0; has_engine_lines = 0; engine_
   next
 }
 
+# Deliberately does NOT match "live engine replacement FAILED" (note the trailing space in the
+# pattern): a failed replacement is followed by "live streaming failed", which is counted below.
 / live engine replaced / {
+  if ($0 ~ /at recording start/) {
+    # Written BEFORE the "session start" line of its own recording (the health check runs first), so
+    # it belongs to the NEXT session. Held here and handed over when that header arrives.
+    pending_start_replaced++
+    engine_steps = 0
+    next
+  }
   if (started == 0) next
-  if ($0 ~ /at recording start/) start_replaced++
-  else hang_replaced++
+  hang_replaced++
   end_lifetime("replaced")
   engine_steps = 0
   next
@@ -198,6 +210,8 @@ BEGIN { started = 0; session_no = 0; fail_any = 0; has_engine_lines = 0; engine_
   sub(/^.* session start /, "")
   start_cfg = "session start " $0
   reset_session()
+  start_replaced = pending_start_replaced
+  pending_start_replaced = 0
   next
 }
 
@@ -278,6 +292,10 @@ END {
   if (fail_any) {
     printf "NOT CLOSED — send this output; the numbers say which lever is next.\n"
     exit 1
+  }
+  if (bug88_open) {
+    printf "BUG-65 and BUG-67 PASS. BUG-88 is not yet provable from this recording — see its verdict.\n"
+    exit 0
   }
   printf "ALL PASS — BUG-65, BUG-67 and BUG-88 can be marked Done.\n"
   exit 0

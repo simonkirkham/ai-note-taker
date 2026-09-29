@@ -23,7 +23,7 @@ Ordered by severity, then by id.
 | BUG-85 | The live transcript can silently stop part-way through a meeting while the recording timer keeps running. It has now happened twice, costing 54 minutes of one meeting and 3.5 hours of another. You are now told within two minutes, and told which of four things went wrong — including whether the room was simply quiet rather than the transcription failing. Stopping it happening at all is still to do. | In Progress | — |
 | [BUG-86](#bug-86--on-device-speaker-labels-put-the-other-sides-words-under-me-too) | **On a call played through speakers, the on-device "who said what" labels are wrong: nearly every line the other side says appears twice, once as "Them" and once as "Me", and your own words are buried inside those repeats.** Makes the labelled transcript unreadable for any call not taken on headphones. | Open | — |
 | [BUG-87](#bug-87--finalising-transcript-takes-almost-as-long-as-the-meeting) | **After you stop an on-device recording, "Finalising transcript…" runs for almost as long as the meeting itself — 3 m 22 s for a 3 m 46 s test, so roughly 55 minutes after a one-hour meeting — before labels or analysis appear.** | Open | — |
-| [BUG-88](#bug-88--the-on-device-transcription-engine-can-hang-for-good-mid-meeting) | **The live transcript stopped dead about 7 minutes into every long local recording, and on 2026-09-28 it died for good 23 minutes in, after the app had replaced the engine twice.** Cause found and reproduced: the app never read the engine's own progress output, so after exactly 250 transcription steps its output buffer filled and it froze. Fixed by not collecting that output at all; 1000 steps in a row now succeed on this machine. **Stays open until a real meeting of 30+ minutes runs with no engine replacement** — `scripts/check-local-transcription-log.sh` says PASS for BUG-88. | In Progress | BUG-85, BUG-87 |
+| [BUG-88](#bug-88--the-on-device-transcription-engine-can-hang-for-good-mid-meeting) | **The live transcript stopped dead about 7 minutes into every long local recording, and on 2026-09-28 it died for good 23 minutes in, after the app had replaced the engine twice.** Cause found and reproduced: the app never read the engine's own progress output, so after 249–250 transcription steps its output buffer filled and it froze. Fixed by not collecting that output at all; 1000 steps in a row now succeed on this machine. **Stays open until a real meeting of 30+ minutes runs with no engine replacement** — `scripts/check-local-transcription-log.sh` says PASS for BUG-88. | In Progress | BUG-85, BUG-87 |
 | BUG-70 | Clicking "+ New Note" while recording and then choosing to keep recording still leaves a blank, untitled note behind on your home list. | Open — held behind 51-C | BUG-54, 51-C |
 | BUG-73 | Signing out while an on-device transcript is still finishing can park you for up to an hour with no way to leave — a real problem on a shared machine. | Open | BUG-55 |
 | BUG-75 | Reopening a note while its on-device transcript is still finishing shows no transcript, and nothing appears until you navigate again or reload. | Open | BUG-72 |
@@ -531,7 +531,7 @@ A web source claiming 8× for the same switch (a large model with KleidiAI) did 
 
 ### Root cause, found 2026-09-29
 
-**Every live engine froze after exactly 250 transcription steps (about 7 minutes of recording), because the app never read the engine's own progress output.** The engine prints a few hundred bytes per step. The app connected that output to a pipe and never read it. After 250 steps the pipe was full, the engine blocked forever mid-write, and it was holding the lock every later step waits on.
+**Every live engine froze after 249–250 transcription steps (about 7 minutes of recording), because the app never read the engine's own progress output.** The engine prints a few hundred bytes per step. The app connected that output to a pipe and never read it. After ~250 steps the pipe was full, the engine blocked forever mid-write, and it was holding the lock every later step waits on.
 
 | Evidence | Result |
 | --- | --- |
@@ -539,15 +539,15 @@ A web source claiming 8× for the same switch (a large model with KleidiAI) did 
 | Step speed right up to each hang | Flat, 1.2–1.4 s — no slowdown, so not load |
 | Reproducer, installed binary + live model, the app's own request code, output piped and **unread** (`desktop/scripts/whisper-server-soak.mjs --stdio unread`) | **250 answered, request #251 timed out at 20 s** |
 | Same, output piped and **read** (`--stdio drain`) | **320 of 320** answered |
-| Same, output **not piped** — the shipped fix (`--stdio ignore`) | see the fix row below |
+| Same, output **not piped** — the shipped fix (`--stdio ignore`), 2026-09-29, installed `695ee14` binary + `ggml-base.en.bin` | **1000 of 1000** answered in 24 min (~1.4 s each), no slowdown |
 
-**Fix (PR pending):** the engine is started with its output discarded rather than piped (`whisperServer.ts` `start()`). No other code read that output. The 2026-09-21 recovery stays as a safety net.
+**Fix (PR #491):** the engine is started with its output discarded rather than piped (`whisperServer.ts` `start()`). No other code read that output. The 2026-09-21 recovery stays as a safety net.
 
 **Spec:** `desktop/tests/whisperServerOutput.spec.ts` starts a fake engine that writes 64 KB per request with a blocking write, and requires 40 requests in a row to answer. Seen red with the fix removed: *"request #4 never answered after 3 successes"*.
 
-**Checkable from the log:** `scripts/check-local-transcription-log.sh` now has a BUG-88 verdict per recording — the most steps one engine answered, every engine replacement (mid-recording or at recording start), and the step count each engine reached before it stopped. PASS needs one engine to pass 300 steps with no replacement. The app now also logs `live engine started` and `live engine replaced at recording start`, so an engine reused across recordings is counted across them.
+**Checkable from the log:** `scripts/check-local-transcription-log.sh` now has a BUG-88 verdict per recording — the most steps one engine answered, every engine replacement (mid-recording or at recording start), and the step count each engine reached before it stopped. PASS needs one engine to answer 1200+ steps (about 30 minutes) with no replacement; 300–1199 reads "past the old wall" but INCONCLUSIVE. The app now also logs `live engine started` and `live engine replaced at recording start`, so an engine reused across recordings is counted across them.
 
-**Earlier theories this retires:** the decoder-repetition-loop guess and "root trigger unknown" below. Windows refusing to kill the process fits too: a process blocked writing to a full pipe is in a kernel wait.
+**Earlier theories this retires:** the decoder-repetition-loop guess and "root trigger unknown" below. Windows refusing to kill the process may fit too — a process blocked writing to a full pipe waits in the kernel — but that is a guess, not checked.
 
 **Symptom:** the live transcript freezes mid-sentence while the recording timer keeps running. About a minute later the banner says the on-device engine stopped responding. Nothing recovers it — not waiting, not stopping and starting the recording. The stop-time pass still produces a transcript of whatever audio was captured, so the loss is bounded by when the user gives up and stops.
 
