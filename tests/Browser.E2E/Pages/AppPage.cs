@@ -379,7 +379,7 @@ public sealed class AppPage
     // hung the gate for 44 min, PR #291), so a failure could not tell "the API omitted the card" from
     // "the page hid a card it received". This asks once more, from the page, with its OWN fetch — a
     // fresh request this code owns, issued after the reload loop has stopped, so nothing aborts it.
-    // It is bounded twice (an in-page abort at 8 s, and a C# wait at 12 s) and every failure mode
+    // It is bounded twice (an in-page abort at 15 s — past the server's 8 s consistency wait, so a lagging read still answers — and a C# wait at 20 s) and every failure mode
     // returns a string, so the diagnostic can never replace or hang the failure it is describing.
     // The home list hides any card whose date falls outside the browser's local last-30-days window,
     // so the target's date fields are printed beside the browser's own local today to compare.
@@ -391,7 +391,7 @@ public sealed class AppPage
           const lo = new Date(now); lo.setDate(lo.getDate() - 29);
           const clock = `browserToday=${local(now)} windowLo=${local(lo)} tzOffsetMin=${now.getTimezoneOffset()} browserNow=${now.toISOString()}`;
           const ctl = new AbortController();
-          const timer = setTimeout(() => ctl.abort(), 8000);
+          const timer = setTimeout(() => ctl.abort(), 15000);
           try {
             const token = window.__E2E_AUTH_TOKEN;
             const r = await fetch(url, {
@@ -404,7 +404,8 @@ public sealed class AppPage
             const cards = Array.isArray(body?.cards) ? body.cards : [];
             const eff = c => c.date ? c.date : (c.createdAt ? local(new Date(c.createdAt)) : '<none>');
             const describe = c => `title='${c.title}' date=${c.date ?? 'null'} createdAt=${c.createdAt} effective=${eff(c)} folderId=${c.folderId ?? 'null'}`;
-            const target = cards.find(c => c.title === title);
+            // Exact first; then contains, which is how the page's locator matches the card.
+            const target = cards.find(c => c.title === title) ?? cards.find(c => (c.title ?? '').includes(title));
             const titles = cards.map(c => c.title).slice(0, 25).join(' | ');
             return `status=${r.status} x-consistency=${r.headers.get('x-consistency') ?? 'absent'} count=${cards.length} ` +
               `target=${target ? 'PRESENT ' + describe(target) : 'ABSENT'} ${clock} titles=[${titles}]`;
@@ -423,7 +424,7 @@ public sealed class AppPage
         try
         {
             var result = await page.EvaluateAsync<string>(DirectCardsFetchScript, new object?[] { url, title, latestNoteToken })
-                .WaitAsync(TimeSpan.FromSeconds(12));
+                .WaitAsync(TimeSpan.FromSeconds(20));
             return $"BUG-89 direct fetch of {url}: {result}";
         }
         catch (Exception ex)
