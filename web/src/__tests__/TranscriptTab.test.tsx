@@ -503,6 +503,27 @@ describe('CHANGE-47 copy and download the whole transcript', () => {
     expect(blobs).toHaveLength(1)
     expect(blobs[0].type).toMatch(/^text\/plain/)
     expect(await blobs[0].text()).toBe('The whole meeting.')
+    expect(clicked[0].href).toBe('blob:transcript')
+  })
+
+  // Released late, not at once: Firefox and Safari have saved empty files when the object URL was
+  // revoked straight after the click. Literal 1s rather than the component's constant.
+  it('Scenario: the file handed to the browser is released afterwards, not before it is saved', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      stubDownload()
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+      render(<TranscriptTab transcript="words" />)
+
+      await user.click(screen.getByRole('button', { name: 'Download transcript' }))
+      vi.advanceTimersByTime(1000)
+      expect(URL.revokeObjectURL).not.toHaveBeenCalled()
+
+      vi.advanceTimersByTime(60_000)
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:transcript')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('Scenario: no transcript yet — offers neither button', () => {
@@ -524,6 +545,13 @@ describe('CHANGE-47 transcriptFileName', () => {
 
   it('turns control characters into spaces rather than keeping them', () => {
     expect(transcriptFileName('Bell\u0007ring\u001fend', '')).toBe('Bell ring end transcript.txt')
+  })
+
+  // Windows refuses a file name over 255 characters; the title is cut, the date and suffix kept.
+  it('shortens a very long title so the file name stays well under the 255-character limit', () => {
+    const name = transcriptFileName('a'.repeat(400), '2026-09-29')
+    expect(name.length).toBeLessThanOrEqual(200)
+    expect(name.endsWith(' 2026-09-29 transcript.txt')).toBe(true)
   })
 
   it('strips characters Windows and macOS refuse in file names', () => {
