@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Reads the desktop shell's on-device transcription log and gives a PASS/FAIL verdict for
-# BUG-65 (is live transcription fast enough?) and BUG-67 (does the engine stop when the audio does?).
+# BUG-65 (is live transcription fast enough?), BUG-67 (does the engine stop when the audio does?)
+# and BUG-88 (does the live engine keep answering for a whole meeting, or stop and get replaced?).
 #
 # Both bugs are closable ONLY from this log — the symptom of one is a number and of the other is
 # CPU burn, so neither shows on screen. See desktop/MANUAL-VERIFICATION.md §BUG-65 / §BUG-67.
@@ -9,7 +10,7 @@
 #   ./scripts/check-local-transcription-log.sh --all      # every session in the log
 #   ./scripts/check-local-transcription-log.sh --path <f> # a log copied from another machine
 #
-# Exit 0 = both PASS. Exit 1 = at least one FAIL or INCONCLUSIVE.
+# Exit 0 = all three PASS. Exit 1 = at least one FAIL or INCONCLUSIVE.
 set -uo pipefail
 
 LOG=""
@@ -19,7 +20,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --all)   MODE="all"; shift ;;
     --path)  LOG="${2:-}"; shift 2 ;;
-    -h|--help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown argument: $1 (try --help)" >&2; exit 2 ;;
   esac
 done
@@ -67,6 +68,17 @@ function reset_session() {
   rearm_seen = 0; gap_seen = 0
   rtf_n = 0; rtf_max = 0
   delete rtf
+  hang_replaced = 0; start_replaced = 0; live_failed = 0; engine_max = 0; lifetimes = ""
+  # Pre-BUG-88-fix logs never say when an engine started, so a session start is the best
+  # available boundary for them. Newer logs carry the real one, and a warm engine reused by the
+  # next recording keeps counting across the session line — that is where the old hang hid.
+  if (!has_engine_lines) engine_steps = 0
+}
+
+# BUG-88 — the lifetime of one engine ended (replaced, or the session gave up on it). Record how many
+# steps it answered: every lifetime on 2026-09-28 ended at 249-250, which is what found the cause.
+function end_lifetime(reason) {
+  lifetimes = lifetimes sprintf("%s%d (%s)", lifetimes == "" ? "" : ", ", engine_steps, reason)
 }
 
 function report(   i, j, tmp, median, v65, v67, bad) {
@@ -136,10 +148,47 @@ function report(   i, j, tmp, median, v65, v67, bad) {
   }
   printf "  VERDICT: %s\n", v67
 
-  if (v65 !~ /^PASS/ || v67 !~ /^PASS/) fail_any = 1
+  printf "\nBUG-88 — does the live engine keep answering for the whole meeting?\n"
+  printf "  most steps one engine answered this session   %d   (before the fix every engine stopped at ~250)\n", engine_max
+  printf "  engine replaced mid-recording (stopped answering)  %d\n", hang_replaced
+  printf "  engine replaced at recording start (warm one dead) %d\n", start_replaced
+  printf "  live transcript given up on                    %d\n", live_failed
+  if (lifetimes != "") printf "  steps answered before each engine stopped    %s\n", lifetimes
+  if (hang_replaced > 0 || start_replaced > 0 || live_failed > 0) {
+    v88 = "FAIL — an engine stopped answering; the lifetimes above say whether it was the ~250-step wall again"
+  } else if (engine_max <= 300) {
+    v88 = sprintf("INCONCLUSIVE — the longest engine run was %d steps; it needs more than 300 (a recording of ~8 minutes or more) to prove the old ~250 wall is gone", engine_max)
+  } else {
+    v88 = sprintf("PASS — one engine answered %d steps without stopping, well past the old ~250 wall", engine_max)
+  }
+  printf "  VERDICT: %s\n", v88
+
+  if (v65 !~ /^PASS/ || v67 !~ /^PASS/ || v88 !~ /^PASS/) fail_any = 1
 }
 
-BEGIN { started = 0; session_no = 0; fail_any = 0; reset_session(); printf "LOG: %s\n", logfile }
+BEGIN { started = 0; session_no = 0; fail_any = 0; has_engine_lines = 0; engine_steps = 0; reset_session(); printf "LOG: %s\n", logfile }
+
+/ live engine started$/ {
+  has_engine_lines = 1
+  engine_steps = 0
+  next
+}
+
+/ live engine replaced / {
+  if (started == 0) next
+  if ($0 ~ /at recording start/) start_replaced++
+  else hang_replaced++
+  end_lifetime("replaced")
+  engine_steps = 0
+  next
+}
+
+/ live streaming failed: / {
+  if (started == 0) next
+  live_failed++
+  end_lifetime("given up")
+  next
+}
 
 / session start /  {
   if (mode == "all") report()
@@ -182,6 +231,8 @@ BEGIN { started = 0; session_no = 0; fail_any = 0; reset_session(); printf "LOG:
     if (r > worst_rtf) { worst_rtf = r; worst_line = $0; sub(/^[^ ]+ /, "", worst_line) }
   }
   ok_steps++
+  engine_steps++
+  if (engine_steps > engine_max) engine_max = engine_steps
   dropped_total += d
   # Count HOW OFTEN it falls behind, not how many ticks were lost in total: one stall that drops
   # four ticks is a hiccup; four separate steps each dropping one is the engine failing to keep up.
@@ -228,7 +279,7 @@ END {
     printf "NOT CLOSED — send this output; the numbers say which lever is next.\n"
     exit 1
   }
-  printf "BOTH PASS — BUG-65 and BUG-67 can be marked Done.\n"
+  printf "ALL PASS — BUG-65, BUG-67 and BUG-88 can be marked Done.\n"
   exit 0
 }
 ' "$LOG"
