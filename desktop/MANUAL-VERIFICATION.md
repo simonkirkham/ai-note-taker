@@ -281,6 +281,16 @@ Forcing the failure: start a recording in on-device mode, find the `whisper-serv
 | 4b | **A PARTIAL jam is recovered too — the case row 1 cannot reach:** Given a recording running, When I hold the engine's inference busy while it still answers (fire ~4 concurrent long `/inference` POSTs at its port with curl, so the serialising mutex is held but `GET /` still replies), Then the app still replaces the engine and `local-transcription.log` gains `live engine replaced after it stopped answering`. **Why this row exists:** suspending the process (row 1) makes the engine answer *nothing*, which is the END state of a jam. The real failure starts as a partial jam and only becomes total silence as abandoned requests accumulate — so row 1 passing proves only the easy half. An earlier version of this fix would have declined to replace the engine in exactly this case, and row 1 could not have told us. | ☐ |
 | 5 | **The recording itself is never harmed:** Given any of the above, When I press Stop, Then "Finalising transcript…" runs and the saved note contains the transcript of the **whole** recording, including the stretch where the engine was hung. (Audio buffering is independent of the live view — this is the property that bounds the damage.) | ☐ |
 
+## CHANGE-47 — Copy and download the transcript
+
+Two things no test can prove: that Electron's default download handling shows a **Save** dialog for the transcript file (the shell registers no download handler, so it relies on Electron's default), and that the clipboard write is granted (the CHANGE-46 permission covers it, unwatched for this button).
+
+| # | Check | ✓ |
+|---|---|---|
+| 1 | **Copy works:** Given a note with a transcript open in the desktop app, When I open the **Transcript** tab and press **Copy transcript**, Then "Copied" appears and pasting into Notepad gives the whole transcript, first line to last. | ☐ |
+| 2 | **Download saves a file:** Given the same note, When I press **Download transcript**, Then a Save dialog opens suggesting `<note title> <date> transcript.txt`, and the saved file opens in Notepad with the whole transcript and no garbled characters (try a note with an accented name or an em dash). | ☐ |
+| 3 | **Works mid-recording:** Given a recording running with words on screen, When I press **Copy transcript**, Then the paste holds what was on screen at that moment, and the recording carries on undisturbed. | ☐ |
+
 ## Troubleshooting
 
 - **`Error 400: redirect_uri_mismatch` immediately after adding `http://localhost:5180`** — the value is correct (`redirect_uri = window.location.origin = http://localhost:5180`: no trailing slash, `localhost` not `127.0.0.1`, port `5180`, `http` not `https`). The cause is **Google propagation lag** — a freshly added+saved redirect URI is not live immediately; it can take **~5 min to a few hours**. Confirm the running app's `window.location.origin` (DevTools console) reads exactly `http://localhost:5180`, then wait and retry. **No code change.** Hit and confirmed 2026-06-22: config was right on the first attempt; the URI simply had not propagated.

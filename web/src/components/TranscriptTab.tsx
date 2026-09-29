@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { downloadText } from "../lib/transcriptExport";
 import TranscriptFindBar from "./TranscriptFindBar";
 import styles from "./TranscriptTab.module.css";
 
@@ -17,6 +18,11 @@ interface Match {
   start: number;
   end: number;
 }
+
+// CHANGE-47: how long "Copied" stays up after a copy — same as the note's Copy link (CHANGE-46).
+const COPIED_STATUS_MS = 2000;
+
+type ExportStatus = "idle" | "copied" | "copyFailed";
 
 function escapeForRegExp(query: string): string {
   return query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -63,18 +69,21 @@ export default function TranscriptTab({
   recordingStatus = "none",
   diarizationStatus = "none",
   onDownloadRecording,
+  downloadFileName = "Transcript.txt",
 }: {
   transcript: string | null;
   isRecording?: boolean;
   recordingStatus?: RecordingDownloadStatus;
   diarizationStatus?: DiarizationDisplayStatus;
   onDownloadRecording?: () => void;
+  downloadFileName?: string;
 }) {
   const bodyRef = useRef<HTMLDivElement>(null);
   const currentMarkRef = useRef<HTMLElement>(null);
   const [query, setQuery] = useState("");
   const [matchIndex, setMatchIndex] = useState(0);
   const [seenTranscript, setSeenTranscript] = useState(transcript);
+  const [exportStatus, setExportStatus] = useState<ExportStatus>("idle");
   const hasTranscript = !!transcript && transcript.trim().length > 0;
 
   // Adjusting state during render, rather than in an effect: React re-renders immediately without
@@ -126,6 +135,27 @@ export default function TranscriptTab({
     if (currentStart === null) return;
     currentMarkRef.current?.scrollIntoView({ block: "center" });
   }, [currentStart]);
+
+  // Only "Copied" clears itself: it would otherwise claim a copy made minutes ago. A failure
+  // stays until the next attempt, because it carries the instruction the user needs.
+  useEffect(() => {
+    if (exportStatus !== "copied") return;
+    const timer = setTimeout(() => setExportStatus("idle"), COPIED_STATUS_MS);
+    return () => clearTimeout(timer);
+  }, [exportStatus]);
+
+  // Exports the transcript prop, never the rendered text: a search only changes what is
+  // highlighted, and mid-recording the prop is exactly what has been transcribed so far.
+  async function copyTranscript() {
+    try {
+      await navigator.clipboard.writeText(transcript ?? "");
+      setExportStatus("copied");
+    } catch {
+      // A clipboard refusal is permanent (no permission, or no clipboard at all), so "try again"
+      // would be false advice. Download needs no permission, and the file holds the same text.
+      setExportStatus("copyFailed");
+    }
+  }
 
   function step(delta: number) {
     if (matches.length === 0) return;
@@ -197,6 +227,39 @@ export default function TranscriptTab({
           </span>
         </div>
       ) : null}
+      {hasTranscript && (
+        <div className={styles.exportBar} data-testid="transcript-export-bar">
+          <button
+            type="button"
+            className={styles.downloadButton}
+            data-testid="transcript-copy-button"
+            onClick={() => void copyTranscript()}
+          >
+            Copy transcript
+          </button>
+          <button
+            type="button"
+            className={styles.downloadButton}
+            data-testid="transcript-download-button"
+            onClick={() => downloadText(transcript ?? "", downloadFileName)}
+          >
+            Download transcript
+          </button>
+          {/* Always rendered while the bar is: a live region must exist BEFORE its content
+              changes or the announcement is commonly dropped (same split as CHANGE-46). */}
+          <span
+            className={exportStatus === "copyFailed" ? styles.exportError : styles.recordingHint}
+            data-testid="transcript-export-status"
+            role="status"
+          >
+            {exportStatus === "copied"
+              ? "Copied"
+              : exportStatus === "copyFailed"
+                ? "Couldn’t copy — use Download transcript instead."
+                : ""}
+          </span>
+        </div>
+      )}
       {hasTranscript && (
         <TranscriptFindBar
           query={query}

@@ -22,6 +22,7 @@ import type { useTranscription } from "../hooks/useTranscription";
 import type { AgendaEditorApi, LiveTopic } from "../lib/agendaEditorApi";
 import { reportAnalyseFailure } from "../lib/analyseFailure";
 import { reportDeletedNote } from "../lib/deletedNoteRescue";
+import { transcriptFileName } from "../lib/transcriptExport";
 import { recordRumEvent } from "../rum";
 import AgendaSection from "./AgendaSection";
 import CommandBar from "./CommandBar";
@@ -1122,6 +1123,7 @@ export default function NoteView({
               recordingStatus={recordingStatus}
               diarizationStatus={diarizationStatus}
               onDownloadRecording={() => void handleDownloadRecording()}
+              downloadFileName={transcriptFileName(title, date)}
             />
           </div>
 
