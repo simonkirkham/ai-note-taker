@@ -169,6 +169,24 @@ First, a correction: the failure is at `RecordingTabJourney.cs:100`, which runs 
 
 **Not caused by the change that was deploying.** #784 carried [CHANGE-46] (a copy-link button in the note header, a hook reading the app's public address, and a desktop clipboard permission). It touches no read model, no recording path, no navigation, and no card list.
 
+**Code read 2026-09-29: the server cannot silently skip saving a new note's card and still say it is up to date.** Hypothesis 1 ("fold ran but wrote no card") has no path in the code; the only way left for the server to answer without the card is its own ownership filter.
+
+| Checked | Finding |
+| --- | --- |
+| Is the card write ever skipped for a live note? | No. `ProjectionUpdater.ApplyNoteEventsAsync` writes the card unconditionally on every non-delete batch (`UpsertNoteFieldsAsync`, an unconditional `UpdateItem` — no condition expression, no try/catch) |
+| Can the card arm fail quietly? | No. `ApplyNoteEventsToCard` **throws** `NoteNotFoundException` when a batch has no create and no existing row; every store call propagates. `ProjectorFunction.Handle` rethrows, so the position is never advanced and the gate would report **stale**, not fresh |
+| Does anything run after the card write that could hide it? | Only tag/feedback/calendar/workspace-rebucket writes, all after the card write and all propagating |
+| Can the position advance without the card write? | No. `StreamProjector.ProcessOneAsync` sets the position only after `RouteAsync` returns, and the note arm returns only after `ApplyNoteEventsAsync` completes |
+| Server-side filters that return `200` without the card | One: `GetNoteCards` drops a card that is `Deleted`, whose `UserId` differs from the caller, or whose workspace is not the route's. The card's owner comes from the create event's metadata (`?? ""`), so a mismatch needs the create to have been written as a different user or with no user id — no path found for either. A card with no workspace counts as the default workspace |
+
+**Diagnostic added (this change):** on the card-not-visible timeout, the helper now makes its own fetch of the cards list — the same URL, sign-in and consistency token the app used — and prints into the failure message whether the note came back, its date fields, the browser's local today and the 30-day window's start, the count and the titles. The next occurrence settles it:
+
+| The failure message says | Meaning |
+| --- | --- |
+| `target=ABSENT` | The server did not return the note — look at the ownership/workspace filter or the stored row, not the page |
+| `target=PRESENT` with `effective` outside `windowLo`..`browserToday` | The page hid a note it received — the 30-day date window (hypothesis 2) |
+| `target=PRESENT` with `effective` inside the window | The page received it and should have shown it — a client-side list/cache bug, neither hypothesis
+
 
 ## BUG-81 — Clicking Save on a new note can delete it
 
