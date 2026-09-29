@@ -3,8 +3,8 @@
 # BUG-65 (is live transcription fast enough?), BUG-67 (does the engine stop when the audio does?)
 # and BUG-88 (does the live engine keep answering for a whole meeting, or stop and get replaced?).
 #
-# All three are closable ONLY from this log — the symptom of one is a number and of the other is
-# CPU burn, so neither shows on screen. See desktop/MANUAL-VERIFICATION.md §BUG-65 / §BUG-67.
+# All three are closable ONLY from this log — BUG-65 shows as a number, BUG-67 as CPU burn, and
+# BUG-88 as a step count per engine; none of them shows on screen. See desktop/MANUAL-VERIFICATION.md.
 #
 #   ./scripts/check-local-transcription-log.sh            # the most recent recording session
 #   ./scripts/check-local-transcription-log.sh --all      # every session in the log
