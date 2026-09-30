@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { vi } from 'vitest'
 import TranscriptTab from '../components/TranscriptTab'
+import { transcriptFileName } from '../lib/transcriptExport'
 
 // 52-A: jsdom implements neither of the two scroll mechanisms this component uses.
 // `scrollIntoView` is absent entirely; `scrollHeight` is hard-wired to 0, so the
@@ -401,4 +402,161 @@ it('52-A: a replaced, shorter transcript clamps to the last remaining match', as
   expect(screen.getByTestId('transcript-find-count')).toHaveTextContent('3 of 3')
   rerender(<TranscriptTab transcript="budget only" />)
   expect(screen.getByTestId('transcript-find-count')).toHaveTextContent('1 of 1')
+})
+
+// CHANGE-47: getting the whole transcript out — copy to the clipboard, or download as a .txt file.
+describe('CHANGE-47 copy and download the whole transcript', () => {
+  const restores: (() => void)[] = []
+
+  // Replaces ONLY navigator.clipboard — spreading navigator into a stub loses its prototype
+  // properties (see the CHANGE-46 copy-link specs in NoteView.test.tsx).
+  function stubClipboard(writeText: (text: string) => Promise<void>) {
+    const original = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    restores.push(() => {
+      if (original) Object.defineProperty(navigator, 'clipboard', original)
+      else Reflect.deleteProperty(navigator, 'clipboard')
+    })
+  }
+
+  // jsdom implements neither createObjectURL nor navigation, so capture the Blob handed over and
+  // the anchor that was clicked instead of following it.
+  function stubDownload() {
+    const blobs: Blob[] = []
+    const clicked: HTMLAnchorElement[] = []
+    const originalCreate = URL.createObjectURL
+    const originalRevoke = URL.revokeObjectURL
+    URL.createObjectURL = vi.fn((blob: Blob) => {
+      blobs.push(blob)
+      return 'blob:transcript'
+    })
+    URL.revokeObjectURL = vi.fn()
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      clicked.push(this)
+    })
+    restores.push(() => {
+      URL.createObjectURL = originalCreate
+      URL.revokeObjectURL = originalRevoke
+      click.mockRestore()
+    })
+    return { blobs, clicked }
+  }
+
+  afterEach(() => {
+    while (restores.length) restores.pop()!()
+  })
+
+  it('Scenario: copy the transcript — puts the whole text on the clipboard and confirms', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    stubClipboard(writeText)
+    const transcript = 'Speaker 1: Hello.\nSpeaker 2: Hi there.'
+    render(<TranscriptTab transcript={transcript} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Copy transcript' }))
+
+    expect(writeText).toHaveBeenCalledWith(transcript)
+    expect(await screen.findByTestId('transcript-export-status')).toHaveTextContent('Copied')
+  })
+
+  // A search narrows what is highlighted, never what is exported.
+  it('Scenario: copy while searching — still copies the whole transcript, not the matches', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    stubClipboard(writeText)
+    render(<TranscriptTab transcript="alpha beta alpha gamma" />)
+
+    await userEvent.type(screen.getByLabelText('Find in transcript'), 'alpha')
+    await userEvent.click(screen.getByRole('button', { name: 'Copy transcript' }))
+
+    expect(writeText).toHaveBeenCalledWith('alpha beta alpha gamma')
+  })
+
+  it('Scenario: copy mid-recording — copies what has been transcribed so far', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    stubClipboard(writeText)
+    render(<TranscriptTab transcript="First half of the call" isRecording />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Copy transcript' }))
+
+    expect(writeText).toHaveBeenCalledWith('First half of the call')
+  })
+
+  it('Scenario: copy fails — says so and points at Download instead of claiming success', async () => {
+    stubClipboard(vi.fn().mockRejectedValue(new Error('denied')))
+    render(<TranscriptTab transcript="words" />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Copy transcript' }))
+
+    const status = await screen.findByTestId('transcript-export-status')
+    expect(status).not.toHaveTextContent('Copied')
+    expect(status).toHaveTextContent(/couldn.t copy/i)
+    expect(status).toHaveTextContent(/download/i)
+  })
+
+  it('Scenario: download the transcript — saves a .txt of the whole text, named after the note', async () => {
+    const { blobs, clicked } = stubDownload()
+    render(<TranscriptTab transcript="The whole meeting." downloadFileName="Roadmap review 2026-09-29.txt" />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Download transcript' }))
+
+    expect(clicked).toHaveLength(1)
+    expect(clicked[0].download).toBe('Roadmap review 2026-09-29.txt')
+    expect(blobs).toHaveLength(1)
+    expect(blobs[0].type).toMatch(/^text\/plain/)
+    expect(await blobs[0].text()).toBe('The whole meeting.')
+    expect(clicked[0].href).toBe('blob:transcript')
+  })
+
+  // Released late, not at once: Firefox and Safari have saved empty files when the object URL was
+  // revoked straight after the click. Literal 1s rather than the component's constant.
+  it('Scenario: the file handed to the browser is released afterwards, not before it is saved', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      stubDownload()
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+      render(<TranscriptTab transcript="words" />)
+
+      await user.click(screen.getByRole('button', { name: 'Download transcript' }))
+      vi.advanceTimersByTime(1000)
+      expect(URL.revokeObjectURL).not.toHaveBeenCalled()
+
+      vi.advanceTimersByTime(60_000)
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:transcript')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('Scenario: no transcript yet — offers neither button', () => {
+    render(<TranscriptTab transcript={null} />)
+    expect(screen.queryByRole('button', { name: 'Copy transcript' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Download transcript' })).toBeNull()
+  })
+})
+
+describe('CHANGE-47 transcriptFileName', () => {
+  it('names the file after the note title and date', () => {
+    expect(transcriptFileName('Roadmap review', '2026-09-29')).toBe('Roadmap review 2026-09-29 transcript.txt')
+  })
+
+  it('falls back to "Transcript" for an untitled note, and drops a missing date', () => {
+    expect(transcriptFileName('   ', '')).toBe('Transcript.txt')
+    expect(transcriptFileName('', '2026-09-29')).toBe('Transcript 2026-09-29.txt')
+  })
+
+  it('turns control characters into spaces rather than keeping them', () => {
+    expect(transcriptFileName('Bell\u0007ring\u001fend', '')).toBe('Bell ring end transcript.txt')
+  })
+
+  // Windows refuses a file name over 255 characters; the title is cut, the date and suffix kept.
+  it('shortens a very long title so the file name stays well under the 255-character limit', () => {
+    const name = transcriptFileName('a'.repeat(400), '2026-09-29')
+    expect(name.length).toBeLessThanOrEqual(200)
+    expect(name.endsWith(' 2026-09-29 transcript.txt')).toBe(true)
+  })
+
+  it('strips characters Windows and macOS refuse in file names', () => {
+    expect(transcriptFileName('Q3: plan / budget? <draft> "v2"|*', '2026-09-29')).toBe(
+      'Q3 plan budget draft v2 2026-09-29 transcript.txt',
+    )
+  })
 })

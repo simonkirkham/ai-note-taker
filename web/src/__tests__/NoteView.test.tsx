@@ -1509,4 +1509,34 @@ describe('NoteView', () => {
       expect(screen.queryByTestId('copy-note-link-button')).not.toBeInTheDocument()
     })
   })
+
+  describe('downloading the transcript (CHANGE-47)', () => {
+    it('Scenario: the downloaded file is named after the note and its meeting date', async () => {
+      server.use(
+        http.get('/api/notes/:noteId', () =>
+          HttpResponse.json({ noteId: 'note-1', title: 'Roadmap review', content: '', date: '2026-09-29', tags: [], transcriptText: 'spoken words here' }),
+        ),
+      )
+      const clicked: HTMLAnchorElement[] = []
+      const originalCreate = URL.createObjectURL
+      const originalRevoke = URL.revokeObjectURL
+      URL.createObjectURL = vi.fn(() => 'blob:transcript')
+      URL.revokeObjectURL = vi.fn()
+      const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+        clicked.push(this)
+      })
+      try {
+        renderNoteView()
+        await screen.findByDisplayValue('Roadmap review')
+        await userEvent.click(screen.getByTestId('note-tab-transcript'))
+        await userEvent.click(screen.getByRole('button', { name: 'Download transcript' }))
+
+        expect(clicked.map((a) => a.download)).toEqual(['Roadmap review 2026-09-29 transcript.txt'])
+      } finally {
+        URL.createObjectURL = originalCreate
+        URL.revokeObjectURL = originalRevoke
+        click.mockRestore()
+      }
+    })
+  })
 })
