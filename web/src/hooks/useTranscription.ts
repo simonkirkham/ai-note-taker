@@ -556,7 +556,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
           micTargets.push(workletNode);
         }
         for (const target of micTargets) micSource.connect(target);
-        micRecoveryRef.current = createMicRecovery({
+        const micRecovery = createMicRecovery({
           context: audioContext,
           source: micSource,
           targets: micTargets,
@@ -567,6 +567,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
             health.replaceStream(lostStream, replacement);
           },
         });
+        micRecoveryRef.current = micRecovery;
 
         const audioQueue: Uint8Array[] = [];
         const chunker = new PcmChunker();
@@ -681,8 +682,9 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
             const themChunker = new PcmChunker();
             const meWorklet = new AudioWorkletNode(audioContext, 'pcm-processor');
             const themWorklet = new AudioWorkletNode(audioContext, 'pcm-processor');
-            micSource.connect(meWorklet);
-            micTargets.push(meWorklet);
+            // Through the recovery, not `micSource`: a reconnection during the engine start-up above
+            // has already replaced that source, and wiring the dead one would silence "me" for good.
+            micRecovery.connect(meWorklet);
             systemSource.connect(themWorklet);
             meWorklet.port.onmessage = (e: MessageEvent) => {
               if (stoppedRef.current) return;

@@ -14,11 +14,22 @@
 // without leaving the meeting silent for long if the device is gone for good.
 export const MIC_SAME_DEVICE_ATTEMPTS = 10;
 
+// A request the browser has not answered in this long is abandoned and asked again. Chromium on
+// Windows can leave one unsettled while a device is mid-re-enumeration — exactly the dock-drop
+// moment — and a single hung request would otherwise end recovery for the rest of the meeting.
+export const MIC_REQUEST_TIMEOUT_MS = 5000;
+
+// Chromium's stand-ins for "whatever the system picks". A recording asked for no particular device,
+// so its track reports one of these, and asking for `exact: 'default'` again straight after a drop
+// returns whatever Windows has just promoted — usually the laptop's own microphone, which in a
+// docked, lid-closed setup hears next to nothing. The physical device behind it is what is wanted.
+const VIRTUAL_DEVICE_IDS = new Set(['default', 'communications']);
+
 export interface MicRecoveryOptions {
   context: AudioContext;
   /** The live microphone source, as first wired into the capture graph. */
   source: MediaStreamAudioSourceNode;
-  /** Every node the microphone feeds. Extended later when the on-device engine adds its own. */
+  /** Every node the microphone feeds so far. */
   targets: AudioNode[];
   /** The stream currently being captured; replaced on reconnection. */
   currentStream: () => MediaStream | null;
@@ -29,16 +40,34 @@ export interface MicRecoveryOptions {
 }
 
 export interface MicRecovery {
+  /** Feeds the microphone into one more node — whichever source is current, now and after a swap. */
+  connect: (target: AudioNode) => void;
   /** Called once a second: notices a track that died without saying so, and retries. */
   check: () => void;
   /** Stops listening; any microphone still being asked for is released when it answers. */
   detach: () => void;
 }
 
-function deviceIdOf(stream: MediaStream): string | undefined {
+function settingsOf(stream: MediaStream): MediaTrackSettings | undefined {
   try {
-    return stream.getAudioTracks()[0]?.getSettings?.().deviceId || undefined;
+    return stream.getAudioTracks()[0]?.getSettings?.();
   } catch {
+    return undefined;
+  }
+}
+
+// The physical microphone behind a virtual one: the real input sharing its group. Read once, at
+// the start, while the device is still there to be listed.
+async function physicalDeviceId(settings: MediaTrackSettings | undefined): Promise<string | undefined> {
+  const deviceId = settings?.deviceId || undefined;
+  if (!deviceId || !VIRTUAL_DEVICE_IDS.has(deviceId)) return deviceId;
+  try {
+    const inputs = (await navigator.mediaDevices.enumerateDevices()).filter(
+      (device) => device.kind === 'audioinput' && !VIRTUAL_DEVICE_IDS.has(device.deviceId),
+    );
+    return inputs.find((device) => settings?.groupId && device.groupId === settings.groupId)?.deviceId;
+  } catch (err) {
+    console.warn('Listing the microphones failed.', err);
     return undefined;
   }
 }
@@ -61,15 +90,23 @@ function release(stream: MediaStream): void {
 }
 
 export function createMicRecovery(options: MicRecoveryOptions): MicRecovery {
-  const { context, targets, currentStream, isStopped, replaced } = options;
+  const { context, currentStream, isStopped, replaced } = options;
+  const targets = [...options.targets];
   let source = options.source;
   let watched: MediaStream | null = null;
   let lost = false;
   let attempts = 0;
-  let asking = false;
+  // The request in flight, if any; a newer one (or a timeout) supersedes it.
+  let request: { id: number; askedAt: number } | null = null;
+  let nextRequestId = 0;
   let detached = false;
   const initial = currentStream();
-  const deviceId = initial ? deviceIdOf(initial) : undefined;
+  let deviceId: string | undefined;
+  if (initial) {
+    void physicalDeviceId(settingsOf(initial)).then((id) => {
+      deviceId = id;
+    });
+  }
 
   const onEnded = () => {
     lost = true;
@@ -113,20 +150,27 @@ export function createMicRecovery(options: MicRecoveryOptions): MicRecovery {
     attempts = 0;
   }
 
+  // One line per change of state, not one a second: a meeting with no microphone at all would
+  // otherwise log 3,600 warnings an hour.
+  function worthLogging(attempt: number): boolean {
+    return attempt === 1 || attempt === MIC_SAME_DEVICE_ATTEMPTS + 1 || attempt % 60 === 0;
+  }
+
   function attempt(): void {
-    if (detached || asking || !lost || isStopped()) return;
-    asking = true;
+    if (detached || request || !lost || isStopped()) return;
     attempts += 1;
+    const tries = attempts;
+    const id = ++nextRequestId;
+    request = { id, askedAt: Date.now() };
     const constraints: MediaStreamConstraints =
-      deviceId && attempts <= MIC_SAME_DEVICE_ATTEMPTS ? { audio: { deviceId: { exact: deviceId } } } : { audio: true };
+      deviceId && tries <= MIC_SAME_DEVICE_ATTEMPTS ? { audio: { deviceId: { exact: deviceId } } } : { audio: true };
     navigator.mediaDevices
       .getUserMedia(constraints)
       .then((replacement) => {
-        if (detached || isStopped()) {
+        if (detached || isStopped() || request?.id !== id) {
           release(replacement);
           return;
         }
-        const tries = attempts;
         try {
           swapIn(replacement);
         } catch (err) {
@@ -136,18 +180,26 @@ export function createMicRecovery(options: MicRecoveryOptions): MicRecovery {
         console.info(`Microphone reconnected after ${tries} attempt(s).`);
       })
       .catch((err: unknown) => {
-        console.warn(`Microphone still unavailable (attempt ${attempts}).`, err);
+        if (worthLogging(tries)) console.warn(`Microphone still unavailable (attempt ${tries}).`, err);
       })
       .finally(() => {
-        asking = false;
+        if (request?.id === id) request = null;
       });
   }
 
   if (initial) watch(initial);
 
   return {
+    connect(target) {
+      targets.push(target);
+      source.connect(target);
+    },
     check() {
       if (detached) return;
+      if (request && Date.now() - request.askedAt >= MIC_REQUEST_TIMEOUT_MS) {
+        console.warn('A microphone request went unanswered; asking again.');
+        request = null;
+      }
       if (!lost && hasEnded(currentStream())) lost = true;
       attempt();
     },
