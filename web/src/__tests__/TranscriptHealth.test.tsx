@@ -1471,6 +1471,54 @@ describe('a microphone that drops out mid-recording', () => {
     await waitFor(() => expect(reacquiredTracks).toHaveLength(1))
   })
 
+  it('releases a late answer to an abandoned request instead of swapping it over a working microphone', async () => {
+    const view = await startCloudRecording()
+    at(5)
+    await emitResult(view, 'Hello', 4)
+    let lateAnswer!: () => void
+    micAnswers = [
+      { kind: 'held', deviceId: 'dock-webcam-mic', until: new Promise<void>((r) => { lateAnswer = r }) },
+      { kind: 'device', deviceId: 'dock-webcam-mic' },
+    ]
+    at(10)
+    act(() => micTrack.end())
+    at(15)
+    tickSecond()
+    await waitFor(() => expect(reacquiredTracks).toHaveLength(1))
+    await waitFor(() => expect(lastSource().stream.getAudioTracks()[0]).toBe(reacquiredTracks[0]))
+    const sourcesBefore = sources.length
+
+    await act(async () => { lateAnswer() })
+    await waitFor(() => expect(reacquiredTracks).toHaveLength(2))
+    await waitFor(() => expect(reacquiredTracks[1].readyState).toBe('ended'))
+    expect(sources).toHaveLength(sourcesBefore)
+    expect(reacquiredTracks[0].readyState).toBe('live')
+
+    at(40)
+    act(() => view.result.current.stopRecording())
+    await waitFor(() => expect(commits).toHaveLength(1))
+    expect(commits[0].health).toMatchObject({ microphoneReconnects: 1 })
+  })
+
+  it('leaves at most one unanswered request behind, however long the browser stays stuck', async () => {
+    await startCloudRecording()
+    const never = new Promise<void>(() => {})
+    micAnswers = [
+      { kind: 'held', deviceId: 'dock-webcam-mic', until: never },
+      { kind: 'held', deviceId: 'dock-webcam-mic', until: never },
+      { kind: 'held', deviceId: 'dock-webcam-mic', until: never },
+    ]
+    at(10)
+    act(() => micTrack.end())
+    for (let second = 11; second <= 40; second++) {
+      at(second)
+      tickSecond()
+    }
+    // The first request, plus one more after it was abandoned — not one every five seconds.
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(3))
+    expect(getUserMedia).toHaveBeenCalledTimes(3)
+  })
+
   it('reconnects again if the microphone drops a second time', async () => {
     const view = await startCloudRecording()
     at(5)

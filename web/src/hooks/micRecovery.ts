@@ -14,9 +14,11 @@
 // without leaving the meeting silent for long if the device is gone for good.
 export const MIC_SAME_DEVICE_ATTEMPTS = 10;
 
-// A request the browser has not answered in this long is abandoned and asked again. Chromium on
-// Windows can leave one unsettled while a device is mid-re-enumeration — exactly the dock-drop
-// moment — and a single hung request would otherwise end recovery for the rest of the meeting.
+// A request the browser has not answered in this long is abandoned and asked again. The premise is
+// a hypothesis, not a measurement: a request left unsettled while a device is mid-re-enumeration —
+// exactly the dock-drop moment — would otherwise end recovery for the rest of the meeting. If the
+// browser handles a page's requests one at a time, the next one queues behind the hung one, so at
+// most one abandoned request is ever left outstanding rather than one every five seconds.
 export const MIC_REQUEST_TIMEOUT_MS = 5000;
 
 // Chromium's stand-ins for "whatever the system picks". A recording asked for no particular device,
@@ -65,7 +67,9 @@ async function physicalDeviceId(settings: MediaTrackSettings | undefined): Promi
     const inputs = (await navigator.mediaDevices.enumerateDevices()).filter(
       (device) => device.kind === 'audioinput' && !VIRTUAL_DEVICE_IDS.has(device.deviceId),
     );
-    return inputs.find((device) => settings?.groupId && device.groupId === settings.groupId)?.deviceId;
+    const physical = inputs.find((device) => settings?.groupId && device.groupId === settings.groupId)?.deviceId;
+    if (!physical) console.warn('Could not tell which microphone the system default is; a reconnection will take the default.');
+    return physical;
   } catch (err) {
     console.warn('Listing the microphones failed.', err);
     return undefined;
@@ -98,6 +102,8 @@ export function createMicRecovery(options: MicRecoveryOptions): MicRecovery {
   let attempts = 0;
   // The request in flight, if any; a newer one (or a timeout) supersedes it.
   let request: { id: number; askedAt: number } | null = null;
+  // An abandoned request that has still not answered. Only one is ever left behind.
+  let abandoned: number | null = null;
   let nextRequestId = 0;
   let detached = false;
   const initial = currentStream();
@@ -184,6 +190,7 @@ export function createMicRecovery(options: MicRecoveryOptions): MicRecovery {
       })
       .finally(() => {
         if (request?.id === id) request = null;
+        if (abandoned === id) abandoned = null;
       });
   }
 
@@ -196,8 +203,9 @@ export function createMicRecovery(options: MicRecoveryOptions): MicRecovery {
     },
     check() {
       if (detached) return;
-      if (request && Date.now() - request.askedAt >= MIC_REQUEST_TIMEOUT_MS) {
+      if (request && abandoned === null && Date.now() - request.askedAt >= MIC_REQUEST_TIMEOUT_MS) {
         console.warn('A microphone request went unanswered; asking again.');
+        abandoned = request.id;
         request = null;
       }
       if (!lost && hasEnded(currentStream())) lost = true;
