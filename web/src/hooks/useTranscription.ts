@@ -8,6 +8,7 @@ import {
   type TranscriptEndReason,
 } from '../api/transcription';
 import { recordRumEvent } from '../rum';
+import { createMicRecovery, type MicRecovery } from './micRecovery';
 import { PcmChunker } from './pcm';
 import { SpeakerTranscript } from './speakerSegments';
 import { peakOf, TranscriptHealthTracker, type TranscriptionStall } from './transcriptHealth';
@@ -210,6 +211,8 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
   const meChunksRef = useRef<Uint8Array[]>([]);
   const themChunksRef = useRef<Uint8Array[]>([]);
   const diarizeActiveRef = useRef(false);
+  // BUG-85: asks for the microphone again if it disappears mid-recording (a dock dropping off).
+  const micRecoveryRef = useRef<MicRecovery | null>(null);
   // TI-99: how the live transcription is doing, sent with every save so an incomplete transcript is
   // diagnosable from the server alone. A mutable tracker in a ref — updating it never re-renders.
   const healthRef = useRef<TranscriptHealthTracker | null>(null);
@@ -227,6 +230,8 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     // them, so a save made after teardown reports what was true while recording rather than
     // "the source ended" — which pressing Stop makes true of every track.
     health.releaseTracks();
+    micRecoveryRef.current?.detach();
+    micRecoveryRef.current = null;
     setStall(undefined);
     localActiveRef.current = false;
     // 48-C: release the source-separation buffers (already consumed by diarize on stop).
@@ -464,6 +469,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
   const onSecond = useCallback(() => {
     const now = Date.now();
     setElapsedSeconds(Math.floor((now - startTimeRef.current) / 1000));
+    micRecoveryRef.current?.check();
     setStall(health.stallState(now));
   }, [health]);
 
@@ -537,16 +543,31 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
 
         const micSource = audioContext.createMediaStreamSource(stream);
         let systemSource: MediaStreamAudioSourceNode | null = null;
+        // BUG-85: everything the microphone feeds, so a reconnected one is wired in exactly the same.
+        const micTargets: AudioNode[] = [];
         if (displayStream && displayStream.getAudioTracks().length > 0) {
           // Sum mic + system audio into a single mono mix before the worklet sees it.
           systemSource = audioContext.createMediaStreamSource(displayStream);
           const mixer = audioContext.createGain();
-          micSource.connect(mixer);
+          micTargets.push(mixer);
           systemSource.connect(mixer);
           mixer.connect(workletNode);
         } else {
-          micSource.connect(workletNode);
+          micTargets.push(workletNode);
         }
+        for (const target of micTargets) micSource.connect(target);
+        const micRecovery = createMicRecovery({
+          context: audioContext,
+          source: micSource,
+          targets: micTargets,
+          currentStream: () => mediaStreamRef.current,
+          isStopped: () => stoppedRef.current,
+          replaced: (lostStream, replacement) => {
+            mediaStreamRef.current = replacement;
+            health.replaceStream(lostStream, replacement);
+          },
+        });
+        micRecoveryRef.current = micRecovery;
 
         const audioQueue: Uint8Array[] = [];
         const chunker = new PcmChunker();
@@ -661,7 +682,9 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
             const themChunker = new PcmChunker();
             const meWorklet = new AudioWorkletNode(audioContext, 'pcm-processor');
             const themWorklet = new AudioWorkletNode(audioContext, 'pcm-processor');
-            micSource.connect(meWorklet);
+            // Through the recovery, not `micSource`: a reconnection during the engine start-up above
+            // has already replaced that source, and wiring the dead one would silence "me" for good.
+            micRecovery.connect(meWorklet);
             systemSource.connect(themWorklet);
             meWorklet.port.onmessage = (e: MessageEvent) => {
               if (stoppedRef.current) return;

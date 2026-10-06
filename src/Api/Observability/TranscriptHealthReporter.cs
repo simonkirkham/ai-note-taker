@@ -61,7 +61,7 @@ public static class TranscriptHealthReporter
             || health.Malformed.Count > 0;
 
         logger.Log(warn ? LogLevel.Warning : LogLevel.Information,
-            "Transcript health {Phase} note {NoteId}: end={EndReason} covered={CoveredSeconds}s of {DurationSeconds}s ratio={Ratio} sinceLastText={SecondsSinceLastText}s audioSent={AudioSecondsSent}s sinceLastAudio={SecondsSinceLastAudio}s streams={StreamCount} engine={Engine} sourceEnded={SourceEnded} muted={SourceMuted} silent={AudioSilent} silentFor={SecondsSilent}s loudest={LoudestDbfs} speech={SpeechSeconds} error={ErrorName}: {ErrorMessage}{Malformed}",
+            "Transcript health {Phase} note {NoteId}: end={EndReason} covered={CoveredSeconds}s of {DurationSeconds}s ratio={Ratio} sinceLastText={SecondsSinceLastText}s audioSent={AudioSecondsSent}s sinceLastAudio={SecondsSinceLastAudio}s streams={StreamCount} engine={Engine} sourceEnded={SourceEnded} muted={SourceMuted} silent={AudioSilent} silentFor={SecondsSilent}s loudest={LoudestDbfs} speech={SpeechSeconds} micReconnects={MicrophoneReconnects} error={ErrorName}: {ErrorMessage}{Malformed}",
             phase, noteId, endReason,
             OrAbsent(covered), duration, OrAbsent(ratio),
             OrAbsent(ClampRounded(health.SecondsSinceLastText, 0)),
@@ -75,6 +75,7 @@ public static class TranscriptHealthReporter
             OrAbsent(ClampRounded(health.SecondsSilent, 0)),
             WithUnit(health.LoudestDbfs is { } db ? Math.Round(Math.Clamp(db, LoudestDbfsFloor, LoudestDbfsCeiling), 1) : null, "dBFS"),
             WithUnit(ClampRounded(health.SpeechSeconds, 1), "s"),
+            OrAbsent(health.MicrophoneReconnects is { } m ? (int?)Clamp(m) : null),
             Sanitise(health.ErrorName) ?? Absent,
             Sanitise(health.ErrorMessage) ?? Absent,
             health.Malformed.Count > 0 ? $" malformed={string.Join(",", health.Malformed)}" : "");
@@ -134,6 +135,8 @@ public static class TranscriptHealthReporter
         // failure no longer look the same.
         public double? LoudestDbfs { get; private set; }
         public double? SpeechSeconds { get; private set; }
+        // BUG-85: how many times a microphone lost mid-recording (a dock dropping off) was found again.
+        public int? MicrophoneReconnects { get; private set; }
         public List<string> Malformed { get; } = [];
 
         public static HealthFields Parse(JsonElement json)
@@ -159,6 +162,7 @@ public static class TranscriptHealthReporter
             fields.SecondsSilent = fields.Number(json, "secondsSilent");
             fields.LoudestDbfs = fields.Number(json, "loudestDbfs");
             fields.SpeechSeconds = fields.Number(json, "speechSeconds");
+            fields.MicrophoneReconnects = fields.WholeNumber(json, "microphoneReconnects");
             return fields;
         }
 

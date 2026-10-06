@@ -138,6 +138,8 @@ export class TranscriptHealthTracker {
   private releasedMuted = false;
   private released = false;
   private lastLoudAt = 0;
+  // BUG-85: how many times a lost microphone was replaced mid-recording.
+  private microphoneReconnects = 0;
   // BUG-85: how loud the audio has been since the transcript last grew — the same stretch the stall
   // is measured over. Restarted by `textArrived`, the only place that instant moves.
   private windowPeak = 0;
@@ -161,6 +163,7 @@ export class TranscriptHealthTracker {
     this.releasedMuted = false;
     this.released = false;
     this.lastLoudAt = 0;
+    this.microphoneReconnects = 0;
     this.windowPeak = 0;
     this.windowSpeechSamples = 0;
   }
@@ -211,6 +214,20 @@ export class TranscriptHealthTracker {
     } catch (err) {
       console.warn('Reading the captured audio tracks failed.', err);
     }
+  }
+
+  // BUG-85: a microphone that was lost mid-recording has been replaced. The dead one's tracks stop
+  // being watched — otherwise "the source ended" would stay true for the rest of a recording that
+  // is in fact capturing again.
+  replaceStream(lost: MediaStream | null, replacement: MediaStream): void {
+    try {
+      const gone = new Set<MediaStreamTrack>(lost ? lost.getTracks() : []);
+      this.tracks = this.tracks.filter((track) => !gone.has(track));
+    } catch (err) {
+      console.warn('Forgetting the lost capture tracks failed.', err);
+    }
+    this.watchStream(replacement);
+    this.microphoneReconnects += 1;
   }
 
   // Capture is being torn down. `track.stop()` ends every track, so the live reads would all say
@@ -365,6 +382,7 @@ export class TranscriptHealthTracker {
       streamCount: this.streams,
       sourceEnded: this.anyTrackEnded(),
       sourceMuted: this.anyTrackMuted(),
+      microphoneReconnects: this.microphoneReconnects,
       audioSilent: this.isSilent(now),
       // Clamped: a clock that steps backwards mid-recording must not report a negative duration.
       secondsSilent: this.hasStarted ? seconds(Math.max(0, now - this.silentSince())) : null,
