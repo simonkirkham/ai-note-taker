@@ -20,7 +20,7 @@ Ordered by severity, then by id.
 | BUG-79 | An action item you add in the first second or two after making a note is silently thrown away for good, and while that happens everything else you do for the next half minute stops updating. | Open | — |
 | BUG-81 | Typing a title on a brand-new note and clicking Save can delete the note instead — the button changes from Save to Cancel under your cursor, and Cancel throws a new note away. | Open | — |
 | BUG-84 | Asking the app to analyse a longer meeting fails almost every time — 7 of the last 9 tries failed — and the message tells you to try again in a minute, which cannot help. | Open | TI-63 |
-| BUG-85 | The live transcript can silently stop part-way through a meeting while the recording timer keeps running. It has now happened twice, costing 54 minutes of one meeting and 3.5 hours of another. You are now told within two minutes, and told which of four things went wrong — including whether the room was simply quiet rather than the transcription failing. Stopping it happening at all is still to do. | In Progress | — |
+| BUG-85 | **If your USB dock drops off for a second mid-meeting (the screen flicks off), a microphone on that dock is lost and the rest of the meeting is recorded as silence — the app never reconnects to it, even though it comes straight back.** Has now happened three times, costing 54 minutes, 3.5 hours and 23 minutes of meetings; cause proven for two of them. You are told within two minutes; reconnecting automatically is still to do. | In Progress | — |
 | [BUG-86](#bug-86--on-device-speaker-labels-put-the-other-sides-words-under-me-too) | **On a call played through speakers, the on-device "who said what" labels are wrong: nearly every line the other side says appears twice, once as "Them" and once as "Me", and your own words are buried inside those repeats.** Makes the labelled transcript unreadable for any call not taken on headphones. | Open | — |
 | [BUG-87](#bug-87--finalising-transcript-takes-almost-as-long-as-the-meeting) | **After you stop an on-device recording, "Finalising transcript…" runs for almost as long as the meeting itself — 3 m 22 s for a 3 m 46 s test, so roughly 55 minutes after a one-hour meeting — before labels or analysis appear.** | Open | — |
 | [BUG-88](#bug-88--the-on-device-transcription-engine-can-hang-for-good-mid-meeting) | **The live transcript stopped dead about 7 minutes into every long local recording, and on 2026-09-28 it died for good 23 minutes in, after the app had replaced the engine twice.** Cause found and reproduced: the app never read the engine's own progress output, so after 249–250 transcription steps its output buffer filled and it froze. Fixed by not collecting that output at all; 1000 steps in a row now succeed on this machine. **Stays open until a real meeting of 30+ minutes runs with no engine replacement** — `scripts/check-local-transcription-log.sh` says PASS for BUG-88. | In Progress | BUG-85, BUG-87 |
@@ -327,7 +327,25 @@ First, a correction: the failure is at `RecordingTabJourney.cs:100`, which runs 
 
 **Controlled reproduction — designed, declined 2026-09-18 (cost, not merit); do not re-offer unless a new occurrence changes the picture.** Both occurrences stopped at 29-34 min, well past the 15-min credential expiry the app never refreshes. The test that settles it without waiting: two parallel one-hour streams through the same SDK and transport as the app (WebSocket, 100 ms / 3,200-byte PCM chunks at 16 kHz, `ShowSpeakerLabel` on), fed looped synthesised speech in real time — one on 900 s credentials exactly as the app obtains them, one on 3,600 s. Stops at ~30 min on the first only → credential expiry is the cause; both run clean → the connection and credentials are ruled out and the audio source is left. Cost ≈ £2.50 of streaming minutes plus pennies of speech synthesis. The chosen path instead: ship the loudness measurement and read the next real occurrence.
 
-**Root cause: narrowed, not established.** Candidates:
+**Third occurrence, 2026-10-06 — "ArchMCR Runthrough 1" (`44855e26…`). Cause proven: the microphone's USB dock dropped off for ~2 s and the app never reconnected.** First occurrence with the audio retained (speaker separation uploaded it).
+
+| Time | Evidence |
+|---|---|
+| 13:28:24Z | Recording starts; cloud engine; microphone is the webcam's (Creative Live! Cam), which hangs off a USB-C dock |
+| 14:35:48.244 BST (13:35:48Z) | Windows `Kernel-PnP` 1010: the dock's Realtek USB hub (`VID_0BDA&PID_5487`) "surprise removed". The user saw the screen flick off; no cable was touched |
+| 13:35:50Z | The dock's camera re-enumerates — the device was back within ~2 s |
+| 444.5 s into the WAV | Last non-zero sample. Every sample from there to the end (1843.7 s) is exactly 0 — a dead source, not a quiet room |
+| 13:35:55Z | Health record: `sourceEnded=True` — the app knew within one checkpoint (6 s) |
+| 13:37:55Z → end | `end=stalled`, `silent=True`, `loudest=-40dBFS` frozen from the last frame. The notice fired; the user was presenting and did not see it |
+| 13:59:11Z | Saved: 902 words for 30.8 min. The server-side re-transcription of the uploaded audio also found 902 words — nothing to recover |
+
+**It also explains 2026-09-17.** The dock dropped at 16:32:36 BST = 15:32:36Z; that transcript's last words are 15:32:38Z. Same cause, to the second.
+
+**Not a regression in the app.** The dock has dropped 60+ times since 2026-07-06, every one to three days (`Get-WinEvent` `Kernel-PnP/Device Management` Id 1010). No September recording other than 09-17 overlapped a drop, so earlier recordings were never exposed. The app has never reconnected a lost microphone. **2026-09-16 (`0e666ad4…`) is not explained by this** — no drop that day.
+
+**Fix (slice 2, re-cut):** on a capture track's `ended`, re-request the same `deviceId` (retrying for ~10 s, falling back to the default input) and swap it into the live processing graph without closing the transcription stream. The stream reopen in fix direction 4 stays separate.
+
+**Root cause: narrowed, not established** (as of 2026-09-18; superseded above for two of three occurrences). Candidates:
 1. The stream errored. The catch in `useTranscription.ts` sets `status: 'error'` and shows the error text, but does not save the transcript captured so far.
 2. The audio source stopped delivering chunks, for example a device change or the shared-audio capture ending. `audioStream()` then waits forever, and the service ends the stream for lack of audio.
 3. The stream stayed open but returned no finalised results.
