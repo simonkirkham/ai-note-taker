@@ -97,7 +97,7 @@ To trace a request:
 ### The health line (TI-99 builds)
 
 ```
-Transcript health {complete|draft} note <id>: end=<reason> covered=<s>s of <s>s ratio=<0-1> sinceLastText=<s>s audioSent=<s>s sinceLastAudio=<s>s streams=<n> engine=<cloud|local> sourceEnded=<True|False|-> muted=<True|False|-> silent=<True|False|-> silentFor=<s>s loudest=<dB>dBFS speech=<s>s error=<name>: <message>
+Transcript health {complete|draft} note <id>: end=<reason> covered=<s>s of <s>s ratio=<0-1> sinceLastText=<s>s audioSent=<s>s sinceLastAudio=<s>s streams=<n> engine=<cloud|local> sourceEnded=<True|False|-> muted=<True|False|-> silent=<True|False|-> silentFor=<s>s loudest=<dB>dBFS speech=<s>s micReconnects=<n|-> error=<name>: <message>
 ```
 
 Logs Insights, over the Command Lambda log group (`…CommandFunctionLogGroup…`):
@@ -137,6 +137,7 @@ Drop the `level` filter and add `| filter message like /note <id>/` to see one r
 | `speech` | Seconds since the last words with audio at speech level (−40 dBFS or louder). With `sinceLastText` it gives the share of the stall that was speech. **10 s or more with no words = transcription stalled while people spoke. Under 10 s = a quiet room.** Both this and `loudest` carry their unit in the value (`speech=12.4s`), so match them in the message text rather than filtering them as numbers |
 | `sourceEnded`, `muted`, `silent`, `silentFor` all `-` | A build from before [BUG-85] slice 1. `user_agent` says which |
 | `loudest=- speech=-` | A build from before the loudness measurement. Absent, never zero |
+| `micReconnects` | How many times the microphone vanished mid-recording (a USB dock dropping off when the screen flicks off) and was picked up again. Each one is a gap of a few seconds, not a lost meeting. `-` = a build from before reconnection existed |
 
 Metrics (`NoteTaker/Domain`, `Service=note-taker`), on the dashboard widget "Transcript coverage (min) vs stalls":
 

@@ -100,13 +100,20 @@ interface FakeTrack {
   stop: () => void
   end: () => void
   setMuted: (muted: boolean) => void
+  getSettings: () => { deviceId?: string }
+  addEventListener: (type: string, listener: () => void) => void
+  removeEventListener: (type: string, listener: () => void) => void
 }
 
 let micTrack: FakeTrack
 let systemAudioTrack: FakeTrack
 let systemVideoTrack: FakeTrack
 
-function makeTrack(kind: 'audio' | 'video', onStop?: () => void): FakeTrack {
+// `end()` is the operating system taking the device away, which fires `ended`; `stop()` is the app
+// releasing it, which in a real browser does NOT fire `ended` — the asymmetry the reconnect relies
+// on to tell a lost microphone from one it let go of itself.
+function makeTrack(kind: 'audio' | 'video', onStop?: () => void, deviceId = 'dock-webcam-mic'): FakeTrack {
+  const endedListeners = new Set<() => void>()
   const track: FakeTrack = {
     kind,
     readyState: 'live',
@@ -117,9 +124,17 @@ function makeTrack(kind: 'audio' | 'video', onStop?: () => void): FakeTrack {
     },
     end: () => {
       track.readyState = 'ended'
+      for (const listener of [...endedListeners]) listener()
     },
     setMuted: (muted) => {
       track.muted = muted
+    },
+    getSettings: () => ({ deviceId }),
+    addEventListener: (type, listener) => {
+      if (type === 'ended') endedListeners.add(listener)
+    },
+    removeEventListener: (type, listener) => {
+      if (type === 'ended') endedListeners.delete(listener)
     },
   }
   return track
@@ -144,24 +159,65 @@ function fakeStream(tracks: FakeTrack[]): MediaStream {
   } as unknown as MediaStream
 }
 
+// BUG-85: what asking for a microphone again returns, in order — a fresh device that came back, or
+// an error because nothing is plugged in. Once the list runs out the device stays gone, which is
+// what every spec not about reconnecting needs: a dead microphone stays dead.
+type MicAnswer =
+  | { kind: 'device'; deviceId: string }
+  | { kind: 'missing' }
+  // The device answers only once the spec says so — for "Stop pressed while still reconnecting".
+  | { kind: 'held'; deviceId: string; until: Promise<void> }
+let micAnswers: MicAnswer[] = []
+let reacquiredTracks: FakeTrack[] = []
+let getUserMedia: ReturnType<typeof vi.fn>
+
+interface FakeSource {
+  stream: MediaStream
+  connect: ReturnType<typeof vi.fn>
+  disconnect: ReturnType<typeof vi.fn>
+}
+let sources: FakeSource[] = []
+let mixer: { connect: ReturnType<typeof vi.fn> }
+
 function stubBrowserApis() {
   micTrackStop = vi.fn()
   micTrack = makeTrack('audio', micTrackStop)
   systemAudioTrack = makeTrack('audio')
   systemVideoTrack = makeTrack('video')
+  micAnswers = []
+  reacquiredTracks = []
+  sources = []
   const mediaStream = fakeStream([micTrack])
   const displayStream = fakeStream([systemVideoTrack, systemAudioTrack])
+  let firstCall = true
+  getUserMedia = vi.fn().mockImplementation(async () => {
+    if (firstCall) {
+      firstCall = false
+      return mediaStream
+    }
+    const answer = micAnswers.shift() ?? { kind: 'missing' }
+    if (answer.kind === 'missing') throw namedError('NotFoundError', 'Requested device not found')
+    if (answer.kind === 'held') await answer.until
+    const track = makeTrack('audio', undefined, answer.deviceId)
+    reacquiredTracks.push(track)
+    return fakeStream([track])
+  })
   Object.defineProperty(global.navigator, 'mediaDevices', {
     value: {
-      getUserMedia: vi.fn().mockResolvedValue(mediaStream),
+      getUserMedia,
       getDisplayMedia: vi.fn().mockResolvedValue(displayStream),
     },
     configurable: true,
   })
+  mixer = { connect: vi.fn() }
   const audioContext = {
     sampleRate: 16000,
-    createMediaStreamSource: vi.fn().mockReturnValue({ connect: vi.fn() }),
-    createGain: vi.fn().mockReturnValue({ connect: vi.fn() }),
+    createMediaStreamSource: vi.fn().mockImplementation((stream: MediaStream) => {
+      const source = { stream, connect: vi.fn(), disconnect: vi.fn() }
+      sources.push(source)
+      return source
+    }),
+    createGain: vi.fn().mockReturnValue(mixer),
     audioWorklet: { addModule: vi.fn().mockResolvedValue(undefined) },
     close: vi.fn().mockResolvedValue(undefined),
   }
@@ -300,6 +356,7 @@ describe('a stopped recording', () => {
       streamCount: 1,
       sourceEnded: false,
       sourceMuted: false,
+      microphoneReconnects: 0,
       audioSilent: false,
       secondsSilent: 10,
       // The window restarted with the last words at 30 s and no audio has arrived since.
@@ -1162,5 +1219,196 @@ describe('telling a quiet room from a transcription stall', () => {
     tickSecond()
 
     expect(view.result.current.stall).toEqual({ kind: 'noSound', stalledForSeconds: 190 })
+  })
+})
+
+// BUG-85, 2026-10-06: a USB dock dropped off the laptop for two seconds when the screen flicked off,
+// taking the webcam microphone on it. The device was back almost at once; the app never asked for
+// it again and recorded 23 minutes of digital silence. These specs drive that unplug and replug.
+describe('a microphone that drops out mid-recording', () => {
+  const sameDevice = { audio: { deviceId: { exact: 'dock-webcam-mic' } } }
+
+  function lastSource() {
+    return sources[sources.length - 1]
+  }
+
+  it('asks for the same microphone again and keeps the recording going when it is back', async () => {
+    const view = await startCloudRecording()
+    at(5)
+    await emitResult(view, 'Before the dock dropped', 4)
+    micAnswers = [{ kind: 'device', deviceId: 'dock-webcam-mic' }]
+
+    at(10)
+    act(() => micTrack.end())
+
+    await waitFor(() => expect(reacquiredTracks).toHaveLength(1))
+    expect(getUserMedia).toHaveBeenLastCalledWith(sameDevice)
+    await waitFor(() => expect(lastSource().stream.getAudioTracks()[0]).toBe(reacquiredTracks[0]))
+    expect(lastSource().connect).toHaveBeenCalledWith(workletNode)
+    expect(sources[0].disconnect).toHaveBeenCalled()
+    expect(view.result.current.status).toBe('recording')
+    expect(streams).toHaveLength(1)
+
+    at(20)
+    await emitResult(view, 'After it came back', 19)
+  })
+
+  it('does not report a dead source once the microphone is back', async () => {
+    const view = await startCloudRecording()
+    at(5)
+    await emitResult(view, 'Hello', 4)
+    micAnswers = [{ kind: 'device', deviceId: 'dock-webcam-mic' }]
+    act(() => micTrack.end())
+    await waitFor(() => expect(reacquiredTracks).toHaveLength(1))
+
+    at(140)
+    tickSecond()
+    expect(view.result.current.stall?.kind).not.toBe('sourceEnded')
+  })
+
+  it('tells the server how many times the microphone was reconnected', async () => {
+    const view = await startCloudRecording()
+    at(5)
+    await emitResult(view, 'Hello', 4)
+    micAnswers = [{ kind: 'device', deviceId: 'dock-webcam-mic' }]
+    act(() => micTrack.end())
+    await waitFor(() => expect(reacquiredTracks).toHaveLength(1))
+
+    at(40)
+    act(() => view.result.current.stopRecording())
+    await waitFor(() => expect(commits).toHaveLength(1))
+    expect(commits[0].health).toMatchObject({ sourceEnded: false, microphoneReconnects: 1 })
+  })
+
+  it('releases the lost microphone it replaced', async () => {
+    await startCloudRecording()
+    micAnswers = [{ kind: 'device', deviceId: 'dock-webcam-mic' }]
+    act(() => micTrack.end())
+    await waitFor(() => expect(reacquiredTracks).toHaveLength(1))
+    await waitFor(() => expect(micTrackStop).toHaveBeenCalled())
+  })
+
+  it('keeps asking once a second while the microphone is missing, and reconnects when it returns', async () => {
+    await startCloudRecording()
+    micAnswers = [{ kind: 'missing' }, { kind: 'missing' }, { kind: 'device', deviceId: 'dock-webcam-mic' }]
+
+    act(() => micTrack.end())
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(2))
+    tickSecond()
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(3))
+    expect(reacquiredTracks).toHaveLength(0)
+    tickSecond()
+    await waitFor(() => expect(reacquiredTracks).toHaveLength(1))
+    expect(getUserMedia).toHaveBeenLastCalledWith(sameDevice)
+
+    // Back, so the asking stops.
+    tickSecond()
+    tickSecond()
+    expect(getUserMedia).toHaveBeenCalledTimes(4)
+  })
+
+  it('falls back to the default microphone when the same one has not come back after ten tries', async () => {
+    await startCloudRecording()
+    micAnswers = [...Array.from({ length: 10 }, () => ({ kind: 'missing' as const })), { kind: 'device', deviceId: 'built-in-mic' }]
+
+    act(() => micTrack.end())
+    for (let attempt = 2; attempt <= 10; attempt++) {
+      await waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(attempt))
+      tickSecond()
+    }
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(11))
+    expect(getUserMedia).toHaveBeenLastCalledWith(sameDevice)
+    tickSecond()
+    await waitFor(() => expect(reacquiredTracks).toHaveLength(1))
+    expect(getUserMedia).toHaveBeenLastCalledWith({ audio: true })
+  })
+
+  it('notices a microphone that died without saying so, on the next second', async () => {
+    await startCloudRecording()
+    micAnswers = [{ kind: 'device', deviceId: 'dock-webcam-mic' }]
+
+    // Dead, but no `ended` event: the backstop is the once-a-second clock.
+    micTrack.readyState = 'ended'
+    tickSecond()
+    await waitFor(() => expect(reacquiredTracks).toHaveLength(1))
+  })
+
+  it('feeds a reconnected microphone into the call-audio mix, not around it', async () => {
+    await startCloudRecording(undefined, true)
+    micAnswers = [{ kind: 'device', deviceId: 'dock-webcam-mic' }]
+    act(() => micTrack.end())
+    await waitFor(() => expect(reacquiredTracks).toHaveLength(1))
+    await waitFor(() => expect(lastSource().stream.getAudioTracks()[0]).toBe(reacquiredTracks[0]))
+    expect(lastSource().connect).toHaveBeenCalledWith(mixer)
+    expect(lastSource().connect).not.toHaveBeenCalledWith(workletNode)
+  })
+
+  it("also feeds a reconnected microphone into the on-device engine's own channel for your voice", async () => {
+    // On-device mode with call audio records "me" and "them" separately, so the microphone feeds a
+    // third node there. A reconnection that skipped it would label the rest of the call as silence.
+    const nodes: { connect: ReturnType<typeof vi.fn>; port: { onmessage: unknown } }[] = []
+    vi.stubGlobal('AudioWorkletNode', vi.fn().mockImplementation(function () {
+      const node = { connect: vi.fn(), port: { onmessage: null } }
+      nodes.push(node)
+      return node
+    }))
+    ;(window as unknown as { desktop?: unknown }).desktop = {
+      isDesktop: true,
+      platform: 'win32',
+      local: {
+        getStatus: async () => ({ modelReady: true }),
+        start: async () => {},
+        onLive: () => () => {},
+        onError: () => () => {},
+        pushPcm: () => {},
+        finish: async () => null,
+        discard: () => {},
+      },
+    }
+    localStorage.setItem('note-taker-transcription-mode', 'local')
+    try {
+      const view = renderHook(() => useTranscription('note-1'))
+      act(() => view.result.current.startRecording(true, false))
+      await waitFor(() => expect(view.result.current.status).toBe('recording'))
+      expect(nodes).toHaveLength(3)
+      const [, me, them] = nodes
+
+      micAnswers = [{ kind: 'device', deviceId: 'dock-webcam-mic' }]
+      act(() => micTrack.end())
+      await waitFor(() => expect(reacquiredTracks).toHaveLength(1))
+      await waitFor(() => expect(lastSource().stream.getAudioTracks()[0]).toBe(reacquiredTracks[0]))
+      expect(lastSource().connect).toHaveBeenCalledWith(mixer)
+      expect(lastSource().connect).toHaveBeenCalledWith(me)
+      expect(lastSource().connect).not.toHaveBeenCalledWith(them)
+      view.unmount()
+    } finally {
+      delete (window as unknown as { desktop?: unknown }).desktop
+      localStorage.removeItem('note-taker-transcription-mode')
+    }
+  })
+
+  it('never asks for a microphone after Stop — releasing it is not losing it', async () => {
+    const view = await startCloudRecording()
+    at(10)
+    act(() => view.result.current.stopRecording())
+    act(() => micTrack.end())
+    tickSecond()
+    expect(getUserMedia).toHaveBeenCalledTimes(1)
+  })
+
+  it('releases a microphone that only answers after Stop was pressed', async () => {
+    const view = await startCloudRecording()
+    let answer!: () => void
+    micAnswers = [{ kind: 'held', deviceId: 'dock-webcam-mic', until: new Promise<void>((r) => { answer = r }) }]
+    act(() => micTrack.end())
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(2))
+
+    at(10)
+    act(() => view.result.current.stopRecording())
+    await act(async () => { answer() })
+
+    await waitFor(() => expect(reacquiredTracks).toHaveLength(1))
+    await waitFor(() => expect(reacquiredTracks[0].readyState).toBe('ended'))
+    expect(sources.some((source) => (source.stream.getAudioTracks()[0] as unknown) === reacquiredTracks[0])).toBe(false)
   })
 })

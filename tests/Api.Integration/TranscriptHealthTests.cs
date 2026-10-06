@@ -644,6 +644,57 @@ public sealed class TranscriptHealthTests(ApiFactory factory) : IClassFixture<Ap
         Assert.Contains("loudest=- speech=-", line.Message);
     }
 
+    // BUG-85, 2026-10-06 — a dock dropping off took the microphone with it and the app never asked
+    // for it again. It now does; each save says how many times it had to, so a reconnection that
+    // happened in a real meeting is visible from the server alone.
+
+    [Fact]
+    public async Task Given_a_recording_whose_microphone_was_reconnected_When_completed_Then_the_line_says_how_many_times()
+    {
+        var h = Build();
+        var noteId = await CreateNoteAsync(h.Client);
+
+        var resp = await CompleteAsync(h.Client, noteId, 1800, new
+        {
+            engine = "cloud",
+            endReason = "stopped",
+            coveredSeconds = 1790,
+            streamCount = 1,
+            sourceEnded = false,
+            microphoneReconnects = 2,
+        });
+
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+        var line = Assert.Single(h.HealthLines);
+        Assert.Contains("micReconnects=2", line.Message);
+        Assert.DoesNotContain("malformed", line.Message);
+    }
+
+    [Fact]
+    public async Task Given_a_build_without_the_reconnect_count_When_completed_Then_it_reads_as_absent_not_zero()
+    {
+        var h = Build();
+        var noteId = await CreateNoteAsync(h.Client);
+
+        await CompleteAsync(h.Client, noteId, 600, new { engine = "cloud", endReason = "stopped", coveredSeconds = 590, streamCount = 1 });
+
+        Assert.Contains("micReconnects=-", Assert.Single(h.HealthLines).Message);
+    }
+
+    [Fact]
+    public async Task Given_a_reconnect_count_of_the_wrong_type_When_saved_Then_it_is_named_malformed_and_the_save_succeeds()
+    {
+        var h = Build();
+        var noteId = await CreateNoteAsync(h.Client);
+
+        var resp = await DraftAsync(h.Client, noteId, 900, new { endReason = "stalled", microphoneReconnects = "many" });
+
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+        var line = Assert.Single(h.HealthLines);
+        Assert.Contains("malformed=microphoneReconnects", line.Message);
+        Assert.Contains("micReconnects=-", line.Message);
+    }
+
     private sealed class ThrowingTranscriptMetrics : IDomainMetrics
     {
         public void CommandHandled(string commandType, string aggregate) { }

@@ -35,6 +35,8 @@ export interface TranscriptHealth {
   sourceEnded: boolean;
   /** A captured track is muted right now. Reversible, unlike `sourceEnded`. */
   sourceMuted: boolean;
+  /** How many times a microphone lost mid-recording was found again and swapped in. */
+  microphoneReconnects: number;
   /** Every captured sample has been below the transmitted-audio floor for the whole silence window. */
   audioSilent: boolean;
   /** Seconds since the last sample above that floor, counted from the start if there never was one. */
