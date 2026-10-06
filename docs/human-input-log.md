@@ -23,6 +23,10 @@ One row per interruption. Newest slices at the top.
 
 | Slice | Type | What was asked | Why it stopped | Avoidable? | Fix / where it landed |
 |-------|------|----------------|----------------|:----------:|-----------------------|
+| BUG-85 mic reconnect | Gate | "Can I recover it? Then look at why they keep failing" — the brief | Investigation request | No | — |
+| BUG-85 mic reconnect | Clarification | _Volunteered, not asked:_ the screen flicked off; the dock carries the camera and its mic | Physical facts only the person in the room had; confirmed the device-log reading | No | — |
+| BUG-85 mic reconnect | Decision | "File it or build the fix now?" — answered "log the issue and start on the fix" | New build work found while investigating; required by CLAUDE.md | No | — |
+| BUG-85 mic reconnect | Gate | _None fired_ beyond the above — spec, build, three review rounds, merge, deploy and desktop publish ran with no permission prompt and no stall (`stall-scan.sh` clean) | — | No | — |
 | CHANGE-47 | **Stall** | "Still going?" | The hand-back said `⏳ STILL RUNNING`, backed by two background CI waits that could never exit: their condition used `gh pr checks --json` (unsupported by the installed `gh`) with errors sent to `/dev/null`. Checks were green within ~10 min; the PR sat merge-ready ~7 h and the human waited overnight (scan: 1437 min) | **Yes** | `CLAUDE.md` Guardrails: run a wait loop's exit condition once in the foreground and read it before backgrounding; no `2>/dev/null` inside one. Memory entry added. Recurrence of TI-99, whose lesson lived only in the minor log |
 | CHANGE-47 | Decision | Shape (copy + download), live-recording behaviour, and build-now-or-file — one question batch | New feature request; the schedule question folded into the scoping batch as the rules require | No | — |
 | CHANGE-47 | Gate | _None fired_ beyond the batch above — spec, build, review, merge, deploy re-run ran without a permission prompt | — | No | — |

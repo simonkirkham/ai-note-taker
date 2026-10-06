@@ -146,6 +146,13 @@ Metrics (`NoteTaker/Domain`, `Service=note-taker`), on the dashboard widget "Tra
 
 **A `silent=True` or `sourceEnded=True` line always logs at Warning**, whatever the end reason — the 2026-09-17 recording reported `inProgress` for three and a half hours while producing nothing ([BUG-85]). The user is told on screen within two minutes of the same evidence, so a line here usually has a matching report from the person in the meeting.
 
+**When `sourceEnded=True`, the evidence of what took the device is on the user's machine, not in AWS.** Two sources settled [BUG-85] after three weeks of "untestable":
+
+| Source | How | Kept for |
+|---|---|---|
+| The uploaded audio (only when speaker separation ran) | `aws s3 ls --profile prod s3://<recordings bucket>/recordings/<noteId>/`, then read per-second peaks: exact zeros = a dead source, never a quiet room | 7 days (bucket lifecycle) |
+| Windows device log | `Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-Kernel-PnP/Device Management'; Id=1010}` — "surprise removed" lines, matched to the second the audio went to zero | Weeks |
+
 **The silence threshold is the encoder's floor, not a loudness judgement.** Captured audio is quantised to 16-bit PCM, so anything under one quantisation step (1/32767, about −90 dBFS) leaves the machine as zeros. A dead or muted track delivers exact zeros; room tone from a live microphone sits around −60 dBFS, roughly a thousand times above the threshold.
 
 **The speech threshold (−40 dBFS) is a stated assumption, not yet a measurement on this app's microphones.** It sits between the usual ranges for this kind of capture: speech peaking −30 to −10 dBFS, room tone around −60 to −50 dBFS (the browser's noise suppression, on by default, pushes room tone lower). The on-screen notice uses the same rule: 10 s of speech-level audio since the last words before it says speech is arriving. The first real stall line settles whether the ranges hold.

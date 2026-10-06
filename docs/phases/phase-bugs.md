@@ -20,7 +20,7 @@ Ordered by severity, then by id.
 | BUG-79 | An action item you add in the first second or two after making a note is silently thrown away for good, and while that happens everything else you do for the next half minute stops updating. | Open | — |
 | BUG-81 | Typing a title on a brand-new note and clicking Save can delete the note instead — the button changes from Save to Cancel under your cursor, and Cancel throws a new note away. | Open | — |
 | BUG-84 | Asking the app to analyse a longer meeting fails almost every time — 7 of the last 9 tries failed — and the message tells you to try again in a minute, which cannot help. | Open | TI-63 |
-| BUG-85 | **If your USB dock drops off for a second mid-meeting (the screen flicks off), a microphone on that dock is lost and the rest of the meeting is recorded as silence — the app never reconnects to it, even though it comes straight back.** Has now happened three times, costing 54 minutes, 3.5 hours and 23 minutes of meetings; cause proven for two of them. You are told within two minutes; reconnecting automatically is still to do. | In Progress | — |
+| BUG-85 | **If your USB dock dropped off for a second mid-meeting (the screen flicks off), the rest of the meeting was recorded as silence — 54 min, 3.5 h and 23 min lost so far.** The app now picks the microphone back up within seconds (shipped 2026-10-06); closes when a real dock drop shows `micReconnects=1` with words continuing after it. | In Progress | — |
 | [BUG-86](#bug-86--on-device-speaker-labels-put-the-other-sides-words-under-me-too) | **On a call played through speakers, the on-device "who said what" labels are wrong: nearly every line the other side says appears twice, once as "Them" and once as "Me", and your own words are buried inside those repeats.** Makes the labelled transcript unreadable for any call not taken on headphones. | Open | — |
 | [BUG-87](#bug-87--finalising-transcript-takes-almost-as-long-as-the-meeting) | **After you stop an on-device recording, "Finalising transcript…" runs for almost as long as the meeting itself — 3 m 22 s for a 3 m 46 s test, so roughly 55 minutes after a one-hour meeting — before labels or analysis appear.** | Open | — |
 | [BUG-88](#bug-88--the-on-device-transcription-engine-can-hang-for-good-mid-meeting) | **The live transcript stopped dead about 7 minutes into every long local recording, and on 2026-09-28 it died for good 23 minutes in, after the app had replaced the engine twice.** Cause found and reproduced: the app never read the engine's own progress output, so after 249–250 transcription steps its output buffer filled and it froze. Fixed by not collecting that output at all; 1000 steps in a row now succeed on this machine. **Stays open until a real meeting of 30+ minutes runs with no engine replacement** — `scripts/check-local-transcription-log.sh` says PASS for BUG-88. | In Progress | BUG-85, BUG-87 |
@@ -343,7 +343,16 @@ First, a correction: the failure is at `RecordingTabJourney.cs:100`, which runs 
 
 **Not a regression in the app.** The dock has dropped 60+ times since 2026-07-06, every one to three days (`Get-WinEvent` `Kernel-PnP/Device Management` Id 1010). No September recording other than 09-17 overlapped a drop, so earlier recordings were never exposed. The app has never reconnected a lost microphone. **2026-09-16 (`0e666ad4…`) is not explained by this** — no drop that day.
 
-**Fix (slice 2, re-cut):** on a capture track's `ended`, re-request the same `deviceId` (retrying for ~10 s, falling back to the default input) and swap it into the live processing graph without closing the transcription stream. The stream reopen in fix direction 4 stays separate.
+**Fix (slice 2, re-cut):** on a capture track's `ended`, re-request the same physical microphone (retrying for ~10 s, falling back to the default input) and swap it into the live processing graph without closing the transcription stream. The stream reopen in fix direction 4 stays separate.
+
+**Fix shipped 2026-10-06 (#493, deploy #789, desktop release `25f83cc`).** Two hardware assumptions are unmeasured and settle on the first real dock drop:
+
+| Assumption | If wrong |
+|---|---|
+| Chromium's virtual `default` input shares its `groupId` with the physical microphone behind it, so the app can ask for the dock's mic by its real id | Retries take whatever Windows promoted (the laptop's own mic). A console warning says the default could not be resolved |
+| A microphone request can hang during re-enumeration, so abandoning one after 5 s helps | Harmless: at most one abandoned request is left outstanding |
+
+Close on a health line with `micReconnects=1` and `covered` still growing after the drop.
 
 **Root cause: narrowed, not established** (as of 2026-09-18; superseded above for two of three occurrences). Candidates:
 1. The stream errored. The catch in `useTranscription.ts` sets `status: 'error'` and shows the error text, but does not save the transcript captured so far.

@@ -1,0 +1,14 @@
+# BUG-85 mic reconnect — the evidence was on the user's machine, and the fix nearly picked the wrong microphone
+
+PR #493 · deploy #789 · desktop release `25f83cc` · three review rounds, one with a must-fix.
+
+## What the user gets
+
+If the USB dock drops off mid-meeting (the screen flicks off), the recording picks the microphone back up within seconds instead of recording silence for the rest of the meeting.
+
+## Learnings
+
+- **Three weeks of "root cause: untestable" ended in an hour, because the evidence was on the user's laptop, not in AWS.** The 2026-10-06 recording's audio survived only because speaker separation uploaded it (7-day bucket): it was exact zeros from 444.5 s, which a quiet room never produces. Windows' device log (`Kernel-PnP/Device Management`, event 1010) named a USB hub "surprise removed" one second earlier, and the same log matched the 2026-09-17 loss to the second. **Action:** added both sources, with the commands, to [observability.md → Why is a transcript incomplete?](../observability.md#why-is-a-transcript-incomplete) — Done.
+- **The first fix would likely have missed the incident it was written for, with every spec green.** A recording asks for "any microphone", which Chromium opens as the virtual `default` device. "Ask for the same device again" would then have grabbed whatever Windows promoted within milliseconds of the drop (the laptop's own mic, near-silent with the lid closed) and never gone back to the dock's. The test fakes always reported a concrete device id, so nothing could fail. Hawk found it by asking what the real browser reports. **Action:** the recovery resolves `default` to the physical input in the same `groupId` at start, and a spec now starts from a `default` track — Done. Whether `groupId` matches on real hardware is still unmeasured; it is in the BUG-85 close condition.
+- **A mutation test can be rescued by a real timer the harness forgot it had.** The spec for "listens on the replacement track" stayed green with that listener deleted. The harness's `setInterval` spy passes through to real 1 s timers, so the once-a-second backstop reconnected within `waitFor`'s window. **Action:** the spec now asserts the request goes out synchronously on `ended` (`toHaveBeenCalledTimes(3)` straight after the event), proven red under the mutation — Done. Any spec in that harness asserting "X happens on an event" needs a synchronous assertion, not `waitFor`.
+- **Real-microphone behaviour cannot be measured from this machine's shell.** Headless Windows Chrome with `--use-fake-ui-for-media-stream` never resolved `getUserMedia` on real devices (`--timeout` and `--virtual-time-budget` both tried), so the `default`/`groupId` question went to code reading. **Action:** the one-minute check is a real dock unplug in the desktop app, owned by the BUG-85 close condition — Documented.
