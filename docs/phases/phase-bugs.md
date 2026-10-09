@@ -32,7 +32,7 @@ Ordered by severity, then by id.
 | BUG-82 | After a recording with speaker separation, the note can end up never analysed with nothing said on screen and nothing recorded as an error — the same silent outcome BUG-77 is about, on the half BUG-77's fix cannot reach. | Open | BUG-77 |
 | BUG-83 | A change can be blocked by a red check that has nothing to do with it: the test that searching keeps your open notes in view failed once in a full run and passed 5 of 5 on its own. Fast-follow after 51-C merges; cause still unknown. | Open | — |
 | BUG-89 | **A note you have just recorded into can be missing from your notes list for at least half a minute, even though the app has confirmed the note is saved and up to date.** Seen once in the release check on 2026-09-21; every other note was listed. | Open | — |
-| BUG-90 | **If the desktop app is left open while the computer sleeps, you are signed out and must sign in again — roughly once a day, first thing in the morning.** Your 30-day sign-in is still valid; the app throws it away after one refresh fails because the network was not back yet. | Open | — |
+| BUG-90 | **If the desktop app is left open while the computer sleeps, you are signed out and must sign in again — roughly once a day, first thing in the morning.** Your 30-day sign-in is still valid; the app throws it away after one refresh fails because the network was not back yet. | In Progress — fix live 2026-10-09 (PR #494, deploy #790); closes after a morning with the app left open overnight and no sign-in | — |
 
 Further bugs will be appended as they are identified.
 
@@ -637,7 +637,7 @@ The kill is best-effort on purpose: Windows refused to terminate the hung proces
 
 ## BUG-90 — Desktop app signs you out after the computer sleeps
 
-**Symptom:** you leave the desktop app open overnight; next morning it shows the sign-in screen. Costs one sign-in a day, every day the machine slept with the app open. **Severity:** Medium — no data loss, daily friction. **Status:** Open.
+**Symptom:** you leave the desktop app open overnight; next morning it shows the sign-in screen. Costs one sign-in a day, every day the machine slept with the app open. **Severity:** Medium — no data loss, daily friction. **Status:** In Progress — fix live 2026-10-09, awaiting proof.
 
 **Evidence (prod logs, 2026-09-18 → 2026-10-09, measured 2026-10-09):**
 
@@ -663,3 +663,5 @@ The kill is best-effort on purpose: Windows refused to terminate the hung proces
 
 **Bounded where the user is waiting (second review):** only the refresh keeping an open session alive waits indefinitely. Opening the app waits 15 s, then shows sign-in and still restores the session if the server answers later. An action needing a fresh token waits 20 s, then fails like any unreachable request — without signing the user out. So a broken refresh step can no longer leave an endless loading screen.
 
+
+**Proof still owed:** the fix has been watched only in tests. Close it when a morning passes with the desktop app left open overnight and no sign-in. Read it in prod logs: no `Sign-in completed` from the desktop user agent that morning, and a `SessionRefresh` `completed` after the overnight gap.
