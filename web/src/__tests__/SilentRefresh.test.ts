@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { abandonSilentRefresh, attemptSilentRefresh } from '../auth/silentRefresh'
+import { abandonSilentRefresh, attemptSilentRefresh, RefreshUnavailableError } from '../auth/silentRefresh'
 
 const ok = (token: string) => ({ ok: true, status: 200, json: async () => ({ id_token: token }) })
 const status = (code: number) => ({ ok: false, status: code, json: async () => ({}) })
@@ -144,7 +144,7 @@ describe('attemptSilentRefresh when the network is not back yet (BUG-90)', () =>
     expect(await result).toBe('new-token')
   })
 
-  it('Given a refresh is waiting for the network, When the user signs out, Then the late refresh does not sign them back in', async () => {
+  it('Given a refresh is waiting for the network, When the user signs out, Then the late refresh never hands back a token or a failure', async () => {
     let reachable = false
     const fetchMock = vi.fn().mockImplementation(async () => {
       if (!reachable) throw new TypeError('Failed to fetch')
@@ -152,13 +152,39 @@ describe('attemptSilentRefresh when the network is not back yet (BUG-90)', () =>
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    const result = attemptSilentRefresh()
+    let settled = false
+    void attemptSilentRefresh().finally(() => { settled = true })
     await vi.advanceTimersByTimeAsync(3_000)
     abandonSilentRefresh()
     reachable = true
     await vi.advanceTimersByTimeAsync(60_000)
 
-    expect(await result).toBeNull()
+    // Settling at all would let the waiting scheduler sign the user back in, or mark the session expired.
+    expect(settled).toBe(false)
+  })
+
+  it('Given a caller that cannot wait forever, When the server stays unreachable, Then that caller is told so while the retrying carries on', async () => {
+    let reachable = false
+    const fetchMock = vi.fn().mockImplementation(async () => {
+      if (!reachable) throw new TypeError('Failed to fetch')
+      return ok('new-token')
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const bounded = attemptSilentRefresh({ giveUpAfterMs: 15_000 })
+    const boundedOutcome = bounded.catch((e: unknown) => e)
+    await vi.advanceTimersByTimeAsync(15_000)
+    expect(await boundedOutcome).toBeInstanceOf(RefreshUnavailableError)
+
+    const unbounded = attemptSilentRefresh()
+    reachable = true
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(await unbounded).toBe('new-token')
+  })
+
+  it('Given a caller that cannot wait forever, When the server answers in time, Then that caller gets the answer', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(ok('new-token')))
+    expect(await attemptSilentRefresh({ giveUpAfterMs: 15_000 })).toBe('new-token')
   })
 
   it('Given several parts of the app ask at once, When the network is down, Then only one refresh runs', async () => {

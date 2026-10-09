@@ -17,7 +17,32 @@ const RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 15_000, 30_000]
 let inFlight: Promise<string | null> | null = null
 let generation = 0
 
-export function attemptSilentRefresh(): Promise<string | null> {
+// Thrown to a caller that set `giveUpAfterMs` when the server has not answered in time. It is NOT a
+// refusal — the session may well be fine — so it must never be treated as signed out.
+export class RefreshUnavailableError extends Error {
+  constructor() {
+    super('The server did not answer the session refresh in time')
+    this.name = 'RefreshUnavailableError'
+  }
+}
+
+// Waiting forever is right only for the refresh that keeps an open session alive. Opening the app
+// and user actions pass `giveUpAfterMs`, so a broken refresh step ends in a screen the user can act
+// on rather than an endless spinner. The shared attempt keeps retrying either way.
+export function attemptSilentRefresh(options: { giveUpAfterMs?: number } = {}): Promise<string | null> {
+  const shared = sharedAttempt()
+  const { giveUpAfterMs } = options
+  if (giveUpAfterMs === undefined) return shared
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new RefreshUnavailableError()), giveUpAfterMs)
+    shared.then(
+      (token) => { clearTimeout(timer); resolve(token) },
+      (err: unknown) => { clearTimeout(timer); reject(err instanceof Error ? err : new Error(String(err))) },
+    )
+  })
+}
+
+function sharedAttempt(): Promise<string | null> {
   if (inFlight) return inFlight
   // An attempt abandoned by sign-out can settle after a newer one started; it must not clear that one.
   const attempt: Promise<string | null> = refreshUntilAnswered(generation).finally(() => {
@@ -27,8 +52,9 @@ export function attemptSilentRefresh(): Promise<string | null> {
   return attempt
 }
 
-// Sign-out must not be undone by a refresh that was still waiting for the network: the abandoned
-// attempt resolves null instead of a token.
+// Sign-out withdraws a refresh still waiting for the network. The withdrawn attempt never settles:
+// a token would sign the user back in, and a null would make the waiting scheduler report the
+// session as expired over the top of the sign-in screen.
 export function abandonSilentRefresh(): void {
   generation++
   inFlight = null
@@ -36,15 +62,16 @@ export function abandonSilentRefresh(): void {
 
 async function refreshUntilAnswered(started: number): Promise<string | null> {
   for (let retry = 0; ; retry++) {
-    if (started !== generation) return null
+    if (started !== generation) return NEVER
     const answer = await requestRefresh()
-    if (started !== generation) return null
+    if (started !== generation) return NEVER
     if (answer !== NO_ANSWER) return answer
     await waitForRetry(RETRY_DELAYS_MS[Math.min(retry, RETRY_DELAYS_MS.length - 1)])
   }
 }
 
 const NO_ANSWER = Symbol('no-answer')
+const NEVER = new Promise<never>(() => {})
 
 async function requestRefresh(): Promise<string | null | typeof NO_ANSWER> {
   try {

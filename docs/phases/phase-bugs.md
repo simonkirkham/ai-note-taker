@@ -661,5 +661,5 @@ The kill is best-effort on purpose: Windows refused to terminate the hung proces
 
 **Fix (PR #494):** `attemptSilentRefresh` returns `null` only on a server answer (a 4xx, or a 2xx with no token). Network errors, 5xx and unreadable bodies retry with no budget — backoff capped at 30 s, cut short by the `online` event. No budget because `navigator.onLine` stays true through a reconnect on Windows machines with virtual network adapters (review finding), and signing in again needs the same server anyway. Concurrent callers share one attempt; sign-out abandons a pending one so it cannot sign the user back in.
 
-**Accepted cost:** while the server is unreachable, an action needing a fresh sign-in token waits (spinner) instead of dropping to the sign-in screen, and a cold start shows the loading screen until the server answers.
+**Bounded where the user is waiting (second review):** only the refresh keeping an open session alive waits indefinitely. Opening the app waits 15 s, then shows sign-in and still restores the session if the server answers later. An action needing a fresh token waits 20 s, then fails like any unreachable request — without signing the user out. So a broken refresh step can no longer leave an endless loading screen.
 

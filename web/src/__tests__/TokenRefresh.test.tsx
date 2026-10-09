@@ -11,6 +11,7 @@ import { server } from '../test/setup'
 vi.mock('../auth/silentRefresh', () => ({
   attemptSilentRefresh: vi.fn(),
   abandonSilentRefresh: vi.fn(),
+  RefreshUnavailableError: class RefreshUnavailableError extends Error {},
 }))
 
 // Creates a well-formed JWT stub with exp = now + offsetMinutes * 60 seconds.
@@ -258,6 +259,34 @@ describe('cold-start silent refresh (BUG-15)', () => {
     expect(await screen.findByTestId('sidebar-toggle')).toBeInTheDocument()
   })
 
+  // BUG-90: the shared refresh keeps retrying until the server answers. Opening the app must not
+  // wait on that forever — a broken refresh step would otherwise leave no way out.
+  it('Given the server cannot be reached at cold start, When the bounded wait runs out, Then the sign-in screen shows', async () => {
+    vi.mocked(silentRefreshMod.attemptSilentRefresh).mockImplementation((options) =>
+      options?.giveUpAfterMs !== undefined
+        ? Promise.reject(new silentRefreshMod.RefreshUnavailableError())
+        : new Promise<string | null>(() => {}))
+
+    render(<AuthProvider><App /></AuthProvider>)
+
+    expect(await screen.findByRole('button', { name: /sign in with google/i })).toBeInTheDocument()
+    expect(silentRefreshMod.attemptSilentRefresh).toHaveBeenCalledWith({ giveUpAfterMs: 15_000 })
+  })
+
+  it('Given the sign-in screen showed because the server was unreachable, When the server later answers, Then the session is restored', async () => {
+    let resolveLate: (t: string | null) => void = () => {}
+    vi.mocked(silentRefreshMod.attemptSilentRefresh).mockImplementation((options) =>
+      options?.giveUpAfterMs !== undefined
+        ? Promise.reject(new silentRefreshMod.RefreshUnavailableError())
+        : new Promise<string | null>((res) => { resolveLate = res }))
+
+    render(<AuthProvider><App /></AuthProvider>)
+    await screen.findByRole('button', { name: /sign in with google/i })
+
+    await act(async () => { resolveLate(makeToken(65)) })
+    expect(await screen.findByTestId('sidebar-toggle')).toBeInTheDocument()
+  })
+
   it('falls back to the sign-in screen when the refresh cookie is gone', async () => {
     vi.mocked(silentRefreshMod.attemptSilentRefresh).mockResolvedValue(null)
 
@@ -430,6 +459,27 @@ describe('pre-flight expiry guard in apiFetch', () => {
 
     expect(fetchSpy).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: /sign in again/i })).toBeInTheDocument()
+  })
+  // BUG-90: an action that needs a fresh token while the server is unreachable fails like any other
+  // unreachable request — it must not hang, and it must not throw away a session the server never refused.
+  it('Given the server cannot be reached, When an action needs a fresh token, Then it fails without signing the user out', async () => {
+    const validToken = makeToken(65)
+    render(<AuthProvider initialToken={validToken}><App /></AuthProvider>)
+    await screen.findByTestId('sidebar-toggle')
+    vi.mocked(silentRefreshMod.attemptSilentRefresh).mockImplementation((options) =>
+      options?.giveUpAfterMs !== undefined
+        ? Promise.reject(new silentRefreshMod.RefreshUnavailableError())
+        : new Promise<string | null>(() => {}))
+    setToken(makeToken(-5))
+    const fetchSpy = vi.spyOn(window, 'fetch')
+
+    await act(async () => {
+      screen.getByTestId('new-note-button').click()
+    })
+
+    expect(silentRefreshMod.attemptSilentRefresh).toHaveBeenCalledWith({ giveUpAfterMs: 20_000 })
+    expect(fetchSpy).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: /sign in again/i })).not.toBeInTheDocument()
   })
 })
 

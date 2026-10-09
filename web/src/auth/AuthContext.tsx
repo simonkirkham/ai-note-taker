@@ -7,10 +7,16 @@ import { recordRumEvent } from '../rum'
 import { setWorkspaceId } from '../workspace/workspaceStore'
 import { AuthContext, type AuthState } from './context'
 import { buildAuthUrl, exchangeCode, generateCodeChallenge, generateCodeVerifier } from './pkce'
-import { abandonSilentRefresh, attemptSilentRefresh } from './silentRefresh'
+import { abandonSilentRefresh, attemptSilentRefresh, RefreshUnavailableError } from './silentRefresh'
 import { clearToken, loadPersistedToken, setToken, setOnForbidden, setOnRefresh, setOnUnauthorized } from './tokenStore'
 import { getExp, REFRESH_LEAD_MS, useGoogleAuth } from './useGoogleAuth'
 
+
+// BUG-90: how long opening the app, and an action needing a fresh token, wait for an unreachable
+// server before giving the user something to act on. The refresh keeping an open session alive
+// waits indefinitely instead.
+const COLD_START_REFRESH_WAIT_MS = 15_000
+const PREFLIGHT_REFRESH_WAIT_MS = 20_000
 export function AuthProvider({
   children,
   initialToken,
@@ -124,9 +130,14 @@ export function AuthProvider({
     })
     // A 401 from the API layer asks for a one-shot silent refresh; on success the new token
     // is adopted into React state, on failure api.ts falls back to triggerUnauthorized.
+    // BUG-90: bounded, and an unreachable server is rethrown — the request then fails like any other
+    // unreachable request instead of hanging, and is not mistaken for a refused session.
     setOnRefresh(async () => {
       if (!clientId) return null
-      const newToken = await attemptSilentRefresh().catch(() => null)
+      const newToken = await attemptSilentRefresh({ giveUpAfterMs: PREFLIGHT_REFRESH_WAIT_MS }).catch((err: unknown) => {
+        if (err instanceof RefreshUnavailableError) throw err
+        return null
+      })
       if (newToken) {
         handleRefreshSuccess(newToken)
         return newToken
@@ -202,7 +213,7 @@ export function AuthProvider({
       if (calWorkspace) setWorkspaceId(calWorkspace)
       window.history.replaceState({}, '', calWorkspace ? `/w/${calWorkspace}` : window.location.pathname)
       void (async () => {
-        const token = await attemptSilentRefresh().catch(() => null)
+        const token = await attemptSilentRefresh({ giveUpAfterMs: COLD_START_REFRESH_WAIT_MS }).catch(() => null)
         if (token) setToken(token)
         try {
           if (calProvider === 'microsoft') await connectMicrosoftCalendar(window.location.origin, code, calVerifier)
@@ -261,10 +272,17 @@ export function AuthProvider({
   useEffect(() => {
     if (!shouldBootstrapRefresh) return
     let cancelled = false
-    attemptSilentRefresh()
+    attemptSilentRefresh({ giveUpAfterMs: COLD_START_REFRESH_WAIT_MS })
       .then((token) => {
         if (cancelled) return
         if (token) handleRefreshSuccess(token)
+      }, (err: unknown) => {
+        // BUG-90: the server has not answered yet. Show sign-in rather than an endless loading
+        // screen, but keep listening — if the server answers later the session is restored.
+        if (!(err instanceof RefreshUnavailableError)) return
+        void attemptSilentRefresh().then((token) => {
+          if (!cancelled && token) handleRefreshSuccess(token)
+        })
       })
       // Refresh failure needs no action — the gate falls through to the sign-in screen — but the
       // rejection must be handled so the chain isn't a floating promise (no-floating-promises).
