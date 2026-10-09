@@ -32,6 +32,7 @@ Ordered by severity, then by id.
 | BUG-82 | After a recording with speaker separation, the note can end up never analysed with nothing said on screen and nothing recorded as an error — the same silent outcome BUG-77 is about, on the half BUG-77's fix cannot reach. | Open | BUG-77 |
 | BUG-83 | A change can be blocked by a red check that has nothing to do with it: the test that searching keeps your open notes in view failed once in a full run and passed 5 of 5 on its own. Fast-follow after 51-C merges; cause still unknown. | Open | — |
 | BUG-89 | **A note you have just recorded into can be missing from your notes list for at least half a minute, even though the app has confirmed the note is saved and up to date.** Seen once in the release check on 2026-09-21; every other note was listed. | Open | — |
+| BUG-90 | **If the desktop app is left open while the computer sleeps, you are signed out and must sign in again — roughly once a day, first thing in the morning.** Your 30-day sign-in is still valid; the app throws it away after one refresh fails because the network was not back yet. | Open | — |
 
 Further bugs will be appended as they are identified.
 
@@ -633,3 +634,26 @@ The kill is best-effort on purpose: Windows refused to terminate the hung proces
 3. **Stop the retry loop poisoning the pool.** After the first timeout, stop re-POSTing to a server that has not answered; a hung engine needs a restart, not another queued request.
 4. **Make the idle guard hold under the clamp**, so a dead session cannot spin through the stop-time pass.
 5. Investigate the first hung request itself — a decoder repetition loop is plausible (`--audio-ctx 768` is documented to induce them, and the comment in `whisperServer.ts` already flags the risk) but is **not** established by this evidence.
+
+## BUG-90 — Desktop app signs you out after the computer sleeps
+
+**Symptom:** you leave the desktop app open overnight; next morning it shows the sign-in screen. Costs one sign-in a day, every day the machine slept with the app open. **Severity:** Medium — no data loss, daily friction. **Status:** Open.
+
+**Evidence (prod logs, 2026-09-18 → 2026-10-09, measured 2026-10-09):**
+
+| Fact | Reading |
+| --- | --- |
+| Sign-ins | 8 in 21 days, all from the desktop app; one per morning 6-9 Oct |
+| Overnight refreshes | Succeed while the app is open: 02:13 and 03:14 UTC on 9 Oct, 03:05 on 7 Oct |
+| Before each morning sign-in | **No** refresh request reached the server — no success, no rejection, no missing-cookie |
+| Refresh cookie in the app | Present, persistent, expires 8 Nov — the sign-in is not being lost |
+| Server-side token store | Never asked to evict a token — Google never rejected one |
+
+**Diagnosis:** the token lasts 1 h. When the machine wakes, the overdue refresh timer fires at once — before the network is back. The request fails before it leaves the machine (the desktop proxy returns 500, or the fetch rejects). `attemptSilentRefresh` (`web/src/auth/silentRefresh.ts`) maps every failure to `null`, and `useGoogleAuth.runRefresh` treats `null` as "session over" → `onRefreshFailure` clears the token and shows sign-in. The cold-start bootstrap refresh in `AuthContext.tsx` has the same shape.
+
+**Inferred, not observed:** the failed request itself — it never reaches a log we can read. The desktop proxy logs `[desktop] request failed:` to the Electron console, which is not persisted.
+
+**Fix direction:** only a definite rejection from the server (401) ends the session. A network failure or 5xx keeps the session and retries — on the `online` event, on the next visibility change, and on a short backoff. Spec: a refresh that fails with a network error does not sign the user out; a later successful refresh restores the session.
+
+**Secondary observation:** every one of the 8 sign-ins recorded `consentIssued=True` — Google returned a fresh refresh token each time, which the code reads as "the full permissions screen was shown". Phase 30-B intended that screen to appear once ever. Unconfirmed whether the human actually sees it.
+
