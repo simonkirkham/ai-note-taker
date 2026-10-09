@@ -1,4 +1,5 @@
 import { ApiError } from '../api/client'
+import { RefreshUnavailableError } from '../auth/silentRefresh'
 import { recordRumEvent } from '../rum'
 
 // BUG-77: analysis used to report every failure as "Analysis failed. Please try again." — one
@@ -65,6 +66,17 @@ export function describeAnalyseFailure(error: unknown): AnalyseFailure {
   if (error instanceof ApiError) {
     const { kind, message } = fromStatus(error.status)
     return { message, kind, status: error.status, sent: !error.notSent, detail }
+  }
+
+  // BUG-90: the sign-in needed renewing and the server never answered, so this request was never sent.
+  if (error instanceof RefreshUnavailableError) {
+    return {
+      message: 'Could not reach the server — check your connection, then analyse again.',
+      kind: 'network',
+      status: null,
+      sent: false,
+      detail,
+    }
   }
 
   // `fetch` rejects with a TypeError when the request cannot be completed at all — offline, DNS

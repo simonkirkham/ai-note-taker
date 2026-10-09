@@ -1,4 +1,5 @@
 import { ApiError } from '../api/client'
+import { RefreshUnavailableError } from '../auth/silentRefresh'
 import { describeAnalyseFailure, reportAnalyseFailure } from '../lib/analyseFailure'
 
 const recordRumEvent = vi.fn()
@@ -72,6 +73,16 @@ describe('describeAnalyseFailure', () => {
     expect(fromServer.sent).toBe(true)
     expect(neverSent.sent).toBe(false)
     expect(neverSent.message).toBe(fromServer.message)
+  })
+
+  // BUG-90: the sign-in could not be renewed because the server never answered, so the analyse
+  // request was never sent. That is a connection problem, not an unexplained failure.
+  it('treats a sign-in renewal the server never answered as a connection problem, never sent', () => {
+    const failure = describeAnalyseFailure(new RefreshUnavailableError())
+
+    expect(failure.kind).toBe('network')
+    expect(failure.sent).toBe(false)
+    expect(failure.message).toMatch(/could not reach the server/i)
   })
 
 })

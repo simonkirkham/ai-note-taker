@@ -31,6 +31,9 @@ beforeEach(() => {
   sessionStorage.clear()
   server.use(
     http.post('/api/auth/token', () => HttpResponse.json({ id_token: 'fresh-token' })),
+    // No refresh cookie in this test. An unanswered refresh is now retried (BUG-90), so answer it
+    // the way the server does when the cookie is absent.
+    http.post('/api/auth/refresh', () => new HttpResponse(null, { status: 401 })),
   )
 })
 
