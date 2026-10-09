@@ -7,7 +7,7 @@ import { recordRumEvent } from '../rum'
 import { setWorkspaceId } from '../workspace/workspaceStore'
 import { AuthContext, type AuthState } from './context'
 import { buildAuthUrl, exchangeCode, generateCodeChallenge, generateCodeVerifier } from './pkce'
-import { attemptSilentRefresh } from './silentRefresh'
+import { abandonSilentRefresh, attemptSilentRefresh } from './silentRefresh'
 import { clearToken, loadPersistedToken, setToken, setOnForbidden, setOnRefresh, setOnUnauthorized } from './tokenStore'
 import { getExp, REFRESH_LEAD_MS, useGoogleAuth } from './useGoogleAuth'
 
@@ -312,6 +312,7 @@ export function AuthProvider({
     clearDeletedNote()
     clearToken()
     cancelRefresh()
+    abandonSilentRefresh()
     setForbidden(false)
     setSessionExpired(false)
     setIdToken(clientId ? null : 'no-auth')

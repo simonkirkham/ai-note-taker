@@ -18,7 +18,7 @@ vi.mock('../auth/pkce', async (importActual) => {
     buildAuthUrl: vi.fn(actual.buildAuthUrl),
   }
 })
-vi.mock('../auth/silentRefresh', () => ({ attemptSilentRefresh: vi.fn() }))
+vi.mock('../auth/silentRefresh', () => ({ attemptSilentRefresh: vi.fn(), abandonSilentRefresh: vi.fn() }))
 
 function makeToken(expOffsetMinutes: number): string {
   const exp = Math.floor(Date.now() / 1000) + expOffsetMinutes * 60

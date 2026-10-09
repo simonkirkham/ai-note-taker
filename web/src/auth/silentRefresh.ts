@@ -7,28 +7,40 @@
 // BUG-90: only the server can end a session. A request that never got an answer — the network
 // is not back after the computer wakes, or the desktop app's local proxy could not reach the
 // API — used to resolve null exactly like a refusal, and every caller reads null as "signed out".
-// So a valid 30-day session was thrown away every morning. Now: a 2xx/4xx is the server's answer
-// and is returned as-is; anything else is retried, indefinitely while the browser reports itself
-// offline (signing in again could not work then either), and on a bounded backoff while online.
-const RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 15_000, 30_000, 30_000, 30_000]
+// So a valid 30-day session was thrown away every morning. Now a 4xx, or a 2xx carrying no token,
+// ends the session; anything else (network error, 5xx, an unreadable body) is retried until the
+// server answers. There is no retry budget: `navigator.onLine` stays true on Windows machines with
+// virtual network adapters, so it cannot be trusted to say the network is down, and signing in
+// again needs the same server anyway. The wait between attempts is cut short by the `online` event.
+const RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 15_000, 30_000]
 
 let inFlight: Promise<string | null> | null = null
+let generation = 0
 
 export function attemptSilentRefresh(): Promise<string | null> {
-  if (!inFlight) inFlight = refreshUntilAnswered().finally(() => { inFlight = null })
-  return inFlight
+  if (inFlight) return inFlight
+  // An attempt abandoned by sign-out can settle after a newer one started; it must not clear that one.
+  const attempt: Promise<string | null> = refreshUntilAnswered(generation).finally(() => {
+    if (inFlight === attempt) inFlight = null
+  })
+  inFlight = attempt
+  return attempt
 }
 
-async function refreshUntilAnswered(): Promise<string | null> {
-  for (let retry = 0; ; ) {
+// Sign-out must not be undone by a refresh that was still waiting for the network: the abandoned
+// attempt resolves null instead of a token.
+export function abandonSilentRefresh(): void {
+  generation++
+  inFlight = null
+}
+
+async function refreshUntilAnswered(started: number): Promise<string | null> {
+  for (let retry = 0; ; retry++) {
+    if (started !== generation) return null
     const answer = await requestRefresh()
+    if (started !== generation) return null
     if (answer !== NO_ANSWER) return answer
-    if (isOffline()) {
-      await waitForOnline()
-      continue
-    }
-    if (retry >= RETRY_DELAYS_MS.length) return null
-    await sleep(RETRY_DELAYS_MS[retry++])
+    await waitForRetry(RETRY_DELAYS_MS[Math.min(retry, RETRY_DELAYS_MS.length - 1)])
   }
 }
 
@@ -46,14 +58,14 @@ async function requestRefresh(): Promise<string | null | typeof NO_ANSWER> {
   }
 }
 
-function isOffline(): boolean {
-  return typeof navigator !== 'undefined' && navigator.onLine === false
-}
-
-function waitForOnline(): Promise<void> {
-  return new Promise((resolve) => window.addEventListener('online', () => resolve(), { once: true }))
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+function waitForRetry(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer)
+      window.removeEventListener('online', done)
+      resolve()
+    }
+    const timer = setTimeout(done, ms)
+    window.addEventListener('online', done)
+  })
 }

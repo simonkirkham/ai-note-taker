@@ -9,7 +9,7 @@ import { server } from '../test/setup'
 
 // Cold loads now attempt a refresh-cookie restore before showing sign-in (BUG-15); mock it
 // so these tests control the outcome instead of hitting a real /api/auth/refresh fetch.
-vi.mock('../auth/silentRefresh', () => ({ attemptSilentRefresh: vi.fn() }))
+vi.mock('../auth/silentRefresh', () => ({ attemptSilentRefresh: vi.fn(), abandonSilentRefresh: vi.fn() }))
 
 beforeEach(() => {
   clearToken()

@@ -659,5 +659,7 @@ The kill is best-effort on purpose: Windows refused to terminate the hung proces
 
 **Consequence:** this fix removes the daily permissions screen by removing the daily sign-in. A desktop sign-in still shows it — that happens only when the 30-day cookie lapses (more than 30 days without opening the app; each refresh slides the window) or is cleared. Removing it entirely needs the desktop sign-in to return via the https site origin instead of localhost — a separate, larger change.
 
-**Fix (PR pending):** `attemptSilentRefresh` returns `null` only on a server answer (2xx without a token, or 4xx). Network errors and 5xx retry — indefinitely while the browser reports offline, on a ~2 min backoff while online — and concurrent callers share one attempt. All callers are unchanged.
+**Fix (PR #494):** `attemptSilentRefresh` returns `null` only on a server answer (a 4xx, or a 2xx with no token). Network errors, 5xx and unreadable bodies retry with no budget — backoff capped at 30 s, cut short by the `online` event. No budget because `navigator.onLine` stays true through a reconnect on Windows machines with virtual network adapters (review finding), and signing in again needs the same server anyway. Concurrent callers share one attempt; sign-out abandons a pending one so it cannot sign the user back in.
+
+**Accepted cost:** while the server is unreachable, an action needing a fresh sign-in token waits (spinner) instead of dropping to the sign-in screen, and a cold start shows the loading screen until the server answers.
 

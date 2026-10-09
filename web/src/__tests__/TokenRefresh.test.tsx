@@ -10,6 +10,7 @@ import { server } from '../test/setup'
 
 vi.mock('../auth/silentRefresh', () => ({
   attemptSilentRefresh: vi.fn(),
+  abandonSilentRefresh: vi.fn(),
 }))
 
 // Creates a well-formed JWT stub with exp = now + offsetMinutes * 60 seconds.
